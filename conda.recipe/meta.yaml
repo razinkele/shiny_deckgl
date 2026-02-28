@@ -1,4 +1,4 @@
-{% set name = "shiny_deckgl" %}
+{% set name = "shiny-deckgl" %}
 # Version must match src/shiny_deckgl/_version.py (single source of truth)
 {% set version = "0.1.0" %}
 
@@ -12,7 +12,6 @@ source:
 build:
   noarch: python
   number: 0
-  script: "{{ PYTHON }} -m pip install . --no-deps -vv"
 
 requirements:
   host:

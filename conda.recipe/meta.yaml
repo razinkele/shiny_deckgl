@@ -1,0 +1,33 @@
+{% set name = "shiny_deckgl" %}
+# Version must match src/shiny_deckgl/_version.py (single source of truth)
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: "{{ version }}"
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  number: 0
+  script: "{{ PYTHON }} -m pip install . --no-deps -vv"
+
+requirements:
+  host:
+    - python >=3.9
+    - pip
+    - setuptools
+  run:
+    - python >=3.9
+    - shiny >=1.0
+
+test:
+  imports:
+    - shiny_deckgl
+
+about:
+  home: "https://github.com/arturas-baziukas/shiny_deckgl"
+  license: "MIT"
+  summary: "Shiny -> deck.gl bridge (no Java) with packaged assets"

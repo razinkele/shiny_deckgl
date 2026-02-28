@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shiny_deckgl"
+dynamic = ["version"]
+description = "Shiny for Python -> deck.gl bridge (no Java), with packaged assets and conda recipe"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
+keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "shiny>=1.0",
+]
+
+[project.optional-dependencies]
+binary = ["numpy"]
+
+[project.scripts]
+shiny_deckgl-demo = "shiny_deckgl.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "shiny_deckgl._version.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+shiny_deckgl = ["resources/*.js", "resources/*.css", "py.typed"]

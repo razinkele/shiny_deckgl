@@ -86,14 +86,76 @@ PORTS = [
     {"name": "Ventspils",   "country": "LV", "lon": 21.56, "lat": 57.39, "cargo_mt": 18.5},
 ]
 
+# Real Baltic Sea ferry and shipping routes
+# Waypoints follow actual maritime corridors / charted fairways
 ROUTES = [
-    {"from": "Klaipėda",   "to": "Gdańsk",     "color": [0, 180, 230, 180]},
-    {"from": "Klaipėda",   "to": "Stockholm",   "color": [0, 200, 120, 180]},
-    {"from": "Helsinki",   "to": "Tallinn",     "color": [255, 140, 0, 180]},
-    {"from": "Riga",       "to": "Stockholm",   "color": [180, 0, 200, 180]},
-    {"from": "Copenhagen", "to": "Rostock",     "color": [255, 80, 80, 180]},
-    {"from": "Gdańsk",     "to": "Kaliningrad", "color": [100, 200, 100, 180]},
-    {"from": "Ventspils",  "to": "Stockholm",   "color": [200, 200, 0, 180]},
+    {   # Klaipėda–Kiel (DFDS Seaways freight route via Langeland Belt)
+        "from": "Klaipėda", "to": "Kiel",
+        "color": [0, 180, 230, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
+            [18.50, 54.90], [16.50, 55.00], [14.50, 54.80],
+            [12.30, 54.60], [11.00, 54.50], [10.15, 54.33],
+        ],
+    },
+    {   # Klaipėda–Karlshamn (DFDS Seaways)
+        "from": "Klaipėda", "to": "Karlshamn",
+        "color": [0, 200, 120, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.40, 55.50], [19.50, 55.50],
+            [18.20, 55.60], [16.50, 55.80], [14.86, 56.17],
+        ],
+    },
+    {   # Helsinki–Tallinn (Tallink / Viking Line, ~80 km)
+        "from": "Helsinki", "to": "Tallinn",
+        "color": [255, 140, 0, 180],
+        "waypoints": [
+            [24.94, 60.17], [24.90, 60.05], [24.85, 59.85],
+            [24.80, 59.65], [24.75, 59.44],
+        ],
+    },
+    {   # Riga–Stockholm (Tallink, via Irbe Strait & Gotland)
+        "from": "Riga", "to": "Stockholm",
+        "color": [180, 0, 200, 180],
+        "waypoints": [
+            [24.11, 56.95], [23.00, 57.20], [21.80, 57.50],
+            [20.50, 57.80], [19.50, 58.30], [18.60, 58.90],
+            [18.07, 59.33],
+        ],
+    },
+    {   # Copenhagen–Rostock (Scandlines, Gedser–Rostock crossing)
+        "from": "Copenhagen", "to": "Rostock",
+        "color": [255, 80, 80, 180],
+        "waypoints": [
+            [12.57, 55.68], [12.30, 55.40], [12.10, 55.00],
+            [12.00, 54.60], [12.10, 54.30], [12.10, 54.09],
+        ],
+    },
+    {   # Gdańsk–Nynäshamn (Polferries)
+        "from": "Gdańsk", "to": "Stockholm",
+        "color": [100, 200, 100, 180],
+        "waypoints": [
+            [18.65, 54.35], [18.80, 54.80], [19.00, 55.50],
+            [18.80, 56.50], [18.50, 57.50], [18.20, 58.40],
+            [17.95, 58.75], [18.07, 59.33],
+        ],
+    },
+    {   # Ventspils–Nynäshamn (Stena Line)
+        "from": "Ventspils", "to": "Stockholm",
+        "color": [200, 200, 0, 180],
+        "waypoints": [
+            [21.56, 57.39], [20.50, 57.60], [19.50, 57.90],
+            [18.80, 58.30], [18.30, 58.80], [18.07, 59.33],
+        ],
+    },
+    {   # Klaipėda–Gdynia (Stena Line)
+        "from": "Klaipėda", "to": "Gdańsk",
+        "color": [60, 180, 200, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.80, 55.50], [20.30, 55.20],
+            [19.60, 54.90], [19.10, 54.60], [18.65, 54.35],
+        ],
+    },
 ]
 
 # Marine Protected Area polygons (simplified)
@@ -146,14 +208,13 @@ def _port_by_name(name: str) -> dict:
 
 
 def _make_arc_data() -> list[dict]:
-    """Build arc data from routes."""
+    """Build arc data from routes (using first/last waypoints)."""
     arcs = []
     for r in ROUTES:
-        src = _port_by_name(r["from"])
-        tgt = _port_by_name(r["to"])
+        wp = r["waypoints"]
         arcs.append({
-            "sourcePosition": [src["lon"], src["lat"]],
-            "targetPosition": [tgt["lon"], tgt["lat"]],
+            "sourcePosition": wp[0],
+            "targetPosition": wp[-1],
             "sourceColor": r["color"],
             "targetColor": r["color"],
             "from": r["from"],
@@ -176,20 +237,11 @@ def _make_heatmap_points(n: int = 300) -> list[list[float]]:
 
 
 def _make_path_data() -> list[dict]:
-    """Build path data — polylines for shipping routes."""
+    """Build path data — polylines using actual route waypoints."""
     paths = []
     for r in ROUTES:
-        src = _port_by_name(r["from"])
-        tgt = _port_by_name(r["to"])
-        waypoints = []
-        for i in range(11):
-            t = i / 10
-            waypoints.append([
-                src["lon"] + (tgt["lon"] - src["lon"]) * t,
-                src["lat"] + (tgt["lat"] - src["lat"]) * t,
-            ])
         paths.append({
-            "path": waypoints,
+            "path": r["waypoints"],
             "name": f"{r['from']} \u2192 {r['to']}",
             "color": r["color"],
         })
@@ -590,6 +642,46 @@ body {
 
 /* -- Misc ---------------------------------------------------------------- */
 ::selection { background: var(--sea-200); color: var(--sea-900); }
+
+/* -- Sidebar accordions -------------------------------------------------- */
+.bslib-sidebar-layout > .sidebar .accordion {
+  --bs-accordion-bg: transparent;
+  --bs-accordion-border-color: rgba(78, 197, 224, 0.15);
+  --bs-accordion-btn-padding-x: 0.5rem;
+  --bs-accordion-btn-padding-y: 0.5rem;
+  --bs-accordion-body-padding-x: 0.3rem;
+  --bs-accordion-body-padding-y: 0.4rem;
+  border: none !important;
+  background: transparent !important;
+}
+.bslib-sidebar-layout > .sidebar .accordion-item {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(78, 197, 224, 0.12) !important;
+}
+.bslib-sidebar-layout > .sidebar .accordion-button {
+  background: transparent !important;
+  color: var(--sea-300) !important;
+  font-size: 0.78rem !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.55rem 0.5rem !important;
+  box-shadow: none !important;
+}
+.bslib-sidebar-layout > .sidebar .accordion-button::after {
+  filter: invert(0.7) sepia(1) saturate(3) hue-rotate(160deg);
+  width: 0.9rem;
+  height: 0.9rem;
+}
+.bslib-sidebar-layout > .sidebar .accordion-button:not(.collapsed) {
+  color: var(--sea-200) !important;
+  background: rgba(255,255,255,0.03) !important;
+}
+.bslib-sidebar-layout > .sidebar .accordion-body {
+  background: transparent !important;
+  padding: 0.3rem 0.3rem 0.5rem !important;
+}
 """
 
 
@@ -615,44 +707,55 @@ app_ui = ui.page_navbar(
         "\U0001F30A Interactive Map",
         ui.layout_sidebar(
             ui.sidebar(
-                _sidebar_section("\u2693", "Basemap"),
-                ui.input_select(
-                    "basemap", "Basemap style",
-                    choices=list(BASEMAP_CHOICES.keys()),
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\u2693 Basemap",
+                        ui.input_select(
+                            "basemap", "Basemap style",
+                            choices=list(BASEMAP_CHOICES.keys()),
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\u2728 Symbology",
+                        ui.input_select(
+                            "palette", "Port colour palette",
+                            choices=list(PALETTE_CHOICES.keys()),
+                            selected="Ocean",
+                        ),
+                        ui.input_radio_buttons(
+                            "color_mode", "Colour mode",
+                            choices=["Equal-width bins", "Quantile bins", "Fixed range"],
+                            selected="Equal-width bins",
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\u2630 Layers",
+                        ui.input_switch("show_ports", "Ports (scatter)", value=True),
+                        ui.input_switch("show_mpa", "Marine Protected Areas", value=True),
+                        ui.input_switch("show_routes", "Shipping routes (arcs)", value=True),
+                        ui.input_switch("show_paths", "Route paths", value=False),
+                        ui.input_select(
+                            "wms_layer", "EMODnet WMS overlay",
+                            choices=WMS_LAYER_CHOICES,
+                            selected="emodnet:mean_atlas_land",
+                        ),
+                        ui.input_switch("show_heatmap", "Observation heatmap", value=False),
+                    ),
+                    ui.accordion_panel(
+                        "\u2708 Navigation",
+                        ui.input_action_button("fly_klaipeda", "\u2708 Fly to Klaip\u0117da"),
+                        ui.input_action_button("ease_stockholm", "\u27A1 Ease to Stockholm"),
+                        ui.input_action_button("fly_baltic", "\U0001F30D Reset Baltic view"),
+                        ui.input_action_button("place_marker", "\U0001F4CD Place drag marker"),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Drag Marker",
+                        ui.output_text_verbatim("drag_info"),
+                    ),
+                    id="tab1_accordion",
+                    open=False,
+                    multiple=True,
                 ),
-                ui.hr(),
-                _sidebar_section("\u2728", "Symbology"),
-                ui.input_select(
-                    "palette", "Port colour palette",
-                    choices=list(PALETTE_CHOICES.keys()),
-                    selected="Ocean",
-                ),
-                ui.input_radio_buttons(
-                    "color_mode", "Colour mode",
-                    choices=["Equal-width bins", "Quantile bins", "Fixed range"],
-                    selected="Equal-width bins",
-                ),
-                ui.hr(),
-                _sidebar_section("\u2630", "Layers"),
-                ui.input_switch("show_ports", "Ports (scatter)", value=True),
-                ui.input_switch("show_mpa", "Marine Protected Areas", value=True),
-                ui.input_switch("show_routes", "Shipping routes (arcs)", value=True),
-                ui.input_switch("show_paths", "Route paths", value=False),
-                ui.input_select(
-                    "wms_layer", "EMODnet WMS overlay",
-                    choices=WMS_LAYER_CHOICES,
-                    selected="emodnet:mean_atlas_land",
-                ),
-                ui.input_switch("show_heatmap", "Observation heatmap", value=False),
-                ui.hr(),
-                _sidebar_section("\u2708", "Navigation"),
-                ui.input_action_button("fly_klaipeda", "\u2708 Fly to Klaip\u0117da"),
-                ui.input_action_button("ease_stockholm", "\u27A1 Ease to Stockholm"),
-                ui.input_action_button("fly_baltic", "\U0001F30D Reset Baltic view"),
-                ui.input_action_button("place_marker", "\U0001F4CD Place drag marker"),
-                ui.hr(),
-                _sidebar_section("\U0001F4CD", "Drag Marker"),
-                ui.output_text_verbatim("drag_info"),
                 width=310,
             ),
             map_widget.ui(height="85vh"),
@@ -664,22 +767,30 @@ app_ui = ui.page_navbar(
         "\U0001F4E1 Events & Tooltips",
         ui.layout_sidebar(
             ui.sidebar(
-                _sidebar_section("\U0001F4AC", "Tooltip Template"),
-                _sidebar_hint(
-                    "Edit the HTML template below. Use {field} "
-                    "placeholders to interpolate feature properties."
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F4AC Tooltip Template",
+                        _sidebar_hint(
+                            "Edit the HTML template below. Use {field} "
+                            "placeholders to interpolate feature properties."
+                        ),
+                        ui.input_text_area(
+                            "tooltip_template", "HTML template",
+                            value=DEFAULT_TOOLTIP_HTML,
+                            rows=3,
+                        ),
+                        ui.input_text("tooltip_bg", "Background colour", value="#1a1a2e"),
+                        ui.input_text("tooltip_fg", "Text colour", value="#eeeeee"),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Drag Marker",
+                        ui.input_action_button("events_marker", "\U0001F4CD Place drag marker"),
+                        ui.output_text_verbatim("events_drag"),
+                    ),
+                    id="tab2_accordion",
+                    open=False,
+                    multiple=True,
                 ),
-                ui.input_text_area(
-                    "tooltip_template", "HTML template",
-                    value=DEFAULT_TOOLTIP_HTML,
-                    rows=3,
-                ),
-                ui.input_text("tooltip_bg", "Background colour", value="#1a1a2e"),
-                ui.input_text("tooltip_fg", "Text colour", value="#eeeeee"),
-                ui.hr(),
-                _sidebar_section("\U0001F4CD", "Drag Marker"),
-                ui.input_action_button("events_marker", "\U0001F4CD Place drag marker"),
-                ui.output_text_verbatim("events_drag"),
                 width=310,
             ),
             events_widget.ui(height="50vh"),
@@ -736,64 +847,75 @@ app_ui = ui.page_navbar(
         "\u2699 Advanced",
         ui.layout_sidebar(
             ui.sidebar(
-                _sidebar_section("\U0001F4A1", "Lighting Effects"),
-                _sidebar_hint(
-                    "The map shows 3-D cargo columns. Enable lighting "
-                    "to see ambient and point-light shading."
-                ),
-                ui.input_switch("enable_lighting", "Enable lighting", value=False),
-                ui.input_slider(
-                    "ambient", "Ambient intensity", 0.0, 2.0, 1.0, step=0.1,
-                ),
-                ui.input_slider(
-                    "point_intensity", "Point light intensity",
-                    0.0, 3.0, 1.5, step=0.1,
-                ),
-                ui.hr(),
-                _sidebar_section("\u26A1", "Binary Transport"),
-                _sidebar_hint(
-                    "Push 2,500 random points encoded as numpy binary arrays."
-                ),
-                ui.input_action_button(
-                    "push_binary", "\u26A1 Push Binary ScatterplotLayer"
-                ),
-                ui.hr(),
-                _sidebar_section("\U0001F50E", "Data Filter Extension"),
-                _sidebar_hint(
-                    "Filter ports by cargo tonnage using GPU-accelerated "
-                    "DataFilterExtension."
-                ),
-                ui.input_action_button(
-                    "push_filtered", "\U0001F50E Push Filtered Layer"
-                ),
-                ui.input_slider(
-                    "filter_value", "Max cargo filter (Mt)",
-                    min=0, max=60, value=60, step=1,
-                ),
-                ui.hr(),
-                _sidebar_section("\U0001F9E9", "Widgets (v0.8.0)"),
-                _sidebar_hint(
-                    "Toggle deck.gl widgets on the Advanced map. "
-                    "Widgets are added/removed via set_widgets()."
-                ),
-                ui.input_switch("adv_zoom_widget", "Zoom widget", value=False),
-                ui.input_switch(
-                    "adv_compass_widget", "Compass widget", value=False
-                ),
-                ui.input_switch("adv_fps_widget", "FPS widget", value=False),
-                ui.input_switch(
-                    "adv_fullscreen_widget", "Fullscreen widget", value=False
-                ),
-                ui.input_switch(
-                    "adv_scale_widget", "Scale widget", value=False
-                ),
-                ui.hr(),
-                _sidebar_section("\U0001F3AC", "Transitions (v0.8.0)"),
-                _sidebar_hint(
-                    "Push a layer with animated radius transitions."
-                ),
-                ui.input_action_button(
-                    "push_transitions", "\U0001F3AC Push Animated Layer"
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F4A1 Lighting Effects",
+                        _sidebar_hint(
+                            "The map shows 3-D cargo columns. Enable lighting "
+                            "to see ambient and point-light shading."
+                        ),
+                        ui.input_switch("enable_lighting", "Enable lighting", value=False),
+                        ui.input_slider(
+                            "ambient", "Ambient intensity", 0.0, 2.0, 1.0, step=0.1,
+                        ),
+                        ui.input_slider(
+                            "point_intensity", "Point light intensity",
+                            0.0, 3.0, 1.5, step=0.1,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\u26A1 Binary Transport",
+                        _sidebar_hint(
+                            "Push 2,500 random points encoded as numpy binary arrays."
+                        ),
+                        ui.input_action_button(
+                            "push_binary", "\u26A1 Push Binary ScatterplotLayer"
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F50E Data Filter Extension",
+                        _sidebar_hint(
+                            "Filter ports by cargo tonnage using GPU-accelerated "
+                            "DataFilterExtension."
+                        ),
+                        ui.input_action_button(
+                            "push_filtered", "\U0001F50E Push Filtered Layer"
+                        ),
+                        ui.input_slider(
+                            "filter_value", "Max cargo filter (Mt)",
+                            min=0, max=60, value=60, step=1,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F9E9 Widgets (v0.8.0)",
+                        _sidebar_hint(
+                            "Toggle deck.gl widgets on the Advanced map. "
+                            "Widgets are added/removed via set_widgets()."
+                        ),
+                        ui.input_switch("adv_zoom_widget", "Zoom widget", value=False),
+                        ui.input_switch(
+                            "adv_compass_widget", "Compass widget", value=False
+                        ),
+                        ui.input_switch("adv_fps_widget", "FPS widget", value=False),
+                        ui.input_switch(
+                            "adv_fullscreen_widget", "Fullscreen widget", value=False
+                        ),
+                        ui.input_switch(
+                            "adv_scale_widget", "Scale widget", value=False
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F3AC Transitions (v0.8.0)",
+                        _sidebar_hint(
+                            "Push a layer with animated radius transitions."
+                        ),
+                        ui.input_action_button(
+                            "push_transitions", "\U0001F3AC Push Animated Layer"
+                        ),
+                    ),
+                    id="tab4_accordion",
+                    open=False,
+                    multiple=True,
                 ),
                 width=300,
             ),
@@ -810,19 +932,26 @@ app_ui = ui.page_navbar(
         "\U0001F4E6 Export",
         ui.layout_sidebar(
             ui.sidebar(
-                _sidebar_section("\U0001F4E4", "Export Actions"),
-                _sidebar_hint(
-                    "Export the current map state to standalone HTML "
-                    "or JSON format."
-                ),
-                ui.input_action_button(
-                    "export_html", "\U0001F310 Export HTML File"
-                ),
-                ui.input_action_button(
-                    "export_json", "\U0001F4CB Serialise to JSON"
-                ),
-                ui.input_action_button(
-                    "roundtrip_json", "\U0001F504 JSON Round-Trip Test"
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F4E4 Export Actions",
+                        _sidebar_hint(
+                            "Export the current map state to standalone HTML "
+                            "or JSON format."
+                        ),
+                        ui.input_action_button(
+                            "export_html", "\U0001F310 Export HTML File"
+                        ),
+                        ui.input_action_button(
+                            "export_json", "\U0001F4CB Serialise to JSON"
+                        ),
+                        ui.input_action_button(
+                            "roundtrip_json", "\U0001F504 JSON Round-Trip Test"
+                        ),
+                    ),
+                    id="tab5_accordion",
+                    open=False,
+                    multiple=True,
                 ),
                 width=280,
             ),

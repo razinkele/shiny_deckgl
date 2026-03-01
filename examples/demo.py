@@ -5,13 +5,20 @@ Run with:
 
 Tabs:
   1. Interactive Map  – basemaps, palettes, color modes, layer visibility,
-                        WMS (EMODnet via OWSLib), fly-to, drag marker
+                        WMS (EMODnet via OWSLib), fly-to / ease-to (v0.8.0),
+                        drag marker, deck.gl widgets (zoom, compass, etc.)
   2. Events & Tooltips – live click/hover/viewport readback, drag marker,
                          dynamic tooltip customisation
   3. Colour Scales     – palette swatches, color_bins, color_quantiles tables
   4. Advanced          – 3-D column map with lighting effects,
-                         binary transport (numpy), DataFilterExtension
+                         binary transport (numpy), DataFilterExtension,
+                         widget toggles (v0.8.0), transition demo (v0.8.0)
   5. Export            – standalone HTML export, JSON round-trip
+
+Features demonstrated from each version:
+  v0.7.0 — arc_layer, path_layer, heatmap_layer, column_layer, globe_view
+  v0.8.0 — zoom/compass/fullscreen/scale/fps widgets, fly_to, ease_to,
+            transition(), set_widgets()
 """
 from __future__ import annotations
 
@@ -32,6 +39,17 @@ from shiny_deckgl import (
     geojson_layer,
     tile_layer,
     bitmap_layer,
+    # v0.7.0 layer helpers
+    arc_layer,
+    icon_layer,
+    path_layer,
+    line_layer,
+    text_layer,
+    column_layer,
+    polygon_layer,
+    heatmap_layer,
+    hexagon_layer,
+    h3_hexagon_layer,
     # Basemap constants
     CARTO_POSITRON,
     CARTO_DARK,
@@ -51,10 +69,21 @@ from shiny_deckgl import (
     # View helpers
     map_view,
     first_person_view,
+    globe_view,
+    # v0.8.0 widgets
+    zoom_widget,
+    compass_widget,
+    fullscreen_widget,
+    scale_widget,
+    fps_widget,
+    # v0.8.0 transitions & camera
+    transition,
 )
 
 # Re-export names used in docstring / manual testing only
-_ = (bitmap_layer, map_view, first_person_view)
+_ = (bitmap_layer, map_view, first_person_view, globe_view,
+     icon_layer, line_layer, text_layer, polygon_layer,
+     hexagon_layer, h3_hexagon_layer)
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +279,14 @@ map_widget = MapWidget(
     },
     view_state=BALTIC_VIEW,
 )
+
+# Default widgets for Tab 1 map
+MAP_WIDGETS = [
+    zoom_widget(),
+    compass_widget(),
+    fullscreen_widget(),
+    scale_widget(),
+]
 
 # Tab 2 — Events & Tooltips (tooltip updated dynamically)
 DEFAULT_TOOLTIP_HTML = "<b>{name}</b><br/>Country: {country}<br/>Cargo: {cargo_mt} Mt"
@@ -638,8 +675,9 @@ app_ui = ui.page_navbar(
                 ui.input_switch("show_heatmap", "Observation heatmap", value=False),
                 ui.hr(),
                 _sidebar_section("\u2708", "Navigation"),
-                ui.input_action_button("fly_klaipeda", "\u2693 Fly to Klaip\u0117da"),
-                ui.input_action_button("fly_stockholm", "\u2693 Fly to Stockholm"),
+                ui.input_action_button("fly_klaipeda", "\u2708 Fly to Klaip\u0117da"),
+                ui.input_action_button("ease_stockholm", "\u27A1 Ease to Stockholm"),
+                ui.input_action_button("fly_baltic", "\U0001F30D Reset Baltic view"),
                 ui.input_action_button("place_marker", "\U0001F4CD Place drag marker"),
                 ui.hr(),
                 _sidebar_section("\U0001F4CD", "Drag Marker"),
@@ -748,6 +786,23 @@ app_ui = ui.page_navbar(
                     "filter_value", "Max cargo filter (Mt)",
                     min=0, max=60, value=60, step=1,
                 ),
+                ui.hr(),
+                _sidebar_section("\U0001F9E9", "Widgets (v0.8.0)"),
+                _sidebar_hint(
+                    "Toggle deck.gl widgets on the Advanced map. "
+                    "Widgets are added/removed via set_widgets()."
+                ),
+                ui.input_switch("adv_zoom_widget", "Zoom widget", value=False),
+                ui.input_switch("adv_compass_widget", "Compass widget", value=False),
+                ui.input_switch("adv_fps_widget", "FPS widget", value=False),
+                ui.input_switch("adv_fullscreen_widget", "Fullscreen widget", value=False),
+                ui.input_switch("adv_scale_widget", "Scale widget", value=False),
+                ui.hr(),
+                _sidebar_section("\U0001F3AC", "Transitions (v0.8.0)"),
+                _sidebar_hint(
+                    "Push a layer with animated radius transitions."
+                ),
+                ui.input_action_button("push_transitions", "\U0001F3AC Push Animated Layer"),
                 width=300,
             ),
             adv_widget.ui(height="55vh"),
@@ -835,30 +890,30 @@ def server(input, output, session: Session):
                 lineWidthMinPixels=2,
             ))
 
-        # Heatmap — random observation density
+        # Heatmap — random observation density (v0.7.0 helper)
         if input.show_heatmap():
-            layers.append(layer(
-                "HeatmapLayer", "observation-heat",
+            layers.append(heatmap_layer(
+                "observation-heat",
                 data=_make_heatmap_points(300),
                 getPosition="@@d",
                 getWeight="@@=d[2]",
                 radiusPixels=40, intensity=1.5, threshold=0.1,
             ))
 
-        # Paths — shipping routes as polylines
+        # Paths — shipping routes as polylines (v0.7.0 helper)
         if input.show_paths():
-            layers.append(layer(
-                "PathLayer", "route-paths",
+            layers.append(path_layer(
+                "route-paths",
                 data=_make_path_data(),
                 getPath="@@=d.path",
                 getColor="@@=d.color",
                 getWidth=3, widthMinPixels=2, pickable=True,
             ))
 
-        # Arcs — connections between ports
+        # Arcs — connections between ports (v0.7.0 helper)
         if input.show_routes():
-            layers.append(layer(
-                "ArcLayer", "port-arcs",
+            layers.append(arc_layer(
+                "port-arcs",
                 data=_make_arc_data(),
                 getSourcePosition="@@=d.sourcePosition",
                 getTargetPosition="@@=d.targetPosition",
@@ -892,12 +947,12 @@ def server(input, output, session: Session):
 
         return layers
 
-    # Initial push
+    # Initial push (with widgets)
     @reactive.Effect
     async def _main_init():
         layers = _build_main_layers()
         _main_layers.set(layers)
-        await map_widget.update(session, layers)
+        await map_widget.update(session, layers, widgets=MAP_WIDGETS)
 
     # Reactive rebuild on any control change
     @reactive.Effect
@@ -918,23 +973,22 @@ def server(input, output, session: Session):
         style_url = BASEMAP_CHOICES.get(input.basemap(), CARTO_POSITRON)
         await map_widget.set_style(session, style_url)
 
-    # Fly-to transitions
+    # Fly-to / ease-to transitions (v0.8.0)
     @reactive.Effect
     @reactive.event(input.fly_klaipeda)
     async def _fly_klaipeda():
-        await map_widget.update(
-            session, _main_layers.get(),
-            view_state={"longitude": 21.13, "latitude": 55.71, "zoom": 10},
-            transition_duration=2000,
-        )
+        await map_widget.fly_to(session, 21.13, 55.71, zoom=10, speed=1.5)
 
     @reactive.Effect
-    @reactive.event(input.fly_stockholm)
-    async def _fly_stockholm():
-        await map_widget.update(
-            session, _main_layers.get(),
-            view_state={"longitude": 18.07, "latitude": 59.33, "zoom": 10},
-            transition_duration=2000,
+    @reactive.event(input.ease_stockholm)
+    async def _ease_stockholm():
+        await map_widget.ease_to(session, 18.07, 59.33, zoom=10, duration=2000)
+
+    @reactive.Effect
+    @reactive.event(input.fly_baltic)
+    async def _fly_baltic():
+        await map_widget.fly_to(
+            session, 19.5, 57.0, zoom=5, pitch=0, bearing=0,
         )
 
     # Layer visibility toggle (without resending data)
@@ -1154,8 +1208,8 @@ def server(input, output, session: Session):
             for p in PORTS
         ]
         return [
-            layer(
-                "ColumnLayer", "cargo-columns",
+            column_layer(
+                "cargo-columns",
                 data=column_data,
                 getPosition="@@=d.position",
                 getElevation="@@=d.elevation",
@@ -1320,6 +1374,81 @@ def server(input, output, session: Session):
     @render.text
     def advanced_status():
         return _advanced_log.get() or "Use the controls to test advanced features…"
+
+    # Widgets toggle (v0.8.0)
+    @reactive.Effect
+    @reactive.event(
+        input.adv_zoom_widget, input.adv_compass_widget,
+        input.adv_fps_widget, input.adv_fullscreen_widget,
+        input.adv_scale_widget,
+    )
+    async def _toggle_adv_widgets():
+        widgets: list[dict] = []
+        if input.adv_zoom_widget():
+            widgets.append(zoom_widget())
+        if input.adv_compass_widget():
+            widgets.append(compass_widget())
+        if input.adv_fps_widget():
+            widgets.append(fps_widget())
+        if input.adv_fullscreen_widget():
+            widgets.append(fullscreen_widget())
+        if input.adv_scale_widget():
+            widgets.append(scale_widget())
+        await adv_widget.set_widgets(session, widgets)
+        names = [w["@@widgetClass"] for w in widgets]
+        _advanced_log.set(
+            f"Widgets updated: {len(widgets)} active\n"
+            + ("\n".join(f"  • {n}" for n in names) if names else "  (none)")
+        )
+
+    # Transition demo (v0.8.0)
+    @reactive.Effect
+    @reactive.event(input.push_transitions)
+    async def _push_transitions():
+        """Push a scatterplot layer with animated radius/color transitions."""
+        port_data = [
+            {
+                "position": [p["lon"], p["lat"]],
+                "name": p["name"],
+                "cargo_mt": p["cargo_mt"],
+                "radius": max(5, p["cargo_mt"] / 2) * (1 + random.random()),
+                "color": [
+                    random.randint(50, 255),
+                    random.randint(50, 255),
+                    random.randint(50, 200),
+                    200,
+                ],
+            }
+            for p in PORTS
+        ]
+        animated_lyr = scatterplot_layer(
+            "animated-ports",
+            data=port_data,
+            getPosition="@@=d.position",
+            getFillColor="@@=d.color",
+            getRadius="@@=d.radius",
+            radiusScale=1000,
+            radiusMinPixels=6,
+            radiusMaxPixels=40,
+            pickable=True,
+            transitions={
+                "getRadius": transition(800, easing="ease-in-out-cubic"),
+                "getFillColor": transition(600, easing="ease-out-cubic"),
+            },
+        )
+        layers = [
+            lyr for lyr in _adv_layers.get()
+            if lyr.get("id") != "animated-ports"
+        ] + [animated_lyr]
+        _adv_layers.set(layers)
+        await adv_widget.update(session, layers)
+        _advanced_log.set(
+            "Transition layer pushed!\n"
+            "  Layer: animated-ports (ScatterplotLayer)\n"
+            "  getRadius transition: 800ms ease-in-out-cubic\n"
+            "  getFillColor transition: 600ms ease-out-cubic\n"
+            "\nClick again to see transitions animate with new random values."
+        )
 
     # ===================================================================
     # Tab 5 — Export & Serialisation

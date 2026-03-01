@@ -77,6 +77,15 @@ from .components import (
     # Control constants (v0.2.0)
     CONTROL_TYPES,
     CONTROL_POSITIONS,
+    # Extension helpers (v1.0.0)
+    brushing_extension,
+    collision_filter_extension,
+    data_filter_extension,
+    mask_extension,
+    clip_extension,
+    terrain_extension,
+    fill_style_extension,
+    path_style_extension,
 )
 from .ui import head_includes
 from ._version import __version__
@@ -153,5 +162,13 @@ __all__ = [
     "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",
+    "brushing_extension",
+    "collision_filter_extension",
+    "data_filter_extension",
+    "mask_extension",
+    "clip_extension",
+    "terrain_extension",
+    "fill_style_extension",
+    "path_style_extension",
     "__version__",
 ]

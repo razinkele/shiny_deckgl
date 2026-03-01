@@ -19,6 +19,8 @@ Tabs:
                          with popups, spatial query, interaction logging
   8. Animation         – TripsLayer animated vessel tracks, GreatCircleLayer,
                          GridLayer, combined overlays with speed/trail controls
+  9. v1.0 Features     – BrushingExtension, DataFilterExtension, MapLibre
+                         GeoJSON clustering, cooperative gestures
 """
 
 from __future__ import annotations
@@ -92,6 +94,11 @@ from ._demo_data import (
 from ._demo_css import MARINE_CSS, sidebar_hint
 
 from .components import CARTO_POSITRON, PALETTE_OCEAN
+from .extensions import (
+    brushing_extension,
+    data_filter_extension,
+    collision_filter_extension,
+)
 from ._version import __version__ as SHINY_DECKGL_VERSION
 from ._cdn import (
     DECKGL_VERSION,
@@ -193,6 +200,14 @@ anim_widget = MapWidget(
     },
     view_state=BALTIC_VIEW,
     animate=True,
+)
+
+# Tab 9 — v1.0.0 Features (Extensions, Clusters, Cooperative Gestures)
+v1_widget = MapWidget(
+    "v1_map",
+    tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
+    view_state=BALTIC_VIEW,
+    controls=[],
 )
 
 
@@ -691,6 +706,78 @@ app_ui = ui.page_navbar(
                     "\U0001F30A Baltic Sea — Animated Shipping Tracks"
                 ),
                 anim_widget.ui(height="75vh"),
+            ),
+        ),
+    ),
+
+    # -- Tab 9: v1.0.0 Features -------------------------------------------
+    ui.nav_panel(
+        "\u2728 v1.0 Features",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F9E9 Extensions",
+                        sidebar_hint(
+                            "Deck.gl layer extensions: BrushingExtension "
+                            "highlights features near the cursor. "
+                            "DataFilterExtension performs GPU-based numeric "
+                            "filtering."
+                        ),
+                        ui.input_switch(
+                            "v1_brushing", "Enable brushing",
+                            value=True,
+                        ),
+                        ui.input_slider(
+                            "v1_brush_radius", "Brush radius (m)",
+                            min=5000, max=200000, value=50000, step=5000,
+                        ),
+                        ui.input_switch(
+                            "v1_data_filter", "Enable data filter",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "v1_filter_range", "Filter cargo (Mt)",
+                            min=0, max=100, value=[10, 80], step=5,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Clusters",
+                        sidebar_hint(
+                            "MapLibre GeoJSON clustering groups nearby points "
+                            "into circles. Click a cluster to zoom in."
+                        ),
+                        ui.input_switch(
+                            "v1_show_clusters", "Show clusters",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "v1_cluster_radius", "Cluster radius (px)",
+                            min=20, max=100, value=50, step=10,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F91D Cooperative Gestures",
+                        sidebar_hint(
+                            "Require Ctrl+scroll to zoom the map. "
+                            "Useful in scrollable pages."
+                        ),
+                        ui.input_switch(
+                            "v1_cooperative", "Cooperative gestures",
+                            value=False,
+                        ),
+                    ),
+                    id="tab9_accordion",
+                    open=False,
+                    multiple=True,
+                ),
+                width=280,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\u2728 v1.0.0 Features — Extensions, Clusters & Gestures"
+                ),
+                v1_widget.ui(height="75vh"),
             ),
         ),
     ),
@@ -1897,6 +1984,97 @@ def server(input, output, session: Session):
             )
 
         await anim_widget.update(session, layers)
+
+    # =================================================================
+    # Tab 9: v1.0.0 Features — Extensions, Clusters, Cooperative Gestures
+    # =================================================================
+
+    _v1_port_data = [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "cargo_mt": p["cargo_mt"],
+        }
+        for p in PORTS
+    ]
+
+    @reactive.Effect
+    @reactive.event(
+        input.v1_brushing,
+        input.v1_brush_radius,
+        input.v1_data_filter,
+        input.v1_filter_range,
+    )
+    async def _v1_layers():
+        exts: list = []
+        extra: dict = {}
+
+        if input.v1_brushing():
+            exts.append(brushing_extension())
+            extra["brushingRadius"] = input.v1_brush_radius()
+            extra["brushingEnabled"] = True
+
+        if input.v1_data_filter():
+            exts.append(data_filter_extension(filter_size=1))
+            fmin, fmax = input.v1_filter_range()
+            extra["getFilterValue"] = "@@d.cargo_mt"
+            extra["filterRange"] = [fmin, fmax]
+            extra["filterEnabled"] = True
+
+        layers = [
+            scatterplot_layer(
+                "v1_ports",
+                _v1_port_data,
+                getRadius=8000,
+                getFillColor=[20, 145, 155, 200],
+                getLineColor=[255, 255, 255],
+                lineWidthMinPixels=1,
+                stroked=True,
+                extensions=exts if exts else None,
+                **extra,
+            ),
+        ]
+        await v1_widget.update(session, layers)
+
+    @reactive.Effect
+    @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
+    async def _v1_clusters():
+        if input.v1_show_clusters():
+            cluster_data = {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [p["lon"], p["lat"]],
+                        },
+                        "properties": {
+                            "name": p["name"],
+                            "cargo_mt": p["cargo_mt"],
+                        },
+                    }
+                    for p in PORTS
+                ],
+            }
+            await v1_widget.add_cluster_layer(
+                session,
+                "v1-clusters",
+                cluster_data,
+                cluster_radius=input.v1_cluster_radius(),
+                cluster_color="#14919b",
+                point_color="#e65100",
+                point_radius=6,
+            )
+        else:
+            await v1_widget.remove_cluster_layer(session, "v1-clusters")
+
+    @reactive.Effect
+    @reactive.event(input.v1_cooperative)
+    async def _v1_cooperative():
+        await v1_widget.set_cooperative_gestures(
+            session, input.v1_cooperative()
+        )
 
 
 app = App(app_ui, server)

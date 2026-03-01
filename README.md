@@ -127,6 +127,17 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.0.0 — Extensions, Clusters & Modular Architecture
+
+| Capability | Details |
+| --- | --- |
+| **Module split** | 3 000-line `components.py` monolith split into 8 focused modules with backward-compatible re-export shim. |
+| **Extension helpers** | `brushing_extension()`, `collision_filter_extension()`, `data_filter_extension()`, `mask_extension()`, `clip_extension()`, `terrain_extension()`, `fill_style_extension()`, `path_style_extension()` — convenience functions for deck.gl layer extensions. |
+| **Cluster layers** | `add_cluster_layer()` / `remove_cluster_layer()` — MapLibre GeoJSON clustering with click-to-zoom, size-stepped circles, and count labels. |
+| **Cooperative gestures** | `MapWidget(cooperative_gestures=True)` — require Ctrl+scroll to zoom, two-finger drag on mobile. |
+| **Style diff** | `set_style(session, url, diff=True)` — preserves sources/layers across basemap changes. |
+| **Demo Tab 9** | Interactive showcase: BrushingExtension, DataFilterExtension, MapLibre clustering, cooperative gestures. |
+
 ## Environment & Prerequisites
 
 - **Python ≥ 3.9** and **Shiny ≥ 1.0** are required.
@@ -284,7 +295,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 461 unit tests covering all features. |
+| `tests/test_basic.py` | 524 unit tests covering all features. |
 
 ## Running Tests
 

@@ -6,6 +6,38 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2025-06-14
+
+### Added
+
+- **Module split** — The 3 000-line `components.py` monolith has been split
+  into 8 focused modules: `colors`, `_data_utils`, `views`, `widgets`,
+  `controls`, `_transitions`, `layers`, `map_widget`.  A backward-compatible
+  re-export shim keeps all existing imports working.
+- **Extension helpers** — New `extensions` module with convenience functions
+  for deck.gl layer extensions: `brushing_extension()`,
+  `collision_filter_extension()`, `data_filter_extension()`,
+  `mask_extension()`, `clip_extension()`, `terrain_extension()`,
+  `fill_style_extension()`, `path_style_extension()`.
+- **Cluster layers** — `MapWidget.add_cluster_layer()` and
+  `remove_cluster_layer()` create MapLibre GeoJSON clustered point
+  visualisations with click-to-zoom, size-stepped circles, and count labels.
+- **Cooperative gestures** — `MapWidget(cooperative_gestures=True)` and
+  `set_cooperative_gestures()` require Ctrl+scroll to zoom and two-finger
+  drag on touch devices, useful for maps embedded in scrollable pages.
+- **Style diff** — `set_style(session, url, diff=True)` uses MapLibre's
+  diff algorithm to preserve existing sources/layers across style changes.
+- **Demo Tab 9** — Showcases v1.0.0 features: BrushingExtension,
+  DataFilterExtension, MapLibre clustering, cooperative gestures.
+- **33 new tests** (524 total).
+
+### Changed
+
+- `Development Status` classifier remains `4 - Beta` → will move to
+  `5 - Production/Stable` after community feedback on v1.0.0.
+
+---
+
 ## [0.9.0] — 2025-06-13
 
 ### Added
@@ -89,7 +121,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased]
+## [0.6.1] — 2025-06-12
 
 ### Added
 

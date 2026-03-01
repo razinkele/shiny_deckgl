@@ -310,6 +310,12 @@
       maxZoom: initMaxZoom,
       preserveDrawingBuffer: true
     };
+
+    // Cooperative gestures: require Ctrl+scroll to zoom, two-finger drag on mobile
+    if (el.dataset.cooperativeGestures === 'true') {
+      mapOpts.cooperativeGestures = true;
+    }
+
     // Mapbox API key: inject into tile requests if a mapbox:// style is used
     if (mapboxApiKey) {
       mapOpts.transformRequest = function(url, resourceType) {
@@ -998,6 +1004,25 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_set_cooperative_gestures — toggle cooperative gestures
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_cooperative_gestures", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var map = instance.map;
+    if (payload.enabled) {
+      if (map.cooperativeGestures) {
+        map.cooperativeGestures.enable();
+      }
+    } else {
+      if (map.cooperativeGestures) {
+        map.cooperativeGestures.disable();
+      }
+    }
+  });
+
+  // -----------------------------------------------------------------------
   // deck_layer_visibility — toggle without resending data
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_layer_visibility", function (payload) {
@@ -1084,9 +1109,16 @@
     instance.map.once('style.load', function () {
       instance.map._deckStyleChanging = false;
     });
-    instance.map.setStyle(payload.style);
+    var styleOpts = {};
+    if (payload.diff) {
+      styleOpts.diff = true;
+    }
+    instance.map.setStyle(payload.style, styleOpts);
     // Clear stale tracker — all native layers/sources are removed by setStyle
-    instance.nativeLayers = {};
+    // (unless diff mode preserves them)
+    if (!payload.diff) {
+      instance.nativeLayers = {};
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -1887,6 +1919,169 @@
         requestAnimationFrame(capture);
       });
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_add_cluster_layer — convenience: GeoJSON source + cluster layers
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_cluster_layer", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    whenStyleReady(instance.map, function () {
+      var map = instance.map;
+      var srcId = payload.sourceId;
+      var data = payload.data;
+      var opts = payload.options || {};
+
+      // Defaults
+      var clusterRadius = opts.clusterRadius || 50;
+      var clusterMaxZoom = opts.clusterMaxZoom || 14;
+
+      var clusterColor = opts.clusterColor || "#51bbd6";
+      var clusterStrokeColor = opts.clusterStrokeColor || "#ffffff";
+      var clusterStrokeWidth = opts.clusterStrokeWidth || 1;
+      var clusterTextColor = opts.clusterTextColor || "#ffffff";
+      var clusterTextSize = opts.clusterTextSize || 12;
+
+      var pointColor = opts.pointColor || "#11b4da";
+      var pointRadius = opts.pointRadius || 5;
+      var pointStrokeColor = opts.pointStrokeColor || "#ffffff";
+      var pointStrokeWidth = opts.pointStrokeWidth || 1;
+
+      // Size steps: [count, radius] pairs for interpolation
+      var sizeSteps = opts.sizeSteps || [
+        [0, 18], [100, 24], [750, 32]
+      ];
+
+      // Build circle-radius stops array for step expression
+      var radiusStops = ["step", ["get", "point_count"]];
+      for (var i = 0; i < sizeSteps.length; i++) {
+        if (i === 0) {
+          radiusStops.push(sizeSteps[i][1]);  // default value
+        } else {
+          radiusStops.push(sizeSteps[i][0]);   // threshold
+          radiusStops.push(sizeSteps[i][1]);   // radius
+        }
+      }
+
+      // Clean up existing layers & source
+      var layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
+      layerIds.forEach(function (lid) {
+        if (map.getLayer(lid)) map.removeLayer(lid);
+      });
+      if (map.getSource(srcId)) map.removeSource(srcId);
+
+      // Add source
+      var sourceSpec = {
+        type: "geojson",
+        data: data,
+        cluster: true,
+        clusterRadius: clusterRadius,
+        clusterMaxZoom: clusterMaxZoom
+      };
+      if (opts.clusterProperties) {
+        sourceSpec.clusterProperties = opts.clusterProperties;
+      }
+      map.addSource(srcId, sourceSpec);
+
+      // Cluster circles
+      map.addLayer({
+        id: srcId + "-clusters",
+        type: "circle",
+        source: srcId,
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": clusterColor,
+          "circle-radius": radiusStops,
+          "circle-stroke-color": clusterStrokeColor,
+          "circle-stroke-width": clusterStrokeWidth
+        }
+      });
+
+      // Cluster count labels
+      map.addLayer({
+        id: srcId + "-count",
+        type: "symbol",
+        source: srcId,
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": clusterTextSize
+        },
+        paint: {
+          "text-color": clusterTextColor
+        }
+      });
+
+      // Unclustered points
+      map.addLayer({
+        id: srcId + "-unclustered",
+        type: "circle",
+        source: srcId,
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-color": pointColor,
+          "circle-radius": pointRadius,
+          "circle-stroke-color": pointStrokeColor,
+          "circle-stroke-width": pointStrokeWidth
+        }
+      });
+
+      // Track native layers
+      layerIds.forEach(function (lid) {
+        instance.nativeLayers[lid] = true;
+      });
+
+      // Click-to-zoom on cluster circles
+      map.on("click", srcId + "-clusters", function (e) {
+        var features = map.queryRenderedFeatures(e.point, {
+          layers: [srcId + "-clusters"]
+        });
+        if (!features.length) return;
+        var clusterId = features[0].properties.cluster_id;
+        map.getSource(srcId).getClusterExpansionZoom(clusterId)
+          .then(function (zoom) {
+            map.easeTo({
+              center: features[0].geometry.coordinates,
+              zoom: zoom
+            });
+          });
+      });
+
+      // Pointer cursor on clusters
+      map.on("mouseenter", srcId + "-clusters", function () {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", srcId + "-clusters", function () {
+        map.getCanvas().style.cursor = "";
+      });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_cluster_layer — remove cluster source + all its layers
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_cluster_layer", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    whenStyleReady(instance.map, function () {
+      var map = instance.map;
+      var srcId = payload.sourceId;
+      var layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
+      layerIds.forEach(function (lid) {
+        if (map.getLayer(lid)) {
+          map.removeLayer(lid);
+          delete instance.nativeLayers[lid];
+        }
+      });
+      if (map.getSource(srcId)) {
+        map.removeSource(srcId);
+      }
+    });
   });
 
   // -----------------------------------------------------------------------

@@ -3906,3 +3906,72 @@ class TestCdnPlugins:
         from shiny_deckgl._cdn import CDN_HEAD_FRAGMENT
         assert "maplibre-gl-legend" in CDN_HEAD_FRAGMENT
         assert "maplibre-gl-opacity" in CDN_HEAD_FRAGMENT
+
+
+class TestSetControls:
+    """Tests for MapWidget.set_controls() bulk control replacement."""
+
+    def test_set_controls_basic(self):
+        w = MapWidget("sc1")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, [
+            {"type": "navigation", "position": "top-right"},
+            {"type": "scale", "position": "bottom-left"},
+        ]))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_controls"
+        assert msg[1]["id"] == "sc1"
+        assert len(msg[1]["controls"]) == 2
+        assert msg[1]["controls"][0] == {
+            "type": "navigation", "position": "top-right", "options": {},
+        }
+        assert msg[1]["controls"][1] == {
+            "type": "scale", "position": "bottom-left", "options": {},
+        }
+
+    def test_set_controls_empty_list(self):
+        w = MapWidget("sc2")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, []))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_controls"
+        assert msg[1]["controls"] == []
+
+    def test_set_controls_default_position(self):
+        w = MapWidget("sc3")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, [{"type": "navigation"}]))
+        ctrl = fake.messages[0][1]["controls"][0]
+        assert ctrl["position"] == "top-right"
+
+    def test_set_controls_with_options(self):
+        w = MapWidget("sc4")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, [
+            {"type": "scale", "position": "bottom-left",
+             "options": {"maxWidth": 200}},
+        ]))
+        ctrl = fake.messages[0][1]["controls"][0]
+        assert ctrl["options"] == {"maxWidth": 200}
+
+    def test_set_controls_invalid_type_raises(self):
+        w = MapWidget("sc5")
+        fake = _FakeSession()
+        with pytest.raises(ValueError, match="Unknown control type"):
+            asyncio.run(w.set_controls(fake, [
+                {"type": "navigation"},
+                {"type": "nonexistent"},
+            ]))
+
+    def test_set_controls_with_helper_dicts(self):
+        from shiny_deckgl.components import geolocate_control, globe_control
+        w = MapWidget("sc6")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, [
+            geolocate_control(position="top-left"),
+            globe_control(),
+        ]))
+        ctrls = fake.messages[0][1]["controls"]
+        assert ctrls[0]["type"] == "geolocate"
+        assert ctrls[0]["position"] == "top-left"
+        assert ctrls[1]["type"] == "globe"

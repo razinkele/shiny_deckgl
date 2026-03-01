@@ -1,0 +1,259 @@
+"""Sample data and helper functions for the shiny_deckgl demo app.
+
+Baltic Sea ports, shipping routes, MPA GeoJSON, and WMS layer definitions.
+"""
+
+from __future__ import annotations
+
+import json
+import random
+from pathlib import Path
+
+from .components import (
+    CARTO_POSITRON,
+    CARTO_DARK,
+    CARTO_VOYAGER,
+    OSM_LIBERTY,
+    PALETTE_OCEAN,
+    PALETTE_VIRIDIS,
+    PALETTE_PLASMA,
+    PALETTE_THERMAL,
+    PALETTE_CHLOROPHYLL,
+)
+
+# ---------------------------------------------------------------------------
+# Baltic Sea ports
+# ---------------------------------------------------------------------------
+
+PORTS = [
+    {"name": "Klaipėda",    "country": "LT", "lon": 21.13, "lat": 55.71, "cargo_mt": 42.5},
+    {"name": "Gdańsk",      "country": "PL", "lon": 18.65, "lat": 54.35, "cargo_mt": 53.2},
+    {"name": "Stockholm",   "country": "SE", "lon": 18.07, "lat": 59.33, "cargo_mt": 8.1},
+    {"name": "Helsinki",    "country": "FI", "lon": 24.94, "lat": 60.17, "cargo_mt": 14.3},
+    {"name": "Riga",        "country": "LV", "lon": 24.11, "lat": 56.95, "cargo_mt": 28.7},
+    {"name": "Tallinn",     "country": "EE", "lon": 24.75, "lat": 59.44, "cargo_mt": 22.1},
+    {"name": "Copenhagen",  "country": "DK", "lon": 12.57, "lat": 55.68, "cargo_mt": 6.4},
+    {"name": "Rostock",     "country": "DE", "lon": 12.10, "lat": 54.09, "cargo_mt": 26.8},
+    {"name": "Kaliningrad", "country": "RU", "lon": 20.45, "lat": 54.71, "cargo_mt": 12.3},
+    {"name": "Ventspils",   "country": "LV", "lon": 21.56, "lat": 57.39, "cargo_mt": 18.5},
+]
+
+# ---------------------------------------------------------------------------
+# Real Baltic Sea ferry / shipping routes with charted waypoints
+# ---------------------------------------------------------------------------
+
+ROUTES = [
+    {   # Klaipėda–Kiel (DFDS Seaways freight+passenger via Langeland Belt)
+        "from": "Klaipėda", "to": "Kiel",
+        "operator": "DFDS Seaways", "type": "freight",
+        "color": [0, 180, 230, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
+            [18.50, 54.90], [16.50, 55.00], [14.50, 54.80],
+            [12.30, 54.60], [11.00, 54.50], [10.15, 54.33],
+        ],
+    },
+    {   # Klaipėda–Karlshamn (DFDS Seaways freight)
+        "from": "Klaipėda", "to": "Karlshamn",
+        "operator": "DFDS Seaways", "type": "freight",
+        "color": [0, 200, 120, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.40, 55.50], [19.50, 55.50],
+            [18.20, 55.60], [16.50, 55.80], [14.86, 56.17],
+        ],
+    },
+    {   # Helsinki–Tallinn (Tallink / Viking Line, ~80 km)
+        "from": "Helsinki", "to": "Tallinn",
+        "operator": "Tallink / Viking Line", "type": "passenger",
+        "color": [255, 140, 0, 180],
+        "waypoints": [
+            [24.94, 60.17], [24.90, 60.05], [24.85, 59.85],
+            [24.80, 59.65], [24.75, 59.44],
+        ],
+    },
+    {   # Riga–Stockholm (Tallink, via Irbe Strait & Gotland)
+        "from": "Riga", "to": "Stockholm",
+        "operator": "Tallink", "type": "passenger",
+        "color": [180, 0, 200, 180],
+        "waypoints": [
+            [24.11, 56.95], [23.00, 57.20], [21.80, 57.50],
+            [20.50, 57.80], [19.50, 58.30], [18.60, 58.90],
+            [18.07, 59.33],
+        ],
+    },
+    {   # Copenhagen–Rostock (Scandlines, Gedser–Rostock crossing)
+        "from": "Copenhagen", "to": "Rostock",
+        "operator": "Scandlines", "type": "passenger",
+        "color": [255, 80, 80, 180],
+        "waypoints": [
+            [12.57, 55.68], [12.30, 55.40], [12.10, 55.00],
+            [12.00, 54.60], [12.10, 54.30], [12.10, 54.09],
+        ],
+    },
+    {   # Gdańsk–Nynäshamn (Polferries)
+        "from": "Gdańsk", "to": "Stockholm",
+        "operator": "Polferries", "type": "passenger",
+        "color": [100, 200, 100, 180],
+        "waypoints": [
+            [18.65, 54.35], [18.80, 54.80], [19.00, 55.50],
+            [18.80, 56.50], [18.50, 57.50], [18.20, 58.40],
+            [17.95, 58.75], [18.07, 59.33],
+        ],
+    },
+    {   # Ventspils–Nynäshamn (Stena Line)
+        "from": "Ventspils", "to": "Stockholm",
+        "operator": "Stena Line", "type": "passenger",
+        "color": [200, 200, 0, 180],
+        "waypoints": [
+            [21.56, 57.39], [20.50, 57.60], [19.50, 57.90],
+            [18.80, 58.30], [18.30, 58.80], [18.07, 59.33],
+        ],
+    },
+    {   # Klaipėda–Travemünde (DFDS Seaways freight+passenger)
+        "from": "Klaipėda", "to": "Travemünde",
+        "operator": "DFDS Seaways", "type": "freight",
+        "color": [60, 180, 200, 180],
+        "waypoints": [
+            [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
+            [18.40, 54.90], [16.50, 55.00], [14.50, 54.70],
+            [12.80, 54.40], [11.80, 54.10], [10.87, 53.96],
+        ],
+    },
+]
+
+# ---------------------------------------------------------------------------
+# Marine Protected Areas — real HELCOM data (188 polygons, simplified)
+# ---------------------------------------------------------------------------
+
+_MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
+with open(_MPA_PATH) as _f:
+    MPA_GEOJSON = json.load(_f)
+# Normalise property keys to lower-case for tooltip consistency
+for _feat in MPA_GEOJSON["features"]:
+    _feat["properties"] = {k.lower(): v for k, v in _feat["properties"].items()}
+
+# ---------------------------------------------------------------------------
+# EMODnet WMS layers
+# ---------------------------------------------------------------------------
+
+EMODNET_WMS_URL = "https://ows.emodnet-bathymetry.eu/wms"
+
+WMS_LAYER_CHOICES = {
+    "": "(none)",
+    "emodnet:mean": "Mean depth  [emodnet:mean]",
+    "emodnet:mean_atlas_land": "Mean depth + land  [emodnet:mean_atlas_land]",
+    "emodnet:mean_multicolour": "Mean depth multi-colour  [emodnet:mean_multicolour]",
+    "emodnet:mean_rainbowcolour": "Mean depth rainbow  [emodnet:mean_rainbowcolour]",
+    "coastlines": "Coastlines  [coastlines]",
+    "emodnet:contours": "Depth contours  [emodnet:contours]",
+}
+
+# ---------------------------------------------------------------------------
+# Lookup dicts for basemaps and palettes
+# ---------------------------------------------------------------------------
+
+BASEMAP_CHOICES = {
+    "Positron (light)": CARTO_POSITRON,
+    "Dark Matter": CARTO_DARK,
+    "Voyager": CARTO_VOYAGER,
+    "OSM Liberty": OSM_LIBERTY,
+}
+
+PALETTE_CHOICES = {
+    "Viridis": PALETTE_VIRIDIS,
+    "Plasma": PALETTE_PLASMA,
+    "Ocean": PALETTE_OCEAN,
+    "Thermal": PALETTE_THERMAL,
+    "Chlorophyll": PALETTE_CHLOROPHYLL,
+}
+
+# ---------------------------------------------------------------------------
+# Shared view state
+# ---------------------------------------------------------------------------
+
+BALTIC_VIEW = {
+    "longitude": 19.5,
+    "latitude": 57.0,
+    "zoom": 5,
+    "pitch": 0,
+    "bearing": 0,
+    "minZoom": 3,
+    "maxZoom": 16,
+}
+
+# Default tooltip style used by most map widgets
+TOOLTIP_STYLE = {
+    "backgroundColor": "#0b2140",
+    "color": "#d0f0fa",
+    "fontSize": "13px",
+    "borderLeft": "3px solid #1db9c3",
+    "borderRadius": "6px",
+    "padding": "8px 12px",
+}
+
+DEFAULT_TOOLTIP_HTML = "<b>{name}</b>"
+
+
+# ---------------------------------------------------------------------------
+# Data builder helpers
+# ---------------------------------------------------------------------------
+
+def port_by_name(name: str) -> dict:
+    return next(p for p in PORTS if p["name"] == name)
+
+
+def make_arc_data() -> list[dict]:
+    """Build arc data from routes (using first/last waypoints)."""
+    arcs = []
+    for r in ROUTES:
+        wp = r["waypoints"]
+        arcs.append({
+            "sourcePosition": wp[0],
+            "targetPosition": wp[-1],
+            "sourceColor": r["color"],
+            "targetColor": r["color"],
+            "name": f"{r['from']} \u2192 {r['to']}",
+            "operator": r["operator"],
+            "type": r["type"],
+        })
+    return arcs
+
+
+def make_heatmap_points(n: int = 300) -> list[list[float]]:
+    """Generate random observation points clustered around Baltic ports."""
+    random.seed(42)
+    pts: list[list[float]] = []
+    for _ in range(n):
+        port = random.choice(PORTS)
+        lon = port["lon"] + random.gauss(0, 1.5)
+        lat = port["lat"] + random.gauss(0, 0.8)
+        weight = random.uniform(1, 10)
+        pts.append([lon, lat, weight])
+    return pts
+
+
+def make_path_data() -> list[dict]:
+    """Build path data — polylines using actual route waypoints."""
+    paths = []
+    for r in ROUTES:
+        paths.append({
+            "path": r["waypoints"],
+            "name": f"{r['from']} \u2192 {r['to']}",
+            "operator": r["operator"],
+            "type": r["type"],
+            "color": r["color"],
+        })
+    return paths
+
+
+def make_port_data_simple() -> list[dict]:
+    """Port data for events / advanced maps (no dynamic colours)."""
+    return [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "country": p["country"],
+            "cargo_mt": p["cargo_mt"],
+        }
+        for p in PORTS
+    ]

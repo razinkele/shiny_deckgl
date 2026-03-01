@@ -1135,6 +1135,53 @@ class MapWidget:
             "controlType": control_type,
         })
 
+    async def set_controls(
+        self,
+        session: Session,
+        controls: list[dict],
+    ) -> None:
+        """Replace **all** MapLibre controls on the map at once.
+
+        Existing controls are removed before the new set is applied.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        controls
+            A list of control dicts, each containing ``type``,
+            ``position`` (default ``"top-right"``), and ``options``
+            (default ``{}``).  Use the ``*_control()`` helpers or
+            build dicts manually.
+
+        Examples
+        --------
+        ::
+
+            await widget.set_controls(session, [
+                {"type": "navigation", "position": "top-right"},
+                legend_control(show_default=True),
+                geolocate_control(),
+            ])
+        """
+        payload_controls = []
+        for ctrl in controls:
+            ct = ctrl.get("type", "")
+            if ct not in CONTROL_TYPES:
+                raise ValueError(
+                    f"Unknown control type {ct!r}. "
+                    f"Valid types: {sorted(CONTROL_TYPES)}"
+                )
+            payload_controls.append({
+                "type": ct,
+                "position": ctrl.get("position", "top-right"),
+                "options": ctrl.get("options", {}),
+            })
+        await session.send_custom_message("deck_set_controls", {
+            "id": self.id,
+            "controls": payload_controls,
+        })
+
     # -- Bounds & Navigation (v0.2.0) ----------------------------------------
 
     async def fit_bounds(

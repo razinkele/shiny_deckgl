@@ -4,16 +4,17 @@ Run with:
     shiny run shiny_deckgl.app:app --port 19876
 
 Tabs:
-  1. Interactive Map  – basemaps, palettes, color modes, layer visibility,
-                        WMS (EMODnet), fly-to / ease-to (v0.8.0),
-                        drag marker, deck.gl widgets
-  2. Events & Tooltips – live click/hover/viewport readback, drag marker,
+  1. deck.gl Layers   – palettes, color modes, layer visibility,
+                         WMS (EMODnet), fly-to / ease-to, drag marker,
+                         deck.gl widgets
+  2. MapLibre Controls – basemap switching, navigation, geolocate,
+                         globe, terrain, legend, opacity controls
+  3. Events & Tooltips – live click/hover/viewport readback, drag marker,
                          dynamic tooltip customisation
-  3. Colour Scales     – palette swatches, color_bins, color_quantiles tables
-  4. Advanced          – 3-D column map with lighting effects,
-                         binary transport (numpy), DataFilterExtension,
-                         widget toggles (v0.8.0), transition demo (v0.8.0)
-  5. Export            – standalone HTML export, JSON round-trip
+  4. Colour Scales     – palette swatches, color_bins, color_quantiles
+  5. Advanced          – 3-D column map with lighting, binary transport,
+                         DataFilterExtension, widget toggles, transitions
+  6. Export            – standalone HTML export, JSON round-trip
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ import json
 import os
 import random
 import tempfile
-from pathlib import Path
 
 from shiny import App, reactive, render, Session, ui
 
@@ -33,32 +33,17 @@ from .components import (
     scatterplot_layer,
     geojson_layer,
     tile_layer,
-    bitmap_layer,
     # v0.7.0 layer helpers
     arc_layer,
     column_layer,
     heatmap_layer,
     path_layer,
-    text_layer,
-    # Basemap constants
-    CARTO_POSITRON,
-    CARTO_DARK,
-    CARTO_VOYAGER,
-    OSM_LIBERTY,
     # Color utilities
     color_range,
     color_bins,
     color_quantiles,
-    PALETTE_OCEAN,
-    PALETTE_VIRIDIS,
-    PALETTE_PLASMA,
-    PALETTE_THERMAL,
-    PALETTE_CHLOROPHYLL,
     # Binary transport
     encode_binary_attribute,
-    # View helpers
-    map_view,
-    globe_view,
     # v0.8.0 widgets
     zoom_widget,
     compass_widget,
@@ -67,237 +52,47 @@ from .components import (
     fps_widget,
     # v0.8.0 transitions
     transition,
+    # MapLibre control helpers
+    geolocate_control,
+    globe_control,
+    terrain_control,
+    # Third-party MapLibre plugin controls
+    legend_control,
+    opacity_control,
 )
 
+from ._demo_data import (
+    PORTS,
+    MPA_GEOJSON,
+    EMODNET_WMS_URL,
+    WMS_LAYER_CHOICES,
+    BASEMAP_CHOICES,
+    PALETTE_CHOICES,
+    BALTIC_VIEW,
+    TOOLTIP_STYLE,
+    DEFAULT_TOOLTIP_HTML,
+    make_arc_data,
+    make_heatmap_points,
+    make_path_data,
+    make_port_data_simple,
+)
+from ._demo_css import MARINE_CSS, sidebar_hint
 
-# ---------------------------------------------------------------------------
-# Sample data — Baltic Sea ports, routes, and marine observations
-# ---------------------------------------------------------------------------
-
-PORTS = [
-    {"name": "Klaipėda",    "country": "LT", "lon": 21.13, "lat": 55.71, "cargo_mt": 42.5},
-    {"name": "Gdańsk",      "country": "PL", "lon": 18.65, "lat": 54.35, "cargo_mt": 53.2},
-    {"name": "Stockholm",   "country": "SE", "lon": 18.07, "lat": 59.33, "cargo_mt": 8.1},
-    {"name": "Helsinki",    "country": "FI", "lon": 24.94, "lat": 60.17, "cargo_mt": 14.3},
-    {"name": "Riga",        "country": "LV", "lon": 24.11, "lat": 56.95, "cargo_mt": 28.7},
-    {"name": "Tallinn",     "country": "EE", "lon": 24.75, "lat": 59.44, "cargo_mt": 22.1},
-    {"name": "Copenhagen",  "country": "DK", "lon": 12.57, "lat": 55.68, "cargo_mt": 6.4},
-    {"name": "Rostock",     "country": "DE", "lon": 12.10, "lat": 54.09, "cargo_mt": 26.8},
-    {"name": "Kaliningrad", "country": "RU", "lon": 20.45, "lat": 54.71, "cargo_mt": 12.3},
-    {"name": "Ventspils",   "country": "LV", "lon": 21.56, "lat": 57.39, "cargo_mt": 18.5},
-]
-
-# Real Baltic Sea ferry and shipping routes
-# Waypoints follow actual maritime corridors / charted fairways
-ROUTES = [
-    {   # Klaipėda–Kiel (DFDS Seaways freight+passenger via Langeland Belt)
-        "from": "Klaipėda", "to": "Kiel",
-        "operator": "DFDS Seaways", "type": "freight",
-        "color": [0, 180, 230, 180],
-        "waypoints": [
-            [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
-            [18.50, 54.90], [16.50, 55.00], [14.50, 54.80],
-            [12.30, 54.60], [11.00, 54.50], [10.15, 54.33],
-        ],
-    },
-    {   # Klaipėda–Karlshamn (DFDS Seaways freight)
-        "from": "Klaipėda", "to": "Karlshamn",
-        "operator": "DFDS Seaways", "type": "freight",
-        "color": [0, 200, 120, 180],
-        "waypoints": [
-            [21.13, 55.71], [20.40, 55.50], [19.50, 55.50],
-            [18.20, 55.60], [16.50, 55.80], [14.86, 56.17],
-        ],
-    },
-    {   # Helsinki–Tallinn (Tallink / Viking Line, ~80 km)
-        "from": "Helsinki", "to": "Tallinn",
-        "operator": "Tallink / Viking Line", "type": "passenger",
-        "color": [255, 140, 0, 180],
-        "waypoints": [
-            [24.94, 60.17], [24.90, 60.05], [24.85, 59.85],
-            [24.80, 59.65], [24.75, 59.44],
-        ],
-    },
-    {   # Riga–Stockholm (Tallink, via Irbe Strait & Gotland)
-        "from": "Riga", "to": "Stockholm",
-        "operator": "Tallink", "type": "passenger",
-        "color": [180, 0, 200, 180],
-        "waypoints": [
-            [24.11, 56.95], [23.00, 57.20], [21.80, 57.50],
-            [20.50, 57.80], [19.50, 58.30], [18.60, 58.90],
-            [18.07, 59.33],
-        ],
-    },
-    {   # Copenhagen–Rostock (Scandlines, Gedser–Rostock crossing)
-        "from": "Copenhagen", "to": "Rostock",
-        "operator": "Scandlines", "type": "passenger",
-        "color": [255, 80, 80, 180],
-        "waypoints": [
-            [12.57, 55.68], [12.30, 55.40], [12.10, 55.00],
-            [12.00, 54.60], [12.10, 54.30], [12.10, 54.09],
-        ],
-    },
-    {   # Gdańsk–Nynäshamn (Polferries)
-        "from": "Gdańsk", "to": "Stockholm",
-        "operator": "Polferries", "type": "passenger",
-        "color": [100, 200, 100, 180],
-        "waypoints": [
-            [18.65, 54.35], [18.80, 54.80], [19.00, 55.50],
-            [18.80, 56.50], [18.50, 57.50], [18.20, 58.40],
-            [17.95, 58.75], [18.07, 59.33],
-        ],
-    },
-    {   # Ventspils–Nynäshamn (Stena Line)
-        "from": "Ventspils", "to": "Stockholm",
-        "operator": "Stena Line", "type": "passenger",
-        "color": [200, 200, 0, 180],
-        "waypoints": [
-            [21.56, 57.39], [20.50, 57.60], [19.50, 57.90],
-            [18.80, 58.30], [18.30, 58.80], [18.07, 59.33],
-        ],
-    },
-    {   # Klaipėda–Travemünde (DFDS Seaways freight+passenger)
-        "from": "Klaipėda", "to": "Travemünde",
-        "operator": "DFDS Seaways", "type": "freight",
-        "color": [60, 180, 200, 180],
-        "waypoints": [
-            [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
-            [18.40, 54.90], [16.50, 55.00], [14.50, 54.70],
-            [12.80, 54.40], [11.80, 54.10], [10.87, 53.96],
-        ],
-    },
-]
-
-# Marine Protected Areas — real HELCOM data (188 polygons, simplified)
-_MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
-with open(_MPA_PATH) as _f:
-    MPA_GEOJSON = json.load(_f)
-# Normalise property keys to lower-case for tooltip consistency
-for _feat in MPA_GEOJSON["features"]:
-    _feat["properties"] = {k.lower(): v for k, v in _feat["properties"].items()}
-
-# EMODnet WMS layers (hardcoded — no owslib dependency needed)
-EMODNET_WMS_URL = "https://ows.emodnet-bathymetry.eu/wms"
-
-WMS_LAYER_CHOICES = {
-    "": "(none)",
-    "emodnet:mean": "Mean depth  [emodnet:mean]",
-    "emodnet:mean_atlas_land": "Mean depth + land  [emodnet:mean_atlas_land]",
-    "emodnet:mean_multicolour": "Mean depth multi-colour  [emodnet:mean_multicolour]",
-    "emodnet:mean_rainbowcolour": "Mean depth rainbow  [emodnet:mean_rainbowcolour]",
-    "coastlines": "Coastlines  [coastlines]",
-    "emodnet:contours": "Depth contours  [emodnet:contours]",
-}
-
-
-def _port_by_name(name: str) -> dict:
-    return next(p for p in PORTS if p["name"] == name)
-
-
-def _make_arc_data() -> list[dict]:
-    """Build arc data from routes (using first/last waypoints)."""
-    arcs = []
-    for r in ROUTES:
-        wp = r["waypoints"]
-        arcs.append({
-            "sourcePosition": wp[0],
-            "targetPosition": wp[-1],
-            "sourceColor": r["color"],
-            "targetColor": r["color"],
-            "name": f"{r['from']} \u2192 {r['to']}",
-            "operator": r["operator"],
-            "type": r["type"],
-        })
-    return arcs
-
-
-def _make_heatmap_points(n: int = 300) -> list[list[float]]:
-    """Generate random observation points clustered around Baltic ports."""
-    random.seed(42)
-    pts: list[list[float]] = []
-    for _ in range(n):
-        port = random.choice(PORTS)
-        lon = port["lon"] + random.gauss(0, 1.5)
-        lat = port["lat"] + random.gauss(0, 0.8)
-        weight = random.uniform(1, 10)
-        pts.append([lon, lat, weight])
-    return pts
-
-
-def _make_path_data() -> list[dict]:
-    """Build path data — polylines using actual route waypoints."""
-    paths = []
-    for r in ROUTES:
-        paths.append({
-            "path": r["waypoints"],
-            "name": f"{r['from']} \u2192 {r['to']}",
-            "operator": r["operator"],
-            "type": r["type"],
-            "color": r["color"],
-        })
-    return paths
-
-
-def _make_port_data_simple() -> list[dict]:
-    """Port data for events / advanced maps (no dynamic colours)."""
-    return [
-        {
-            "position": [p["lon"], p["lat"]],
-            "name": p["name"],
-            "country": p["country"],
-            "cargo_mt": p["cargo_mt"],
-        }
-        for p in PORTS
-    ]
+from .components import CARTO_POSITRON, PALETTE_OCEAN
 
 
 # ---------------------------------------------------------------------------
-# Basemap & palette lookup dicts
+# Map widget instances — one per tab that needs a map
 # ---------------------------------------------------------------------------
 
-BASEMAP_CHOICES = {
-    "Positron (light)": CARTO_POSITRON,
-    "Dark Matter": CARTO_DARK,
-    "Voyager": CARTO_VOYAGER,
-    "OSM Liberty": OSM_LIBERTY,
-}
-
-PALETTE_CHOICES = {
-    "Viridis": PALETTE_VIRIDIS,
-    "Plasma": PALETTE_PLASMA,
-    "Ocean": PALETTE_OCEAN,
-    "Thermal": PALETTE_THERMAL,
-    "Chlorophyll": PALETTE_CHLOROPHYLL,
-}
-
-# ---------------------------------------------------------------------------
-# Three map widgets — one per tab that needs a map
-# ---------------------------------------------------------------------------
-
-BALTIC_VIEW = {
-    "longitude": 19.5,
-    "latitude": 57.0,
-    "zoom": 5,
-    "pitch": 0,
-    "bearing": 0,
-    "minZoom": 3,
-    "maxZoom": 16,
-}
-
-# Tab 1 — Interactive Map  (no MapLibre controls — uses deck.gl widgets only)
+# Tab 1 — deck.gl Layers (deck.gl widgets, no MapLibre controls)
 map_widget = MapWidget(
     "demo_map",
-    tooltip={
-        "html": "<b>{name}</b>",
-        "style": {"backgroundColor": "#0b2140", "color": "#d0f0fa",
-                  "fontSize": "13px", "borderLeft": "3px solid #1db9c3",
-                  "borderRadius": "6px", "padding": "8px 12px"},
-    },
+    tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
     controls=[],
 )
 
-# Default widgets for Tab 1 map (deck.gl widgets — no MapLibre controls)
 MAP_WIDGETS = [
     zoom_widget(),
     compass_widget(),
@@ -305,383 +100,30 @@ MAP_WIDGETS = [
     scale_widget(),
 ]
 
-# Tab 2 — Events & Tooltips
-DEFAULT_TOOLTIP_HTML = "<b>{name}</b>"
+# Tab 2 — MapLibre Controls
+maplibre_widget = MapWidget(
+    "maplibre_map",
+    tooltip={"html": "<b>{name}</b><br/>{country}", "style": TOOLTIP_STYLE},
+    view_state=BALTIC_VIEW,
+    controls=[],
+)
 
+# Tab 3 — Events & Tooltips
 events_widget = MapWidget(
     "events_map",
-    tooltip={
-        "html": DEFAULT_TOOLTIP_HTML,
-        "style": {"backgroundColor": "#0b2140", "color": "#d0f0fa",
-                  "fontSize": "13px", "borderLeft": "3px solid #1db9c3",
-                  "borderRadius": "6px", "padding": "8px 12px"},
-    },
+    tooltip={"html": DEFAULT_TOOLTIP_HTML, "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
 )
 
-# Tab 4 — Advanced (3-D columns for lighting demo)
+# Tab 5 — Advanced (3-D columns)
 adv_widget = MapWidget(
     "adv_map",
     tooltip={
         "html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt",
-        "style": {"backgroundColor": "#0b2140", "color": "#d0f0fa",
-                  "fontSize": "13px", "borderLeft": "3px solid #14919b",
-                  "borderRadius": "6px", "padding": "8px 12px"},
+        "style": {**TOOLTIP_STYLE, "borderLeft": "3px solid #14919b"},
     },
     view_state={**BALTIC_VIEW, "pitch": 45},
 )
-
-
-# ===========================================================================
-# UI — Marine-themed design
-# ===========================================================================
-
-MARINE_CSS = """
-/* -- Google Font --------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-/* -- Design tokens ------------------------------------------------------- */
-:root {
-  --sea-900: #071526;
-  --sea-800: #0b2140;
-  --sea-700: #0d3158;
-  --sea-600: #124a78;
-  --sea-500: #1a6fa0;
-  --sea-400: #2196c8;
-  --sea-300: #4ec5e0;
-  --sea-200: #99ddf0;
-  --sea-100: #d0f0fa;
-  --sea-50:  #edf8fd;
-  --teal-600: #0d7377;
-  --teal-500: #14919b;
-  --teal-400: #1db9c3;
-  --foam-500: #5ce0d2;
-  --foam-200: #b5f0e8;
-  --sand-50:  #f8f6f3;
-  --coral-500: #e8604c;
-  --amber-500: #f0a830;
-  --navy-text: #c8dce8;
-  --sidebar-bg: #091e36;
-  --sidebar-border: rgba(30, 120, 180, 0.20);
-  --card-border: rgba(20, 100, 160, 0.15);
-  --card-shadow: 0 1px 4px rgba(8, 30, 60, 0.08), 0 4px 12px rgba(8, 30, 60, 0.05);
-}
-
-/* -- Base ---------------------------------------------------------------- */
-body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
-  background: var(--sea-50) !important;
-  color: #1c2d3f;
-}
-
-/* -- Navbar -------------------------------------------------------------- */
-.navbar {
-  background: linear-gradient(135deg, var(--sea-900) 0%, var(--sea-700) 100%) !important;
-  border-bottom: 2px solid var(--sea-400) !important;
-  box-shadow: 0 2px 16px rgba(7, 21, 38, 0.35);
-  padding: 0 1rem;
-  min-height: 52px;
-}
-.navbar-brand {
-  font-weight: 700 !important;
-  font-size: 1.15rem !important;
-  color: #fff !important;
-  letter-spacing: -0.02em;
-}
-.navbar-brand:hover { color: var(--sea-200) !important; }
-
-/* Tabs in navbar */
-.navbar-nav .nav-link {
-  color: var(--navy-text) !important;
-  font-weight: 500;
-  font-size: 0.88rem;
-  padding: 0.65rem 1rem !important;
-  border-radius: 6px 6px 0 0;
-  transition: color 0.2s, background 0.2s;
-  margin: 0 1px;
-}
-.navbar-nav .nav-link:hover {
-  color: #fff !important;
-  background: rgba(255,255,255,0.08);
-}
-.navbar-nav .nav-link.active,
-.navbar-nav .nav-item.active > .nav-link {
-  color: #fff !important;
-  background: var(--sea-600) !important;
-  border-bottom: 2px solid var(--sea-300);
-}
-
-/* -- Sidebar ------------------------------------------------------------- */
-.bslib-sidebar-layout > .sidebar {
-  background: var(--sidebar-bg) !important;
-  border-right: 1px solid var(--sidebar-border) !important;
-  color: var(--navy-text) !important;
-}
-.bslib-sidebar-layout > .sidebar label,
-.bslib-sidebar-layout > .sidebar .control-label,
-.bslib-sidebar-layout > .sidebar .form-label {
-  color: var(--sea-200) !important;
-  font-weight: 500;
-  font-size: 0.82rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-.bslib-sidebar-layout > .sidebar .form-select,
-.bslib-sidebar-layout > .sidebar .form-control {
-  background: rgba(255,255,255,0.06) !important;
-  border: 1px solid rgba(100,180,220,0.18) !important;
-  color: #e0eef8 !important;
-  font-size: 0.85rem;
-  border-radius: 6px;
-}
-.bslib-sidebar-layout > .sidebar .form-select:focus,
-.bslib-sidebar-layout > .sidebar .form-control:focus {
-  border-color: var(--sea-400) !important;
-  box-shadow: 0 0 0 2px rgba(33, 150, 200, 0.25) !important;
-}
-.bslib-sidebar-layout > .sidebar .form-select option {
-  background: var(--sea-800);
-  color: #e0eef8;
-}
-
-/* Radio buttons / switches inside sidebar */
-.bslib-sidebar-layout > .sidebar .form-check-label {
-  color: var(--navy-text) !important;
-  font-size: 0.85rem;
-  text-transform: none;
-  letter-spacing: normal;
-}
-.bslib-sidebar-layout > .sidebar .form-check-input:checked {
-  background-color: var(--teal-500) !important;
-  border-color: var(--teal-500) !important;
-}
-.bslib-sidebar-layout > .sidebar .form-switch .form-check-input:checked {
-  background-color: var(--teal-400) !important;
-  border-color: var(--teal-400) !important;
-}
-
-/* Sidebar section headers */
-.bslib-sidebar-layout > .sidebar h5,
-.bslib-sidebar-layout > .sidebar .sidebar-section-title {
-  color: var(--sea-300) !important;
-  font-size: 0.78rem !important;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-top: 0.8rem;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.3rem;
-  border-bottom: 1px solid rgba(78, 197, 224, 0.15);
-}
-
-/* Sidebar description text */
-.bslib-sidebar-layout > .sidebar .sidebar-hint {
-  font-size: 0.78rem;
-  color: rgba(200, 220, 232, 0.55);
-  line-height: 1.4;
-  margin-bottom: 0.6rem;
-}
-
-/* Sidebar hr */
-.bslib-sidebar-layout > .sidebar hr {
-  border-color: rgba(78, 197, 224, 0.12) !important;
-  margin: 0.6rem 0;
-}
-
-/* Sidebar buttons */
-.bslib-sidebar-layout > .sidebar .btn-default,
-.bslib-sidebar-layout > .sidebar .btn.action-button {
-  background: linear-gradient(135deg, var(--sea-600) 0%, var(--teal-600) 100%) !important;
-  border: 1px solid rgba(78, 197, 224, 0.25) !important;
-  color: #fff !important;
-  font-weight: 600;
-  font-size: 0.82rem;
-  padding: 0.45rem 0.9rem;
-  border-radius: 6px;
-  transition: all 0.2s;
-  width: 100%;
-  text-align: center;
-  margin-bottom: 0.35rem;
-}
-.bslib-sidebar-layout > .sidebar .btn-default:hover,
-.bslib-sidebar-layout > .sidebar .btn.action-button:hover {
-  background: linear-gradient(135deg, var(--sea-500) 0%, var(--teal-500) 100%) !important;
-  border-color: var(--sea-300) !important;
-  transform: translateY(-1px);
-  box-shadow: 0 3px 10px rgba(13, 49, 88, 0.3);
-}
-
-/* Sidebar verbatim output */
-.bslib-sidebar-layout > .sidebar pre.shiny-text-output {
-  background: rgba(0,0,0,0.25) !important;
-  border: 1px solid rgba(78, 197, 224, 0.12) !important;
-  color: var(--foam-500) !important;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  padding: 0.5rem 0.7rem;
-}
-
-/* Slider tracks */
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-bar {
-  background: var(--teal-400) !important;
-  border-top-color: var(--teal-400) !important;
-  border-bottom-color: var(--teal-400) !important;
-}
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-single {
-  background: var(--teal-500) !important;
-  color: #fff;
-}
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-handle {
-  border-color: var(--teal-400) !important;
-}
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-line {
-  background: rgba(255,255,255,0.08) !important;
-  border-color: transparent !important;
-}
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-min,
-.bslib-sidebar-layout > .sidebar .irs--shiny .irs-max {
-  color: rgba(200,220,232,0.45) !important;
-  background: transparent !important;
-}
-
-/* -- Cards --------------------------------------------------------------- */
-.card {
-  border: 1px solid var(--card-border) !important;
-  border-radius: 10px !important;
-  box-shadow: var(--card-shadow);
-  overflow: hidden;
-}
-.card-header {
-  background: linear-gradient(135deg, var(--sea-800) 0%, var(--sea-700) 100%) !important;
-  color: #fff !important;
-  font-weight: 600;
-  font-size: 0.85rem;
-  letter-spacing: 0.01em;
-  border-bottom: 1px solid rgba(78, 197, 224, 0.2) !important;
-  padding: 0.55rem 1rem;
-}
-.card-body {
-  background: #fff;
-}
-.card-body pre.shiny-text-output {
-  background: var(--sea-50) !important;
-  border: 1px solid rgba(20, 100, 160, 0.1);
-  border-radius: 6px;
-  font-size: 0.82rem;
-  color: var(--sea-800);
-}
-
-/* -- Map containers ------------------------------------------------------ */
-.shiny-deckgl-container {
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 12px rgba(8, 30, 60, 0.12);
-  border: 1px solid var(--card-border);
-}
-
-/* -- Tab content padding ------------------------------------------------- */
-.tab-content > .tab-pane { padding-top: 0.5rem; }
-
-/* -- Colour-scales tables ------------------------------------------------ */
-.colour-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.85rem;
-}
-.colour-table th {
-  background: var(--sea-50);
-  color: var(--sea-700);
-  font-weight: 600;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0.4rem 0.8rem;
-  border-bottom: 2px solid var(--sea-200);
-}
-.colour-table td {
-  padding: 0.35rem 0.8rem;
-  border-bottom: 1px solid rgba(20,100,160,0.07);
-}
-.colour-table tr:hover td { background: var(--sea-50); }
-.colour-swatch {
-  display: inline-block;
-  width: 36px;
-  height: 22px;
-  border-radius: 4px;
-  border: 1px solid rgba(0,0,0,0.08);
-}
-.palette-swatch-block {
-  display: inline-block;
-  width: 36px;
-  height: 26px;
-  border-radius: 3px;
-  margin-right: 1px;
-}
-
-/* -- Footer -------------------------------------------------------------- */
-.marine-footer {
-  text-align: center;
-  font-size: 0.75rem;
-  color: rgba(200,220,232,0.45);
-  padding: 0.6rem 0;
-  border-top: 1px solid rgba(78,197,224,0.12);
-  margin-top: 0.5rem;
-}
-
-/* -- Misc ---------------------------------------------------------------- */
-::selection { background: var(--sea-200); color: var(--sea-900); }
-
-/* -- Sidebar accordions -------------------------------------------------- */
-.bslib-sidebar-layout > .sidebar .accordion {
-  --bs-accordion-bg: transparent;
-  --bs-accordion-border-color: rgba(78, 197, 224, 0.15);
-  --bs-accordion-btn-padding-x: 0.5rem;
-  --bs-accordion-btn-padding-y: 0.5rem;
-  --bs-accordion-body-padding-x: 0.3rem;
-  --bs-accordion-body-padding-y: 0.4rem;
-  border: none !important;
-  background: transparent !important;
-}
-.bslib-sidebar-layout > .sidebar .accordion-item {
-  background: transparent !important;
-  border: none !important;
-  border-bottom: 1px solid rgba(78, 197, 224, 0.12) !important;
-}
-.bslib-sidebar-layout > .sidebar .accordion-button {
-  background: transparent !important;
-  color: var(--sea-300) !important;
-  font-size: 0.78rem !important;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.55rem 0.5rem !important;
-  box-shadow: none !important;
-}
-.bslib-sidebar-layout > .sidebar .accordion-button::after {
-  filter: invert(0.7) sepia(1) saturate(3) hue-rotate(160deg);
-  width: 0.9rem;
-  height: 0.9rem;
-}
-.bslib-sidebar-layout > .sidebar .accordion-button:not(.collapsed) {
-  color: var(--sea-200) !important;
-  background: rgba(255,255,255,0.03) !important;
-}
-.bslib-sidebar-layout > .sidebar .accordion-body {
-  background: transparent !important;
-  padding: 0.3rem 0.3rem 0.5rem !important;
-}
-"""
-
-
-def _sidebar_section(icon: str, title: str) -> ui.TagChild:
-    """Styled sidebar section header."""
-    return ui.h5(ui.HTML(f"{icon}&ensp;{title}"))
-
-
-def _sidebar_hint(text: str) -> ui.TagChild:
-    """Subtle descriptive text inside sidebar."""
-    return ui.p(text, class_="sidebar-hint")
 
 
 # ===========================================================================
@@ -691,19 +133,12 @@ def _sidebar_hint(text: str) -> ui.TagChild:
 app_ui = ui.page_navbar(
     head_includes(),
 
-    # -- Tab 1: Interactive Map -------------------------------------------
+    # -- Tab 1: deck.gl Layers --------------------------------------------
     ui.nav_panel(
-        "\U0001F30A Interactive Map",
+        "\U0001F30A deck.gl Layers",
         ui.layout_sidebar(
             ui.sidebar(
                 ui.accordion(
-                    ui.accordion_panel(
-                        "\u2693 Basemap",
-                        ui.input_select(
-                            "basemap", "Basemap style",
-                            choices=list(BASEMAP_CHOICES.keys()),
-                        ),
-                    ),
                     ui.accordion_panel(
                         "\u2728 Symbology",
                         ui.input_select(
@@ -713,29 +148,42 @@ app_ui = ui.page_navbar(
                         ),
                         ui.input_radio_buttons(
                             "color_mode", "Colour mode",
-                            choices=["Equal-width bins", "Quantile bins", "Fixed range"],
+                            choices=[
+                                "Equal-width bins",
+                                "Quantile bins",
+                                "Fixed range",
+                            ],
                             selected="Equal-width bins",
                         ),
                     ),
                     ui.accordion_panel(
                         "\u2630 Layers",
-                        ui.input_switch("show_ports", "Ports (scatter)", value=True),
-                        ui.input_switch("show_mpa", "Marine Protected Areas", value=True),
-                        ui.input_switch("show_routes", "Shipping routes (arcs)", value=True),
-                        ui.input_switch("show_paths", "Route paths", value=False),
+                        ui.input_switch("show_ports", "Ports (scatter)",
+                                        value=True),
+                        ui.input_switch("show_mpa", "Marine Protected Areas",
+                                        value=True),
+                        ui.input_switch("show_routes", "Shipping routes (arcs)",
+                                        value=True),
+                        ui.input_switch("show_paths", "Route paths",
+                                        value=False),
                         ui.input_select(
                             "wms_layer", "EMODnet WMS overlay",
                             choices=WMS_LAYER_CHOICES,
                             selected="emodnet:mean_atlas_land",
                         ),
-                        ui.input_switch("show_heatmap", "Observation heatmap", value=False),
+                        ui.input_switch("show_heatmap", "Observation heatmap",
+                                        value=False),
                     ),
                     ui.accordion_panel(
                         "\u2708 Navigation",
-                        ui.input_action_button("fly_klaipeda", "\u2708 Fly to Klaip\u0117da"),
-                        ui.input_action_button("ease_stockholm", "\u27A1 Ease to Stockholm"),
-                        ui.input_action_button("fly_baltic", "\U0001F30D Reset Baltic view"),
-                        ui.input_action_button("place_marker", "\U0001F4CD Place drag marker"),
+                        ui.input_action_button("fly_klaipeda",
+                                               "\u2708 Fly to Klaip\u0117da"),
+                        ui.input_action_button("ease_stockholm",
+                                               "\u27A1 Ease to Stockholm"),
+                        ui.input_action_button("fly_baltic",
+                                               "\U0001F30D Reset Baltic view"),
+                        ui.input_action_button("place_marker",
+                                               "\U0001F4CD Place drag marker"),
                     ),
                     ui.accordion_panel(
                         "\U0001F4CD Drag Marker",
@@ -751,7 +199,74 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 2: Events & Tooltips -----------------------------------------
+    # -- Tab 2: MapLibre Controls -----------------------------------------
+    ui.nav_panel(
+        "\U0001F5FA MapLibre Controls",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\u2693 Basemap",
+                        ui.input_select(
+                            "ml_basemap", "Basemap style",
+                            choices=list(BASEMAP_CHOICES.keys()),
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F9ED Navigation & Location",
+                        sidebar_hint(
+                            "Toggle native MapLibre controls on the map. "
+                            "These are rendered by MapLibre GL JS, not deck.gl."
+                        ),
+                        ui.input_switch("ml_navigation",
+                                        "NavigationControl", value=True),
+                        ui.input_switch("ml_geolocate",
+                                        "GeolocateControl", value=False),
+                        ui.input_switch("ml_globe",
+                                        "GlobeControl", value=False),
+                        ui.input_switch("ml_terrain",
+                                        "TerrainControl", value=False),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4DC Legend Plugin",
+                        sidebar_hint(
+                            "watergis/maplibre-gl-legend — auto-generates "
+                            "a legend panel from the MapLibre style. "
+                            "Toggle layer visibility with checkboxes."
+                        ),
+                        ui.input_switch("ml_legend",
+                                        "Legend panel", value=True),
+                        ui.input_switch("ml_legend_checkbox",
+                                        "Show checkboxes", value=True),
+                        ui.input_switch("ml_legend_default",
+                                        "Open by default", value=False),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F50D Opacity Plugin",
+                        sidebar_hint(
+                            "maplibre-gl-opacity — layer switcher with "
+                            "opacity sliders for overlay layers."
+                        ),
+                        ui.input_switch("ml_opacity",
+                                        "Opacity control", value=False),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Drag Marker",
+                        ui.input_action_button("ml_place_marker",
+                                               "\U0001F4CD Place drag marker"),
+                        ui.output_text_verbatim("ml_drag_info"),
+                    ),
+                    id="tab2_ml_accordion",
+                    open=False,
+                    multiple=True,
+                ),
+                width=310,
+            ),
+            maplibre_widget.ui(height="85vh"),
+        ),
+    ),
+
+    # -- Tab 3: Events & Tooltips -----------------------------------------
     ui.nav_panel(
         "\U0001F4E1 Events & Tooltips",
         ui.layout_sidebar(
@@ -759,7 +274,7 @@ app_ui = ui.page_navbar(
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4AC Tooltip Template",
-                        _sidebar_hint(
+                        sidebar_hint(
                             "Edit the HTML template below. Use {field} "
                             "placeholders to interpolate feature properties."
                         ),
@@ -768,15 +283,18 @@ app_ui = ui.page_navbar(
                             value=DEFAULT_TOOLTIP_HTML,
                             rows=3,
                         ),
-                        ui.input_text("tooltip_bg", "Background colour", value="#1a1a2e"),
-                        ui.input_text("tooltip_fg", "Text colour", value="#eeeeee"),
+                        ui.input_text("tooltip_bg", "Background colour",
+                                      value="#1a1a2e"),
+                        ui.input_text("tooltip_fg", "Text colour",
+                                      value="#eeeeee"),
                     ),
                     ui.accordion_panel(
                         "\U0001F4CD Drag Marker",
-                        ui.input_action_button("events_marker", "\U0001F4CD Place drag marker"),
+                        ui.input_action_button("events_marker",
+                                               "\U0001F4CD Place drag marker"),
                         ui.output_text_verbatim("events_drag"),
                     ),
-                    id="tab2_accordion",
+                    id="tab3_accordion",
                     open=False,
                     multiple=True,
                 ),
@@ -805,7 +323,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 3: Colour Scales ---------------------------------------------
+    # -- Tab 4: Colour Scales ---------------------------------------------
     ui.nav_panel(
         "\U0001F3A8 Colour Scales",
         ui.layout_columns(
@@ -823,7 +341,8 @@ app_ui = ui.page_navbar(
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F4C8 color_quantiles() \u2014 Quantile Classification"
+                    "\U0001F4C8 color_quantiles() \u2014 Quantile "
+                    "Classification"
                 ),
                 ui.output_ui("quantiles_preview"),
             ),
@@ -831,7 +350,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 4: Advanced --------------------------------------------------
+    # -- Tab 5: Advanced --------------------------------------------------
     ui.nav_panel(
         "\u2699 Advanced",
         ui.layout_sidebar(
@@ -839,13 +358,15 @@ app_ui = ui.page_navbar(
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4A1 Lighting Effects",
-                        _sidebar_hint(
+                        sidebar_hint(
                             "The map shows 3-D cargo columns. Enable lighting "
                             "to see ambient and point-light shading."
                         ),
-                        ui.input_switch("enable_lighting", "Enable lighting", value=False),
+                        ui.input_switch("enable_lighting",
+                                        "Enable lighting", value=False),
                         ui.input_slider(
-                            "ambient", "Ambient intensity", 0.0, 2.0, 1.0, step=0.1,
+                            "ambient", "Ambient intensity",
+                            0.0, 2.0, 1.0, step=0.1,
                         ),
                         ui.input_slider(
                             "point_intensity", "Point light intensity",
@@ -854,21 +375,24 @@ app_ui = ui.page_navbar(
                     ),
                     ui.accordion_panel(
                         "\u26A1 Binary Transport",
-                        _sidebar_hint(
-                            "Push 2,500 random points encoded as numpy binary arrays."
+                        sidebar_hint(
+                            "Push 2,500 random points encoded as numpy "
+                            "binary arrays."
                         ),
                         ui.input_action_button(
-                            "push_binary", "\u26A1 Push Binary ScatterplotLayer"
+                            "push_binary",
+                            "\u26A1 Push Binary ScatterplotLayer",
                         ),
                     ),
                     ui.accordion_panel(
                         "\U0001F50E Data Filter Extension",
-                        _sidebar_hint(
-                            "Filter ports by cargo tonnage using GPU-accelerated "
-                            "DataFilterExtension."
+                        sidebar_hint(
+                            "Filter ports by cargo tonnage using "
+                            "GPU-accelerated DataFilterExtension."
                         ),
                         ui.input_action_button(
-                            "push_filtered", "\U0001F50E Push Filtered Layer"
+                            "push_filtered",
+                            "\U0001F50E Push Filtered Layer",
                         ),
                         ui.input_slider(
                             "filter_value", "Max cargo filter (Mt)",
@@ -877,32 +401,32 @@ app_ui = ui.page_navbar(
                     ),
                     ui.accordion_panel(
                         "\U0001F9E9 Widgets (v0.8.0)",
-                        _sidebar_hint(
+                        sidebar_hint(
                             "Toggle deck.gl widgets on the Advanced map. "
                             "Widgets are added/removed via set_widgets()."
                         ),
-                        ui.input_switch("adv_zoom_widget", "Zoom widget", value=False),
-                        ui.input_switch(
-                            "adv_compass_widget", "Compass widget", value=False
-                        ),
-                        ui.input_switch("adv_fps_widget", "FPS widget", value=False),
-                        ui.input_switch(
-                            "adv_fullscreen_widget", "Fullscreen widget", value=False
-                        ),
-                        ui.input_switch(
-                            "adv_scale_widget", "Scale widget", value=False
-                        ),
+                        ui.input_switch("adv_zoom_widget",
+                                        "Zoom widget", value=False),
+                        ui.input_switch("adv_compass_widget",
+                                        "Compass widget", value=False),
+                        ui.input_switch("adv_fps_widget",
+                                        "FPS widget", value=False),
+                        ui.input_switch("adv_fullscreen_widget",
+                                        "Fullscreen widget", value=False),
+                        ui.input_switch("adv_scale_widget",
+                                        "Scale widget", value=False),
                     ),
                     ui.accordion_panel(
                         "\U0001F3AC Transitions (v0.8.0)",
-                        _sidebar_hint(
+                        sidebar_hint(
                             "Push a layer with animated radius transitions."
                         ),
                         ui.input_action_button(
-                            "push_transitions", "\U0001F3AC Push Animated Layer"
+                            "push_transitions",
+                            "\U0001F3AC Push Animated Layer",
                         ),
                     ),
-                    id="tab4_accordion",
+                    id="tab5_accordion",
                     open=False,
                     multiple=True,
                 ),
@@ -916,7 +440,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 5: Export & Serialisation ------------------------------------
+    # -- Tab 6: Export & Serialisation ------------------------------------
     ui.nav_panel(
         "\U0001F4E6 Export",
         ui.layout_sidebar(
@@ -924,21 +448,22 @@ app_ui = ui.page_navbar(
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4E4 Export Actions",
-                        _sidebar_hint(
+                        sidebar_hint(
                             "Export the current map state to standalone HTML "
                             "or JSON format."
                         ),
                         ui.input_action_button(
-                            "export_html", "\U0001F310 Export HTML File"
+                            "export_html", "\U0001F310 Export HTML File",
                         ),
                         ui.input_action_button(
-                            "export_json", "\U0001F4CB Serialise to JSON"
+                            "export_json", "\U0001F4CB Serialise to JSON",
                         ),
                         ui.input_action_button(
-                            "roundtrip_json", "\U0001F504 JSON Round-Trip Test"
+                            "roundtrip_json",
+                            "\U0001F504 JSON Round-Trip Test",
                         ),
                     ),
-                    id="tab5_accordion",
+                    id="tab6_accordion",
                     open=False,
                     multiple=True,
                 ),
@@ -968,9 +493,9 @@ def server(input, output, session: Session):
     _export_log: reactive.Value[str] = reactive.Value("")
     _advanced_log: reactive.Value[str] = reactive.Value("")
 
-    # ===================================================================
-    # Tab 1 — Interactive Map
-    # ===================================================================
+    # =================================================================
+    # Tab 1 — deck.gl Layers
+    # =================================================================
 
     def _build_main_layers() -> list[dict]:
         """Build the layer stack for the main interactive map."""
@@ -1010,31 +535,31 @@ def server(input, output, session: Session):
                 pickable=True,
             ))
 
-        # Heatmap — random observation density (v0.7.0 helper)
+        # Heatmap — random observation density
         if input.show_heatmap():
             layers.append(heatmap_layer(
                 "observation-heat",
-                data=_make_heatmap_points(300),
+                data=make_heatmap_points(300),
                 getPosition="@@d",
                 getWeight="@@=d[2]",
                 radiusPixels=40, intensity=1.5, threshold=0.1,
             ))
 
-        # Paths — shipping routes as polylines (v0.7.0 helper)
+        # Paths — shipping routes as polylines
         if input.show_paths():
             layers.append(path_layer(
                 "route-paths",
-                data=_make_path_data(),
+                data=make_path_data(),
                 getPath="@@=d.path",
                 getColor="@@=d.color",
                 getWidth=3, widthMinPixels=2, pickable=True,
             ))
 
-        # Arcs — connections between ports (v0.7.0 helper)
+        # Arcs — connections between ports
         if input.show_routes():
             layers.append(arc_layer(
                 "port-arcs",
-                data=_make_arc_data(),
+                data=make_arc_data(),
                 getSourcePosition="@@=d.sourcePosition",
                 getTargetPosition="@@=d.targetPosition",
                 getSourceColor="@@=d.sourceColor",
@@ -1074,7 +599,7 @@ def server(input, output, session: Session):
         _main_layers.set(layers)
         await map_widget.update(session, layers, widgets=MAP_WIDGETS)
 
-    # Reactive rebuild on any control change
+    # Reactive rebuild on control change
     @reactive.Effect
     @reactive.event(
         input.palette, input.color_mode,
@@ -1086,14 +611,7 @@ def server(input, output, session: Session):
         _main_layers.set(layers)
         await map_widget.update(session, layers)
 
-    # Basemap switching
-    @reactive.Effect
-    @reactive.event(input.basemap)
-    async def _switch_basemap():
-        style_url = BASEMAP_CHOICES.get(input.basemap(), CARTO_POSITRON)
-        await map_widget.set_style(session, style_url)
-
-    # Fly-to / ease-to transitions (v0.8.0)
+    # Fly-to / ease-to transitions
     @reactive.Effect
     @reactive.event(input.fly_klaipeda)
     async def _fly_klaipeda():
@@ -1102,7 +620,9 @@ def server(input, output, session: Session):
     @reactive.Effect
     @reactive.event(input.ease_stockholm)
     async def _ease_stockholm():
-        await map_widget.ease_to(session, 18.07, 59.33, zoom=10, duration=2000)
+        await map_widget.ease_to(
+            session, 18.07, 59.33, zoom=10, duration=2000,
+        )
 
     @reactive.Effect
     @reactive.event(input.fly_baltic)
@@ -1111,7 +631,7 @@ def server(input, output, session: Session):
             session, 19.5, 57.0, zoom=5, pitch=0, bearing=0,
         )
 
-    # Layer visibility toggle (without resending data)
+    # Layer visibility toggle
     @reactive.Effect
     @reactive.event(input.show_ports)
     async def _toggle_ports():
@@ -1142,14 +662,106 @@ def server(input, output, session: Session):
             f"lat: {pos.get('latitude', 0):.6f}"
         )
 
-    # ===================================================================
-    # Tab 2 — Events & Tooltips
-    # ===================================================================
+    # =================================================================
+    # Tab 2 — MapLibre Controls
+    # =================================================================
+
+    @reactive.Effect
+    async def _ml_init():
+        """Push initial layers + controls to the MapLibre tab."""
+        layers = [
+            geojson_layer(
+                "ml-mpa", MPA_GEOJSON,
+                getFillColor=[0, 180, 120, 60],
+                getLineColor=[0, 180, 120, 200],
+                lineWidthMinPixels=2,
+                pickable=True,
+            ),
+            scatterplot_layer(
+                "ml-ports", make_port_data_simple(),
+                getPosition="@@=d.position",
+                getFillColor=[0, 140, 200, 200],
+                radiusMinPixels=7,
+                radiusMaxPixels=20,
+                pickable=True,
+            ),
+        ]
+        controls = _build_ml_controls()
+        await maplibre_widget.update(session, layers)
+        await maplibre_widget.set_controls(session, controls)
+
+    def _build_ml_controls() -> list[dict]:
+        """Build the list of MapLibre controls from sidebar switches."""
+        ctrls: list[dict] = []
+        if input.ml_navigation():
+            ctrls.append({
+                "type": "navigation",
+                "position": "top-right",
+                "options": {},
+            })
+        if input.ml_geolocate():
+            ctrls.append(geolocate_control(
+                position="top-right",
+                trackUserLocation=True,
+            ))
+        if input.ml_globe():
+            ctrls.append(globe_control(position="top-right"))
+        if input.ml_terrain():
+            ctrls.append(terrain_control(position="top-right"))
+        if input.ml_legend():
+            ctrls.append(legend_control(
+                position="bottom-left",
+                show_default=input.ml_legend_default(),
+                show_checkbox=input.ml_legend_checkbox(),
+            ))
+        if input.ml_opacity():
+            ctrls.append(opacity_control(position="top-left"))
+        return ctrls
+
+    # Re-build controls when any toggle changes
+    @reactive.Effect
+    @reactive.event(
+        input.ml_navigation, input.ml_geolocate,
+        input.ml_globe, input.ml_terrain,
+        input.ml_legend, input.ml_legend_checkbox,
+        input.ml_legend_default, input.ml_opacity,
+    )
+    async def _ml_controls_rebuild():
+        controls = _build_ml_controls()
+        await maplibre_widget.set_controls(session, controls)
+
+    # Basemap switching
+    @reactive.Effect
+    @reactive.event(input.ml_basemap)
+    async def _ml_switch_basemap():
+        style_url = BASEMAP_CHOICES.get(
+            input.ml_basemap(), CARTO_POSITRON,
+        )
+        await maplibre_widget.set_style(session, style_url)
+
+    # Drag marker (MapLibre tab)
+    @reactive.Effect
+    @reactive.event(input.ml_place_marker)
+    async def _ml_place_drag():
+        await maplibre_widget.add_drag_marker(session)
+
+    @render.text
+    def ml_drag_info():
+        pos = input[maplibre_widget.drag_input_id]()
+        if pos is None:
+            return "Place a marker first\u2026"
+        return (
+            f"lon: {pos.get('longitude', 0):.6f}\n"
+            f"lat: {pos.get('latitude', 0):.6f}"
+        )
+
+    # =================================================================
+    # Tab 3 — Events & Tooltips
+    # =================================================================
 
     @reactive.Effect
     async def _events_init():
         """Push interactive layers to the events map."""
-        port_data = _make_port_data_simple()
         layers = [
             geojson_layer(
                 "ev-mpa", MPA_GEOJSON,
@@ -1160,7 +772,7 @@ def server(input, output, session: Session):
             ),
             layer(
                 "ArcLayer", "ev-arcs",
-                data=_make_arc_data(),
+                data=make_arc_data(),
                 getSourcePosition="@@=d.sourcePosition",
                 getTargetPosition="@@=d.targetPosition",
                 getSourceColor="@@=d.sourceColor",
@@ -1168,7 +780,7 @@ def server(input, output, session: Session):
                 getWidth=2, pickable=True,
             ),
             scatterplot_layer(
-                "ev-ports", port_data,
+                "ev-ports", make_port_data_simple(),
                 getPosition="@@=d.position",
                 getFillColor=[200, 0, 80, 180],
                 radiusMinPixels=8, pickable=True,
@@ -1259,9 +871,9 @@ def server(input, output, session: Session):
             f"Bearing:   {vs.get('bearing', 0):.1f}\u00b0"
         )
 
-    # ===================================================================
-    # Tab 3 — Colour Scales
-    # ===================================================================
+    # =================================================================
+    # Tab 4 — Colour Scales
+    # =================================================================
 
     @render.ui
     def palette_preview():
@@ -1324,9 +936,9 @@ def server(input, output, session: Session):
             f'{rows}</table>'
         )
 
-    # ===================================================================
-    # Tab 4 — Advanced
-    # ===================================================================
+    # =================================================================
+    # Tab 5 — Advanced
+    # =================================================================
 
     def _adv_base_layers() -> list[dict]:
         """3-D cargo columns — good for demonstrating lighting effects."""
@@ -1362,7 +974,9 @@ def server(input, output, session: Session):
 
     # Lighting
     @reactive.Effect
-    @reactive.event(input.enable_lighting, input.ambient, input.point_intensity)
+    @reactive.event(
+        input.enable_lighting, input.ambient, input.point_intensity,
+    )
     async def _apply_lighting():
         layers = _adv_layers.get()
         effects = None
@@ -1592,16 +1206,16 @@ def server(input, output, session: Session):
             "\nClick again to see transitions animate with new values."
         )
 
-    # ===================================================================
-    # Tab 5 — Export & Serialisation
-    # ===================================================================
+    # =================================================================
+    # Tab 6 — Export & Serialisation
+    # =================================================================
 
     @reactive.Effect
     @reactive.event(input.export_html)
     async def _do_export_html():
         layers = _main_layers.get()
         path = os.path.join(
-            tempfile.gettempdir(), "shiny_deckgl_demo_export.html"
+            tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
         )
         map_widget.to_html(layers, path=path, title="shiny_deckgl Export")
         fsize = os.path.getsize(path)
@@ -1634,11 +1248,16 @@ def server(input, output, session: Session):
             f"Restored widget id:     {w2.id}",
             f"IDs match:              {map_widget.id == w2.id}",
             f"Style match:            {map_widget.style == w2.style}",
-            f"View state match:       {map_widget.view_state == w2.view_state}",
-            f"Tooltip match:          {map_widget.tooltip == w2.tooltip}",
-            f"Layer count match:      {len(layers)} == {len(layers2)}",
-            f"Layer IDs (original):   {[lyr.get('id') for lyr in layers]}",
-            f"Layer IDs (restored):   {[lyr.get('id') for lyr in layers2]}",
+            f"View state match:       "
+            f"{map_widget.view_state == w2.view_state}",
+            f"Tooltip match:          "
+            f"{map_widget.tooltip == w2.tooltip}",
+            f"Layer count match:      "
+            f"{len(layers)} == {len(layers2)}",
+            f"Layer IDs (original):   "
+            f"{[lyr.get('id') for lyr in layers]}",
+            f"Layer IDs (restored):   "
+            f"{[lyr.get('id') for lyr in layers2]}",
             "\n\u2713 JSON round-trip successful!",
         ]
         _export_log.set("\n".join(checks))

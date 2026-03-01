@@ -868,6 +868,40 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_set_controls — replace all MapLibre controls at once
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_controls", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    // Remove all existing controls
+    var existing = Object.keys(instance.controls);
+    for (var i = 0; i < existing.length; i++) {
+      var key = existing[i];
+      try {
+        instance.map.removeControl(instance.controls[key].control);
+      } catch (e) { /* ignore */ }
+      delete instance.controls[key];
+    }
+
+    // Add new controls
+    var newControls = payload.controls || [];
+    for (var j = 0; j < newControls.length; j++) {
+      var spec = newControls[j];
+      var type = spec.type;
+      var position = spec.position || 'top-right';
+      var opts = spec.options || {};
+
+      var control = createControl(type, opts);
+      if (!control) continue;
+
+      instance.map.addControl(control, position);
+      instance.controls[type] = { control: control, position: position };
+    }
+  });
+
+  // -----------------------------------------------------------------------
   // deck_fit_bounds — fit map to geographic bounds
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_fit_bounds", function (payload) {

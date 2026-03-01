@@ -29,6 +29,17 @@ All helpers return either a **string** (no-arg extension) or a
 
 from __future__ import annotations
 
+__all__ = [
+    "brushing_extension",
+    "collision_filter_extension",
+    "data_filter_extension",
+    "mask_extension",
+    "clip_extension",
+    "terrain_extension",
+    "fill_style_extension",
+    "path_style_extension",
+]
+
 
 def brushing_extension() -> str:
     """``BrushingExtension`` — highlight features near the cursor.

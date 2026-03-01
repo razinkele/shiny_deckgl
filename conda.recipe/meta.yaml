@@ -1,6 +1,6 @@
 {% set name = "shiny-deckgl" %}
 # Version must match src/shiny_deckgl/_version.py (single source of truth)
-{% set version = "0.6.0" %}
+{% set version = "1.0.0" %}
 
 package:
   name: {{ name|lower }}
@@ -21,6 +21,7 @@ requirements:
   run:
     - python >=3.9
     - shiny >=1.0
+    - htmltools
 
 test:
   imports:

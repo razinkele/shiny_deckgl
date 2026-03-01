@@ -6,6 +6,31 @@ from typing import Any
 
 from ._data_utils import _serialise_data
 
+__all__ = [
+    "layer",
+    "scatterplot_layer",
+    "geojson_layer",
+    "tile_layer",
+    "bitmap_layer",
+    "arc_layer",
+    "icon_layer",
+    "path_layer",
+    "line_layer",
+    "text_layer",
+    "column_layer",
+    "polygon_layer",
+    "heatmap_layer",
+    "hexagon_layer",
+    "h3_hexagon_layer",
+    "trips_layer",
+    "great_circle_layer",
+    "contour_layer",
+    "grid_layer",
+    "screen_grid_layer",
+    "mvt_layer",
+    "wms_layer",
+]
+
 
 # ---------------------------------------------------------------------------
 # Generic layer helper

@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
 keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Framework :: Shiny",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",

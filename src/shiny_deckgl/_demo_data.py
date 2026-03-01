@@ -126,11 +126,26 @@ ROUTES = [
 # ---------------------------------------------------------------------------
 
 _MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
-with open(_MPA_PATH) as _f:
-    MPA_GEOJSON = json.load(_f)
-# Normalise property keys to lower-case for tooltip consistency
-for _feat in MPA_GEOJSON["features"]:
-    _feat["properties"] = {k.lower(): v for k, v in _feat["properties"].items()}
+_MPA_GEOJSON_CACHE: dict | None = None
+
+
+def _load_mpa_geojson() -> dict:
+    """Lazy-load and cache the HELCOM MPA GeoJSON (avoids import-time I/O)."""
+    global _MPA_GEOJSON_CACHE
+    if _MPA_GEOJSON_CACHE is None:
+        with open(_MPA_PATH) as f:
+            _MPA_GEOJSON_CACHE = json.load(f)
+        # Normalise property keys to lower-case for tooltip consistency
+        for feat in _MPA_GEOJSON_CACHE["features"]:
+            feat["properties"] = {k.lower(): v for k, v in feat["properties"].items()}
+    return _MPA_GEOJSON_CACHE
+
+
+def __getattr__(name: str):
+    """Module-level lazy accessor for ``MPA_GEOJSON``."""
+    if name == "MPA_GEOJSON":
+        return _load_mpa_geojson()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # ---------------------------------------------------------------------------
 # EMODnet WMS layers

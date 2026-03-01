@@ -33,8 +33,8 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- `Development Status` classifier remains `4 - Beta` → will move to
-  `5 - Production/Stable` after community feedback on v1.0.0.
+- `Development Status` classifier moved from `4 - Beta` to
+  `5 - Production/Stable`.
 
 ---
 
@@ -167,7 +167,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.6.0] — 2026-03-01
+## [0.6.0] — 2025-03-01
 
 ### Changed
 
@@ -198,7 +198,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.5.0] — 2026-03-01
+## [0.5.0] — 2025-03-01
 
 ### Added
 
@@ -216,7 +216,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.4.0] — 2026-03-01
+## [0.4.0] — 2025-03-01
 
 ### Added
 
@@ -235,7 +235,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.3.0] — 2026-03-01
+## [0.3.0] — 2025-03-01
 
 ### Added
 
@@ -252,7 +252,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.2.0] — 2026-03-01
+## [0.2.0] — 2025-03-01
 
 ### Added
 
@@ -271,7 +271,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.1.0] — 2026-02-28
+## [0.1.0] — 2025-02-28
 
 ### Added
 
@@ -304,6 +304,11 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
+[1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
+[0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1
+[0.8.0]: https://github.com/razinkele/shiny_deckgl/compare/d8a3b2e...f3c7340
+[0.7.0]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...d8a3b2e
+[0.6.1]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...b3cc3af
 [0.6.0]: https://github.com/razinkele/shiny_deckgl/compare/05bed3c...b3cc3af
 [0.5.0]: https://github.com/razinkele/shiny_deckgl/compare/a0066d0...05bed3c
 [0.4.0]: https://github.com/razinkele/shiny_deckgl/compare/9708b7a...a0066d0

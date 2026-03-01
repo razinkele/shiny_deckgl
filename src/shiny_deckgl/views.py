@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "map_view",
+    "orthographic_view",
+    "first_person_view",
+    "globe_view",
+]
+
 
 def map_view(**kwargs) -> dict:
     """Create a ``MapView`` spec.

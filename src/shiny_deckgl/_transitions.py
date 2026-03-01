@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__all__ = ["transition"]
+
 
 def transition(duration: int = 1000, easing: str | None = None,
                type: str = "interpolation", **kwargs) -> dict:

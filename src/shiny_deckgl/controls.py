@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "geolocate_control",
+    "globe_control",
+    "terrain_control",
+    "legend_control",
+    "opacity_control",
+    "deck_legend_control",
+    "CONTROL_TYPES",
+    "CONTROL_POSITIONS",
+]
+
 
 # ---------------------------------------------------------------------------
 # MapLibre GL control convenience helpers

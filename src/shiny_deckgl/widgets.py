@@ -2,6 +2,26 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "zoom_widget",
+    "compass_widget",
+    "fullscreen_widget",
+    "scale_widget",
+    "gimbal_widget",
+    "reset_view_widget",
+    "screenshot_widget",
+    "fps_widget",
+    "loading_widget",
+    "timeline_widget",
+    "geocoder_widget",
+    "theme_widget",
+    "context_menu_widget",
+    "info_widget",
+    "splitter_widget",
+    "stats_widget",
+    "view_selector_widget",
+]
+
 
 # ---------------------------------------------------------------------------
 # deck.gl Widget helpers (v0.8.0)

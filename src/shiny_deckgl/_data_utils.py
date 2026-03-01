@@ -6,6 +6,8 @@ import base64
 import json
 from typing import Any
 
+__all__ = ["encode_binary_attribute"]
+
 
 def _serialise_data(data: Any) -> Any:
     """Convert pandas/geopandas objects to JSON-safe structures.

@@ -2,6 +2,21 @@
 
 from __future__ import annotations
 
+__all__ = [
+    "CARTO_POSITRON",
+    "CARTO_DARK",
+    "CARTO_VOYAGER",
+    "OSM_LIBERTY",
+    "PALETTE_VIRIDIS",
+    "PALETTE_PLASMA",
+    "PALETTE_OCEAN",
+    "PALETTE_THERMAL",
+    "PALETTE_CHLOROPHYLL",
+    "color_range",
+    "color_bins",
+    "color_quantiles",
+]
+
 # ---------------------------------------------------------------------------
 # Basemap style constants
 # ---------------------------------------------------------------------------

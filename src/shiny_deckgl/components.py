@@ -7,7 +7,10 @@ import pathlib
 from functools import lru_cache
 from importlib import resources as impresources
 from shiny import ui
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from shiny import Session
 
 from ._cdn import (
     DECKGL_JS,
@@ -190,7 +193,7 @@ def color_quantiles(
 # Data serialisation helpers
 # ---------------------------------------------------------------------------
 
-def _serialise_data(data):
+def _serialise_data(data: Any) -> Any:
     """Convert pandas/geopandas objects to JSON-safe structures.
 
     - ``GeoDataFrame`` → GeoJSON ``FeatureCollection`` dict
@@ -412,7 +415,7 @@ class MapWidget:
 
     async def update(
         self,
-        session,
+        session: Session,
         layers: list[dict],
         view_state: dict | None = None,
         transition_duration: int = 0,
@@ -456,7 +459,7 @@ class MapWidget:
 
     async def set_layer_visibility(
         self,
-        session,
+        session: Session,
         visibility: dict[str, bool],
     ) -> None:
         """Toggle layer visibility without resending data.
@@ -475,7 +478,7 @@ class MapWidget:
 
     async def add_drag_marker(
         self,
-        session,
+        session: Session,
         longitude: float | None = None,
         latitude: float | None = None,
     ) -> None:
@@ -501,7 +504,7 @@ class MapWidget:
 
     async def set_style(
         self,
-        session,
+        session: Session,
         style: str,
     ) -> None:
         """Change the basemap style dynamically.
@@ -521,7 +524,7 @@ class MapWidget:
 
     async def update_tooltip(
         self,
-        session,
+        session: Session,
         tooltip: dict | None = None,
     ) -> None:
         """Update the tooltip configuration dynamically.
@@ -544,7 +547,7 @@ class MapWidget:
 
     async def add_control(
         self,
-        session,
+        session: Session,
         control_type: str,
         position: str = "top-right",
         *,
@@ -586,7 +589,7 @@ class MapWidget:
 
     async def remove_control(
         self,
-        session,
+        session: Session,
         control_type: str,
     ) -> None:
         """Remove a previously added MapLibre control.
@@ -607,7 +610,7 @@ class MapWidget:
 
     async def fit_bounds(
         self,
-        session,
+        session: Session,
         bounds: list[list[float]],
         *,
         padding: int | dict[str, int] = 50,
@@ -697,7 +700,7 @@ class MapWidget:
 
     async def add_source(
         self,
-        session,
+        session: Session,
         source_id: str,
         source_spec: dict,
     ) -> None:
@@ -722,7 +725,7 @@ class MapWidget:
 
     async def add_maplibre_layer(
         self,
-        session,
+        session: Session,
         layer_spec: dict,
         *,
         before_id: str | None = None,
@@ -750,7 +753,7 @@ class MapWidget:
 
     async def remove_maplibre_layer(
         self,
-        session,
+        session: Session,
         layer_id: str,
     ) -> None:
         """Remove a native MapLibre layer.
@@ -769,7 +772,7 @@ class MapWidget:
 
     async def remove_source(
         self,
-        session,
+        session: Session,
         source_id: str,
     ) -> None:
         """Remove a native MapLibre source.
@@ -790,7 +793,7 @@ class MapWidget:
 
     async def set_source_data(
         self,
-        session,
+        session: Session,
         source_id: str,
         data: dict | str,
     ) -> None:
@@ -816,7 +819,7 @@ class MapWidget:
 
     async def set_paint_property(
         self,
-        session,
+        session: Session,
         layer_id: str,
         name: str,
         value,
@@ -843,7 +846,7 @@ class MapWidget:
 
     async def set_layout_property(
         self,
-        session,
+        session: Session,
         layer_id: str,
         name: str,
         value,
@@ -870,7 +873,7 @@ class MapWidget:
 
     async def set_filter(
         self,
-        session,
+        session: Session,
         layer_id: str,
         filter_expr: list | None = None,
     ) -> None:
@@ -896,7 +899,7 @@ class MapWidget:
 
     async def set_projection(
         self,
-        session,
+        session: Session,
         projection: str = "mercator",
     ) -> None:
         """Set the map projection.
@@ -922,7 +925,7 @@ class MapWidget:
 
     async def set_terrain(
         self,
-        session,
+        session: Session,
         source: str | None = None,
         exaggeration: float = 1.0,
     ) -> None:
@@ -948,7 +951,7 @@ class MapWidget:
 
     async def set_sky(
         self,
-        session,
+        session: Session,
         sky: dict | None = None,
     ) -> None:
         """Set the sky/atmosphere properties (works best with terrain).
@@ -969,7 +972,7 @@ class MapWidget:
 
     async def add_popup(
         self,
-        session,
+        session: Session,
         layer_id: str,
         template: str,
         *,
@@ -1011,7 +1014,7 @@ class MapWidget:
 
     async def remove_popup(
         self,
-        session,
+        session: Session,
         layer_id: str,
     ) -> None:
         """Remove a previously attached popup handler from a native layer.
@@ -1040,7 +1043,7 @@ class MapWidget:
 
     async def query_rendered_features(
         self,
-        session,
+        session: Session,
         *,
         point: list[float] | None = None,
         bounds: list[list[float]] | None = None,
@@ -1084,7 +1087,7 @@ class MapWidget:
 
     async def query_at_lnglat(
         self,
-        session,
+        session: Session,
         longitude: float,
         latitude: float,
         *,
@@ -1126,7 +1129,7 @@ class MapWidget:
 
     async def add_marker(
         self,
-        session,
+        session: Session,
         marker_id: str,
         longitude: float,
         latitude: float,
@@ -1164,7 +1167,7 @@ class MapWidget:
 
     async def remove_marker(
         self,
-        session,
+        session: Session,
         marker_id: str,
     ) -> None:
         """Remove a named marker from the map.
@@ -1183,7 +1186,7 @@ class MapWidget:
 
     async def clear_markers(
         self,
-        session,
+        session: Session,
     ) -> None:
         """Remove all named markers from the map."""
         await session.send_custom_message("deck_clear_markers", {
@@ -1210,7 +1213,7 @@ class MapWidget:
 
     async def enable_draw(
         self,
-        session,
+        session: Session,
         *,
         modes: list[str] | None = None,
         controls: dict[str, bool] | None = None,
@@ -1242,7 +1245,7 @@ class MapWidget:
 
     async def disable_draw(
         self,
-        session,
+        session: Session,
     ) -> None:
         """Remove drawing tools from the map."""
         await session.send_custom_message("deck_disable_draw", {
@@ -1251,7 +1254,7 @@ class MapWidget:
 
     async def get_drawn_features(
         self,
-        session,
+        session: Session,
     ) -> None:
         """Request the current set of drawn features.
 
@@ -1263,7 +1266,7 @@ class MapWidget:
 
     async def delete_drawn_features(
         self,
-        session,
+        session: Session,
         feature_ids: list[str] | None = None,
     ) -> None:
         """Delete drawn features.
@@ -1294,7 +1297,7 @@ class MapWidget:
 
     async def add_geodataframe(
         self,
-        session,
+        session: Session,
         source_id: str,
         gdf,
         *,
@@ -1359,7 +1362,7 @@ class MapWidget:
 
     async def update_geodataframe(
         self,
-        session,
+        session: Session,
         source_id: str,
         gdf,
     ) -> None:
@@ -1381,7 +1384,7 @@ class MapWidget:
 
     async def set_feature_state(
         self,
-        session,
+        session: Session,
         source_id: str,
         feature_id: str | int,
         state: dict,
@@ -1415,7 +1418,7 @@ class MapWidget:
 
     async def remove_feature_state(
         self,
-        session,
+        session: Session,
         source_id: str,
         feature_id: str | int | None = None,
         *,
@@ -1453,7 +1456,7 @@ class MapWidget:
 
     async def export_image(
         self,
-        session,
+        session: Session,
         *,
         format: str = "png",
         quality: float = 0.92,
@@ -1615,7 +1618,7 @@ class MapWidget:
      data-initial-bearing="{vs.get('bearing', 0)}"
      data-initial-min-zoom="{vs.get('minZoom', 0)}"
      data-initial-max-zoom="{vs.get('maxZoom', 24)}"
-     data-style="{self.style}"
+     data-style="{_html_mod.escape(self.style)}"
      {tooltip_attr}{mapbox_attr}></div>
 <script>
 // Shim: standalone pages have no Shiny runtime

@@ -79,7 +79,7 @@ browser, all without Java dependencies.
 | **Get/delete drawn features** | `get_drawn_features()`, `delete_drawn_features()` — manage drawn geometry. |
 | **GeoPandas integration** | `add_geodataframe()` — directly add a GeoDataFrame as a GeoJSON source + native layers. |
 | **Feature state** | `set_feature_state()` / `remove_feature_state()` — interactive styling without redrawing. |
-| **Map export** | `export_image(format="png"|"jpeg"|"webp")` — screenshot the map as a base64 data URL. |
+| **Map export** | `export_image(format="png"/"jpeg"/"webp")` — screenshot the map as a base64 data URL. |
 
 ## Environment & Prerequisites
 

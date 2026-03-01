@@ -187,7 +187,8 @@
       tooltipConfig: tooltipConfig,
       dragMarker: null,
       lastLayers: [],          // cache for visibility toggling
-      controls: initialControls
+      controls: initialControls,
+      nativeLayers: {}         // tracks native MapLibre layers added via add_maplibre_layer
     };
   }
 
@@ -739,6 +740,7 @@
     }
 
     map.addLayer(layerSpec, beforeId);
+    instance.nativeLayers[layerSpec.id] = true;
   });
 
   // -----------------------------------------------------------------------
@@ -751,6 +753,7 @@
 
     if (instance.map.getLayer(payload.layerId)) {
       instance.map.removeLayer(payload.layerId);
+      delete instance.nativeLayers[payload.layerId];
     }
   });
 
@@ -1258,12 +1261,12 @@
 
     var map = instance.map;
     var canvas = map.getCanvas();
-    var format = payload.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    var mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    var format = mimeTypes[payload.format] || 'image/png';
     var quality = payload.quality || 0.92;
 
-    map.triggerRepaint();
-
-    requestAnimationFrame(function () {
+    // Wait for tiles to finish loading before capturing
+    function capture() {
       var dataUrl = canvas.toDataURL(format, quality);
       Shiny.setInputValue(payload.id + '_export_result', {
         requestId: payload.requestId || 'default',
@@ -1271,7 +1274,16 @@
         width: canvas.width,
         height: canvas.height
       }, { priority: "event" });
-    });
+    }
+
+    map.triggerRepaint();
+    if (map.isStyleLoaded && map.isStyleLoaded() && !map.isMoving()) {
+      requestAnimationFrame(capture);
+    } else {
+      map.once('idle', function () {
+        requestAnimationFrame(capture);
+      });
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -1305,13 +1317,25 @@
   });
 
   // -----------------------------------------------------------------------
-  // deck_update_tooltip — change tooltip config without re-rendering
+  // deck_update_tooltip — change tooltip config and re-render layers
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_update_tooltip", function (payload) {
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
     instance.tooltipConfig = payload.tooltip || null;
+
+    // Re-render existing layers so the new tooltip config takes effect
+    // immediately (onHover closures capture tooltipConfig at build time).
+    if (instance.lastLayers && instance.lastLayers.length > 0) {
+      var deckLayers = buildDeckLayers(
+        instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
+        payload.id,
+        instance.tooltipConfig
+      );
+      instance.overlay.setProps({ layers: deckLayers });
+      instance.map.triggerRepaint();
+    }
   });
 
   // Expose helpers for standalone HTML exports

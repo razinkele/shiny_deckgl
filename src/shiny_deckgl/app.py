@@ -90,8 +90,9 @@ PORTS = [
 # Real Baltic Sea ferry and shipping routes
 # Waypoints follow actual maritime corridors / charted fairways
 ROUTES = [
-    {   # Klaipėda–Kiel (DFDS Seaways freight route via Langeland Belt)
+    {   # Klaipėda–Kiel (DFDS Seaways freight+passenger via Langeland Belt)
         "from": "Klaipėda", "to": "Kiel",
+        "operator": "DFDS Seaways", "type": "freight",
         "color": [0, 180, 230, 180],
         "waypoints": [
             [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
@@ -99,8 +100,9 @@ ROUTES = [
             [12.30, 54.60], [11.00, 54.50], [10.15, 54.33],
         ],
     },
-    {   # Klaipėda–Karlshamn (DFDS Seaways)
+    {   # Klaipėda–Karlshamn (DFDS Seaways freight)
         "from": "Klaipėda", "to": "Karlshamn",
+        "operator": "DFDS Seaways", "type": "freight",
         "color": [0, 200, 120, 180],
         "waypoints": [
             [21.13, 55.71], [20.40, 55.50], [19.50, 55.50],
@@ -109,6 +111,7 @@ ROUTES = [
     },
     {   # Helsinki–Tallinn (Tallink / Viking Line, ~80 km)
         "from": "Helsinki", "to": "Tallinn",
+        "operator": "Tallink / Viking Line", "type": "passenger",
         "color": [255, 140, 0, 180],
         "waypoints": [
             [24.94, 60.17], [24.90, 60.05], [24.85, 59.85],
@@ -117,6 +120,7 @@ ROUTES = [
     },
     {   # Riga–Stockholm (Tallink, via Irbe Strait & Gotland)
         "from": "Riga", "to": "Stockholm",
+        "operator": "Tallink", "type": "passenger",
         "color": [180, 0, 200, 180],
         "waypoints": [
             [24.11, 56.95], [23.00, 57.20], [21.80, 57.50],
@@ -126,6 +130,7 @@ ROUTES = [
     },
     {   # Copenhagen–Rostock (Scandlines, Gedser–Rostock crossing)
         "from": "Copenhagen", "to": "Rostock",
+        "operator": "Scandlines", "type": "passenger",
         "color": [255, 80, 80, 180],
         "waypoints": [
             [12.57, 55.68], [12.30, 55.40], [12.10, 55.00],
@@ -134,6 +139,7 @@ ROUTES = [
     },
     {   # Gdańsk–Nynäshamn (Polferries)
         "from": "Gdańsk", "to": "Stockholm",
+        "operator": "Polferries", "type": "passenger",
         "color": [100, 200, 100, 180],
         "waypoints": [
             [18.65, 54.35], [18.80, 54.80], [19.00, 55.50],
@@ -143,14 +149,16 @@ ROUTES = [
     },
     {   # Ventspils–Nynäshamn (Stena Line)
         "from": "Ventspils", "to": "Stockholm",
+        "operator": "Stena Line", "type": "passenger",
         "color": [200, 200, 0, 180],
         "waypoints": [
             [21.56, 57.39], [20.50, 57.60], [19.50, 57.90],
             [18.80, 58.30], [18.30, 58.80], [18.07, 59.33],
         ],
     },
-    {   # Klaipėda–Travemünde (Stena Line)
+    {   # Klaipėda–Travemünde (DFDS Seaways freight+passenger)
         "from": "Klaipėda", "to": "Travemünde",
+        "operator": "DFDS Seaways", "type": "freight",
         "color": [60, 180, 200, 180],
         "waypoints": [
             [21.13, 55.71], [20.40, 55.40], [19.80, 55.10],
@@ -164,6 +172,9 @@ ROUTES = [
 _MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
 with open(_MPA_PATH) as _f:
     MPA_GEOJSON = json.load(_f)
+# Normalise property keys to lower-case for tooltip consistency
+for _feat in MPA_GEOJSON["features"]:
+    _feat["properties"] = {k.lower(): v for k, v in _feat["properties"].items()}
 
 # EMODnet WMS layers (hardcoded — no owslib dependency needed)
 EMODNET_WMS_URL = "https://ows.emodnet-bathymetry.eu/wms"
@@ -193,8 +204,9 @@ def _make_arc_data() -> list[dict]:
             "targetPosition": wp[-1],
             "sourceColor": r["color"],
             "targetColor": r["color"],
-            "from": r["from"],
-            "to": r["to"],
+            "name": f"{r['from']} \u2192 {r['to']}",
+            "operator": r["operator"],
+            "type": r["type"],
         })
     return arcs
 
@@ -219,6 +231,8 @@ def _make_path_data() -> list[dict]:
         paths.append({
             "path": r["waypoints"],
             "name": f"{r['from']} \u2192 {r['to']}",
+            "operator": r["operator"],
+            "type": r["type"],
             "color": r["color"],
         })
     return paths
@@ -274,12 +288,13 @@ BALTIC_VIEW = {
 map_widget = MapWidget(
     "demo_map",
     tooltip={
-        "html": "<b>{name}</b><br/>Country: {country}<br/>Cargo: {cargo_mt} Mt",
+        "html": "<b>{name}</b>",
         "style": {"backgroundColor": "#0b2140", "color": "#d0f0fa",
                   "fontSize": "13px", "borderLeft": "3px solid #1db9c3",
                   "borderRadius": "6px", "padding": "8px 12px"},
     },
     view_state=BALTIC_VIEW,
+    controls=[],
 )
 
 # Default widgets for Tab 1 map (deck.gl widgets — no MapLibre controls)
@@ -291,9 +306,7 @@ MAP_WIDGETS = [
 ]
 
 # Tab 2 — Events & Tooltips
-DEFAULT_TOOLTIP_HTML = (
-    "<b>{name}</b><br/>Country: {country}<br/>Cargo: {cargo_mt} Mt"
-)
+DEFAULT_TOOLTIP_HTML = "<b>{name}</b>"
 
 events_widget = MapWidget(
     "events_map",

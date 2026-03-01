@@ -127,20 +127,11 @@ def test_basemap_constants_are_urls():
 
 
 # ---------------------------------------------------------------------------
-# app() factory
+# app module-level instance
 # ---------------------------------------------------------------------------
 
 def test_app_returns_shiny_app():
-    result = app()
-    assert isinstance(result, App)
-
-
-def test_app_with_custom_provider():
-    def provider():
-        return {"data": [[10, 20]]}
-
-    result = app(data_provider=provider)
-    assert isinstance(result, App)
+    assert isinstance(app, App)
 
 
 # ---------------------------------------------------------------------------
@@ -2773,32 +2764,9 @@ class TestAddMaplibreLayerExtended:
 class TestAppFactory:
     """Additional app factory tests."""
 
-    def test_app_with_geojson_provider(self):
-        """App should accept GeoJSON data provider."""
-        geojson_data = {
-            "data": {
-                "type": "FeatureCollection",
-                "features": [],
-            }
-        }
-        result = app(data_provider=lambda: geojson_data)
-        assert isinstance(result, App)
-
-    def test_app_with_dict_data_provider(self):
-        """App should accept dict-based data provider."""
-        result = app(data_provider=lambda: {
-            "data": [
-                {"coordinates": [0, 0], "depth": 10},
-            ]
-        })
-        assert isinstance(result, App)
-
-    def test_app_with_array_data_provider(self):
-        """App should accept plain array data provider."""
-        result = app(data_provider=lambda: {
-            "data": [[21, 55], [22, 56]]
-        })
-        assert isinstance(result, App)
+    def test_app_is_instance(self):
+        """app should be a direct App instance (not a factory)."""
+        assert isinstance(app, App)
 
 
 # ==========================================================================

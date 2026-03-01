@@ -340,3 +340,196 @@ SAMPLE_STUDY_AREA = {
         }
     ],
 }
+
+
+# ---------------------------------------------------------------------------
+# 3-D visualisation data — Baltic Sea bathymetry & marine observations
+# ---------------------------------------------------------------------------
+
+def make_bathymetry_grid(
+    cols: int = 30,
+    rows: int = 20,
+    *,
+    lon_min: float = 12.0,
+    lon_max: float = 30.0,
+    lat_min: float = 54.0,
+    lat_max: float = 66.0,
+) -> list[dict]:
+    """Generate a synthetic Baltic Sea bathymetry grid.
+
+    Returns a list of dicts, each with ``position`` ([lon, lat]),
+    ``depth_m`` (negative = below sea level, 0–459 m range reflecting
+    real Baltic bathymetry; deepest at the Landsort Deep ~459 m),
+    and ``elevation`` (positive value = column height for deck.gl).
+
+    The depth model is a deterministic combination of distance from the
+    basin centre (≈ 18.2°E, 58.6°N — near _Landsort Deep_) plus a
+    gentle sinusoidal ripple that mimics sub-basins.
+
+    Parameters
+    ----------
+    cols, rows
+        Grid dimensions (default 30 × 20 = 600 cells).
+    lon_min, lon_max, lat_min, lat_max
+        Geographic extent (default: full Baltic Sea).
+    """
+    import math
+
+    # Landsort Deep approximate location
+    centre_lon, centre_lat = 18.2, 58.6
+    max_depth = 459.0  # metres — deepest point in the Baltic
+
+    lon_step = (lon_max - lon_min) / (cols - 1)
+    lat_step = (lat_max - lat_min) / (rows - 1)
+
+    points: list[dict] = []
+    for r in range(rows):
+        lat = lat_min + r * lat_step
+        for c in range(cols):
+            lon = lon_min + c * lon_step
+
+            # Distance fraction from the basin centre (0 = centre, 1 = edge)
+            d_lon = (lon - centre_lon) / ((lon_max - lon_min) / 2)
+            d_lat = (lat - centre_lat) / ((lat_max - lat_min) / 2)
+            dist = math.sqrt(d_lon ** 2 + d_lat ** 2)
+            dist = min(dist, 1.0)
+
+            # Depth envelope: deepest at centre, tapering to 5 m at edges
+            base = max_depth * (1.0 - dist ** 1.4)
+
+            # Sub-basin ripple (deterministic)
+            ripple = 30 * math.sin(lon * 1.7) * math.cos(lat * 2.3)
+
+            depth = max(5.0, base + ripple)
+            depth = round(depth, 1)
+
+            points.append({
+                "position": [round(lon, 4), round(lat, 4)],
+                "depth_m": -depth,
+                "elevation": depth,
+                "lon": round(lon, 4),
+                "lat": round(lat, 4),
+            })
+    return points
+
+
+def make_fish_observations(n: int = 80) -> list[dict]:
+    """Generate synthetic fish / marine species depth observations.
+
+    Each record contains a Baltic Sea location, a species name, the
+    observation depth (metres below surface), and a ``position`` in
+    ``[lon, lat, -depth]`` triplet format suitable for deck.gl 3-D layers.
+
+    Parameters
+    ----------
+    n
+        Number of observations to generate (default 80).
+    """
+    species = [
+        ("Atlantic cod",       20, 120),
+        ("Baltic herring",      5,  80),
+        ("European sprat",     10,  90),
+        ("Atlantic salmon",     2,  60),
+        ("European flounder",  15, 100),
+        ("Pike-perch",          3,  40),
+        ("Three-spined stickleback", 1, 25),
+        ("Ringed seal",         0,  50),
+    ]
+
+    random.seed(99)
+    obs: list[dict] = []
+    for i in range(n):
+        sp_name, d_min, d_max = species[i % len(species)]
+        # Pick a random port as anchor for geographic clustering
+        port = random.choice(PORTS)
+        lon = round(port["lon"] + random.gauss(0, 1.2), 4)
+        lat = round(port["lat"] + random.gauss(0, 0.6), 4)
+        depth = round(random.uniform(d_min, d_max), 1)
+
+        obs.append({
+            "position": [lon, lat],
+            "position_3d": [lon, lat, -depth],
+            "species": sp_name,
+            "depth_m": depth,
+            "elevation": depth,          # positive for column_layer height
+            "lon": lon,
+            "lat": lat,
+        })
+    return obs
+
+
+def make_bathymetry_geojson(cols: int = 15, rows: int = 10) -> dict:
+    """Generate a GeoJSON FeatureCollection of bathymetry point features.
+
+    Each feature is a ``Point`` with ``depth_m`` and ``elevation``
+    properties — suitable for ``geojson_layer(extruded=True)``.
+
+    Parameters
+    ----------
+    cols, rows
+        Grid dimensions (smaller default than ``make_bathymetry_grid``
+        because GeoJSON has more overhead per feature).
+    """
+    grid = make_bathymetry_grid(cols, rows)
+    features = []
+    for pt in grid:
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": pt["position"],
+            },
+            "properties": {
+                "depth_m": pt["depth_m"],
+                "elevation": pt["elevation"],
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}
+
+
+def make_3d_arc_data() -> list[dict]:
+    """Build 3-D arc data where source/target have altitude (z) components.
+
+    Uses real Baltic port-to-port shipping routes with synthetic
+    altitude values representing flight / drone corridors — handy for
+    demonstrating ``arc_layer`` in a pitched 3-D view.
+    """
+    arcs = []
+    for r in ROUTES:
+        wp = r["waypoints"]
+        # Height proportional to route length (longer = higher arc)
+        alt = len(wp) * 500.0
+        arcs.append({
+            "sourcePosition": [wp[0][0], wp[0][1], 0],
+            "targetPosition": [wp[-1][0], wp[-1][1], 0],
+            "sourceColor": r["color"],
+            "targetColor": r["color"],
+            "name": f"{r['from']} → {r['to']}",
+            "height": alt,
+        })
+    return arcs
+
+
+# Pre-canned 3-D view state (pitched camera over central Baltic)
+BALTIC_VIEW_3D = {
+    "longitude": 19.5,
+    "latitude": 57.0,
+    "zoom": 5,
+    "pitch": 45,
+    "bearing": -15,
+    "minZoom": 3,
+    "maxZoom": 16,
+}
+
+# Standard lighting effect for 3-D scenes
+LIGHTING_EFFECT_3D = {
+    "type": "LightingEffect",
+    "ambientLight": {"color": [255, 255, 255], "intensity": 1.0},
+    "pointLights": [
+        {
+            "color": [255, 255, 255],
+            "intensity": 2.0,
+            "position": [19.5, 57.0, 80000],
+        }
+    ],
+}

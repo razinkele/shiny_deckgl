@@ -4648,3 +4648,628 @@ class TestClusterLayer:
         }
         assert fc["features"][0]["properties"] == {"name": "A"}
         assert fc["features"][1]["properties"] == {"name": "B"}
+
+
+# ===================================================================
+# 3-D VISUALISATION TESTS
+# ===================================================================
+
+class TestBathymetryGrid:
+    """Tests for make_bathymetry_grid() 3-D data generator."""
+
+    def test_default_size(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        assert len(grid) == 600  # 30 cols × 20 rows
+
+    def test_custom_size(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid(cols=5, rows=4)
+        assert len(grid) == 20
+
+    def test_point_structure(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid(cols=3, rows=3)
+        pt = grid[0]
+        assert "position" in pt
+        assert "depth_m" in pt
+        assert "elevation" in pt
+        assert "lon" in pt
+        assert "lat" in pt
+        assert len(pt["position"]) == 2
+
+    def test_depth_is_negative(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        for pt in grid:
+            assert pt["depth_m"] <= 0, f"depth_m should be ≤ 0, got {pt['depth_m']}"
+
+    def test_elevation_is_positive(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        for pt in grid:
+            assert pt["elevation"] >= 5.0, f"elevation should be ≥ 5, got {pt['elevation']}"
+
+    def test_depth_and_elevation_are_inverses(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        for pt in grid:
+            assert pt["depth_m"] == -pt["elevation"]
+
+    def test_deepest_point_near_centre(self):
+        """Deepest point should be near the Landsort Deep (basin centre)."""
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        deepest = min(grid, key=lambda p: p["depth_m"])
+        # Should be somewhere in the central Baltic
+        assert 15.0 <= deepest["lon"] <= 25.0
+        assert 55.0 <= deepest["lat"] <= 62.0
+        assert deepest["elevation"] > 200  # should be deep
+
+    def test_geo_bounds(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid()
+        lons = [p["lon"] for p in grid]
+        lats = [p["lat"] for p in grid]
+        assert min(lons) >= 12.0
+        assert max(lons) <= 30.0
+        assert min(lats) >= 54.0
+        assert max(lats) <= 66.0
+
+    def test_custom_bounds(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        grid = make_bathymetry_grid(
+            cols=3, rows=3, lon_min=18.0, lon_max=20.0,
+            lat_min=57.0, lat_max=59.0,
+        )
+        lons = [p["lon"] for p in grid]
+        lats = [p["lat"] for p in grid]
+        assert min(lons) >= 18.0
+        assert max(lons) <= 20.0
+        assert min(lats) >= 57.0
+        assert max(lats) <= 59.0
+
+    def test_deterministic(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        a = make_bathymetry_grid(cols=5, rows=5)
+        b = make_bathymetry_grid(cols=5, rows=5)
+        assert a == b
+
+
+class TestFishObservations:
+    """Tests for make_fish_observations() 3-D data generator."""
+
+    def test_default_count(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations()
+        assert len(obs) == 80
+
+    def test_custom_count(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=25)
+        assert len(obs) == 25
+
+    def test_record_structure(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=5)
+        rec = obs[0]
+        assert "position" in rec
+        assert "position_3d" in rec
+        assert "species" in rec
+        assert "depth_m" in rec
+        assert "elevation" in rec
+        assert "lon" in rec
+        assert "lat" in rec
+
+    def test_position_2d(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=10)
+        for rec in obs:
+            assert len(rec["position"]) == 2
+
+    def test_position_3d_has_z(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=10)
+        for rec in obs:
+            assert len(rec["position_3d"]) == 3
+            assert rec["position_3d"][2] <= 0  # depth is negative
+
+    def test_depth_matches_position_3d(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=20)
+        for rec in obs:
+            assert rec["position_3d"][2] == -rec["depth_m"]
+
+    def test_species_variety(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=80)
+        species = set(r["species"] for r in obs)
+        assert len(species) == 8
+
+    def test_elevation_equals_depth(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        obs = make_fish_observations(n=20)
+        for rec in obs:
+            assert rec["elevation"] == rec["depth_m"]
+
+    def test_deterministic(self):
+        from shiny_deckgl._demo_data import make_fish_observations
+        a = make_fish_observations(n=30)
+        b = make_fish_observations(n=30)
+        assert a == b
+
+
+class TestBathymetryGeoJSON:
+    """Tests for make_bathymetry_geojson() GeoJSON data generator."""
+
+    def test_feature_collection_type(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson
+        gj = make_bathymetry_geojson()
+        assert gj["type"] == "FeatureCollection"
+
+    def test_default_feature_count(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson
+        gj = make_bathymetry_geojson()
+        assert len(gj["features"]) == 150  # 15 × 10
+
+    def test_custom_feature_count(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson
+        gj = make_bathymetry_geojson(cols=4, rows=3)
+        assert len(gj["features"]) == 12
+
+    def test_feature_structure(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson
+        gj = make_bathymetry_geojson(cols=3, rows=3)
+        feat = gj["features"][0]
+        assert feat["type"] == "Feature"
+        assert feat["geometry"]["type"] == "Point"
+        assert len(feat["geometry"]["coordinates"]) == 2
+        assert "depth_m" in feat["properties"]
+        assert "elevation" in feat["properties"]
+
+    def test_properties_match_grid(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson, make_bathymetry_grid
+        gj = make_bathymetry_geojson(cols=5, rows=5)
+        grid = make_bathymetry_grid(cols=5, rows=5)
+        for feat, pt in zip(gj["features"], grid):
+            assert feat["properties"]["depth_m"] == pt["depth_m"]
+            assert feat["properties"]["elevation"] == pt["elevation"]
+
+
+class TestArcData3D:
+    """Tests for make_3d_arc_data() 3-D arc generator."""
+
+    def test_arc_count(self):
+        from shiny_deckgl._demo_data import make_3d_arc_data
+        arcs = make_3d_arc_data()
+        assert len(arcs) == 8  # same as ROUTES count
+
+    def test_arc_has_3d_positions(self):
+        from shiny_deckgl._demo_data import make_3d_arc_data
+        arcs = make_3d_arc_data()
+        for arc in arcs:
+            assert len(arc["sourcePosition"]) == 3
+            assert len(arc["targetPosition"]) == 3
+            assert arc["sourcePosition"][2] == 0
+            assert arc["targetPosition"][2] == 0
+
+    def test_arc_has_height(self):
+        from shiny_deckgl._demo_data import make_3d_arc_data
+        arcs = make_3d_arc_data()
+        for arc in arcs:
+            assert "height" in arc
+            assert arc["height"] > 0
+
+    def test_arc_has_colors(self):
+        from shiny_deckgl._demo_data import make_3d_arc_data
+        arcs = make_3d_arc_data()
+        for arc in arcs:
+            assert "sourceColor" in arc
+            assert "targetColor" in arc
+
+    def test_arc_has_name(self):
+        from shiny_deckgl._demo_data import make_3d_arc_data
+        arcs = make_3d_arc_data()
+        for arc in arcs:
+            assert "name" in arc
+            assert "→" in arc["name"]
+
+
+class TestBalticView3D:
+    """Tests for BALTIC_VIEW_3D and LIGHTING_EFFECT_3D constants."""
+
+    def test_view_has_pitch(self):
+        from shiny_deckgl._demo_data import BALTIC_VIEW_3D
+        assert BALTIC_VIEW_3D["pitch"] == 45
+
+    def test_view_has_bearing(self):
+        from shiny_deckgl._demo_data import BALTIC_VIEW_3D
+        assert BALTIC_VIEW_3D["bearing"] == -15
+
+    def test_view_has_standard_keys(self):
+        from shiny_deckgl._demo_data import BALTIC_VIEW_3D
+        for key in ("longitude", "latitude", "zoom", "pitch", "bearing"):
+            assert key in BALTIC_VIEW_3D
+
+    def test_lighting_effect_type(self):
+        from shiny_deckgl._demo_data import LIGHTING_EFFECT_3D
+        assert LIGHTING_EFFECT_3D["type"] == "LightingEffect"
+
+    def test_lighting_has_ambient(self):
+        from shiny_deckgl._demo_data import LIGHTING_EFFECT_3D
+        assert "ambientLight" in LIGHTING_EFFECT_3D
+
+    def test_lighting_has_point_lights(self):
+        from shiny_deckgl._demo_data import LIGHTING_EFFECT_3D
+        assert "pointLights" in LIGHTING_EFFECT_3D
+        assert len(LIGHTING_EFFECT_3D["pointLights"]) >= 1
+
+
+# ===================================================================
+# 3-D LAYER INTEGRATION TESTS
+# ===================================================================
+
+class TestColumnLayer3D:
+    """Extended 3-D tests for column_layer."""
+
+    def test_extruded_with_data(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        data = make_bathymetry_grid(cols=5, rows=5)
+        spec = column_layer("bathy-cols", data=data)
+        assert spec["type"] == "ColumnLayer"
+        assert spec["extruded"] is True
+        assert len(spec["data"]) == 25
+
+    def test_elevation_accessor(self):
+        spec = column_layer("c3d", data=[], getElevation="@@d.depth_m")
+        assert spec["getElevation"] == "@@d.depth_m"
+
+    def test_elevation_scale(self):
+        spec = column_layer("c3d-scale", data=[], elevationScale=200)
+        assert spec["elevationScale"] == 200
+
+    def test_wireframe(self):
+        spec = column_layer("c3d-wire", data=[], wireframe=True)
+        assert spec["wireframe"] is True
+
+    def test_wireframe_not_in_defaults(self):
+        spec = column_layer("c3d-nowire", data=[])
+        assert "wireframe" not in spec
+
+    def test_3d_fill_color(self):
+        spec = column_layer("c3d-color", data=[],
+                            getFillColor=[0, 100, 200, 180])
+        assert spec["getFillColor"] == [0, 100, 200, 180]
+
+    def test_custom_radius(self):
+        spec = column_layer("c3d-rad", data=[], radius=5000)
+        assert spec["radius"] == 5000
+
+
+class TestHexagonLayer3D:
+    """Extended 3-D tests for hexagon_layer."""
+
+    def test_extruded_with_data(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        data = make_bathymetry_grid(cols=5, rows=5)
+        pts = [p["position"] for p in data]
+        spec = hexagon_layer("hex3d", data=pts)
+        assert spec["type"] == "HexagonLayer"
+        assert spec["extruded"] is True
+        assert len(spec["data"]) == 25
+
+    def test_custom_elevation_scale(self):
+        spec = hexagon_layer("hex3d-es", data=[], elevationScale=50)
+        assert spec["elevationScale"] == 50
+
+    def test_wireframe_passthrough(self):
+        spec = hexagon_layer("hex3d-wf", data=[], wireframe=True)
+        assert spec["wireframe"] is True
+
+    def test_upper_percentile(self):
+        spec = hexagon_layer("hex3d-up", data=[], upperPercentile=90)
+        assert spec["upperPercentile"] == 90
+
+
+class TestGridLayer3D:
+    """Extended 3-D tests for grid_layer."""
+
+    def test_extruded_with_data(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        data = make_bathymetry_grid(cols=5, rows=5)
+        pts = [p["position"] for p in data]
+        spec = grid_layer("grid3d", data=pts)
+        assert spec["type"] == "GridLayer"
+        assert spec["extruded"] is True
+        assert spec["elevationScale"] == 4
+
+    def test_wireframe(self):
+        spec = grid_layer("grid3d-wf", data=[], wireframe=True)
+        assert spec["wireframe"] is True
+
+    def test_custom_cell_size(self):
+        spec = grid_layer("grid3d-cs", data=[], cellSize=5000)
+        assert spec["cellSize"] == 5000
+
+
+class TestPolygonLayer3D:
+    """3-D extrusion tests for polygon_layer."""
+
+    def test_extruded_true(self):
+        data = [{"polygon": [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]],
+                 "elevation": 100}]
+        spec = polygon_layer("poly3d", data=data, extruded=True,
+                             getElevation="@@d.elevation")
+        assert spec["extruded"] is True
+        assert spec["getElevation"] == "@@d.elevation"
+
+    def test_wireframe_passthrough(self):
+        spec = polygon_layer("poly3d-wf", data=[], extruded=True,
+                             wireframe=True)
+        assert spec["wireframe"] is True
+
+
+class TestGeoJsonLayer3D:
+    """3-D extrusion tests for geojson_layer."""
+
+    def test_extruded_geojson(self):
+        from shiny_deckgl._demo_data import make_bathymetry_geojson
+        gj = make_bathymetry_geojson(cols=3, rows=3)
+        spec = geojson_layer("gj3d", data=gj, extruded=True,
+                             getElevation="@@=properties.elevation",
+                             elevationScale=100)
+        assert spec["type"] == "GeoJsonLayer"
+        assert spec["extruded"] is True
+        assert spec["getElevation"] == "@@=properties.elevation"
+        assert spec["elevationScale"] == 100
+
+    def test_wireframe_on_geojson(self):
+        spec = geojson_layer("gj3d-wf", data={"type": "FeatureCollection",
+                             "features": []}, extruded=True, wireframe=True)
+        assert spec["wireframe"] is True
+
+
+class TestH3HexagonLayer3D:
+    """3-D extrusion tests for h3_hexagon_layer."""
+
+    def test_extruded_override(self):
+        data = [{"hex": "882a100d63fffff", "color": [255, 0, 0],
+                 "elevation": 50}]
+        spec = h3_hexagon_layer("h33d", data=data, extruded=True,
+                                getElevation="@@d.elevation")
+        assert spec["extruded"] is True
+        assert spec["getElevation"] == "@@d.elevation"
+
+
+class TestGenericLayer3D:
+    """Test using generic layer() for 3-D types without typed helpers."""
+
+    def test_point_cloud_layer(self):
+        data = [{"position": [20.0, 55.0, -100], "color": [255, 0, 0]}]
+        spec = layer("PointCloudLayer", "pc3d", data,
+                     getPosition="@@d.position",
+                     getColor="@@d.color",
+                     pointSize=5)
+        assert spec["type"] == "PointCloudLayer"
+        assert spec["getPosition"] == "@@d.position"
+        assert spec["pointSize"] == 5
+
+    def test_gpu_grid_layer(self):
+        data = [[20.0, 55.0], [21.0, 56.0]]
+        spec = layer("GPUGridLayer", "gpugrid", data,
+                     getPosition="@@d",
+                     cellSize=1000,
+                     extruded=True,
+                     elevationScale=10)
+        assert spec["type"] == "GPUGridLayer"
+        assert spec["extruded"] is True
+        assert spec["elevationScale"] == 10
+
+
+class TestTerrainExtension3D:
+    """Test terrain extension integration with 3-D layers."""
+
+    def test_terrain_extension_on_column(self):
+        spec = column_layer("col-terrain", data=[],
+                            extensions=[terrain_extension()],
+                            terrainDrawMode="drape")
+        assert terrain_extension() in spec["@@extensions"]
+        assert spec["terrainDrawMode"] == "drape"
+
+    def test_terrain_extension_on_geojson(self):
+        spec = geojson_layer("gj-terrain",
+                             data={"type": "FeatureCollection", "features": []},
+                             extensions=[terrain_extension()],
+                             terrainDrawMode="offset")
+        assert terrain_extension() in spec["@@extensions"]
+        assert spec["terrainDrawMode"] == "offset"
+
+
+class TestViewState3D:
+    """Test 3-D view state construction and pitch/bearing parameters."""
+
+    def test_widget_with_pitch(self):
+        w = MapWidget("map3d", view_state={"longitude": 19.5, "latitude": 57.0,
+                      "zoom": 5, "pitch": 45, "bearing": -15})
+        html = str(w.ui())
+        assert 'data-initial-pitch="45"' in html
+        assert 'data-initial-bearing="-15"' in html
+
+    def test_pitch_zero_default(self):
+        w = MapWidget("map-flat", view_state={"longitude": 0, "latitude": 0,
+                      "zoom": 2})
+        html = str(w.ui())
+        # pitch defaults to 0
+        assert 'data-initial-pitch="0"' in html
+
+    def test_3d_view_state_from_data(self):
+        from shiny_deckgl._demo_data import BALTIC_VIEW_3D
+        w = MapWidget("map-baltic3d", view_state=BALTIC_VIEW_3D)
+        html = str(w.ui())
+        assert 'data-initial-pitch="45"' in html
+        assert 'data-initial-bearing="-15"' in html
+
+
+class TestToJson3D:
+    """Test to_json / from_json roundtrip with 3-D layers and effects."""
+
+    def test_roundtrip_extruded_column(self):
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        data = make_bathymetry_grid(cols=3, rows=3)
+        w = MapWidget("json3d", view_state={"longitude": 19, "latitude": 57,
+                      "zoom": 5, "pitch": 45, "bearing": 0})
+        spec = column_layer("cols", data=data, elevationScale=200)
+
+        j = w.to_json([spec])
+        parsed = json.loads(j)
+        assert parsed["viewState"]["pitch"] == 45
+        layer_found = parsed["layers"][0]
+        assert layer_found["type"] == "ColumnLayer"
+        assert layer_found["extruded"] is True
+        assert layer_found["elevationScale"] == 200
+
+    def test_roundtrip_effects(self):
+        from shiny_deckgl._demo_data import LIGHTING_EFFECT_3D
+        w = MapWidget("json3d-fx", view_state={"longitude": 19, "latitude": 57,
+                      "zoom": 5, "pitch": 45, "bearing": 0})
+
+        j = w.to_json([], effects=[LIGHTING_EFFECT_3D])
+        parsed = json.loads(j)
+        assert len(parsed["effects"]) == 1
+        assert parsed["effects"][0]["type"] == "LightingEffect"
+
+
+class TestToHtml3D:
+    """Test to_html with 3-D layers and effects."""
+
+    def test_html_contains_pitch(self):
+        w = MapWidget("html3d", view_state={"longitude": 19, "latitude": 57,
+                      "zoom": 5, "pitch": 60, "bearing": 30})
+        html = w.to_html([])
+        assert 'data-initial-pitch="60"' in html
+
+    def test_html_contains_extruded_layer(self):
+        data = [{"position": [19, 57], "elevation": 100}]
+        w = MapWidget("html3d-col", view_state={"longitude": 19,
+                      "latitude": 57, "zoom": 5, "pitch": 45, "bearing": 0})
+        spec = column_layer("bathy", data=data, elevationScale=50)
+        html = w.to_html([spec])
+        assert "ColumnLayer" in html
+        assert "elevationScale" in html
+
+
+class TestFirstPersonView3D:
+    """Test FirstPersonView in 3-D context."""
+
+    def test_first_person_view_spec(self):
+        v = first_person_view()
+        assert v["@@type"] == "FirstPersonView"
+
+    def test_first_person_with_kwargs(self):
+        v = first_person_view(fovy=75)
+        assert v["fovy"] == 75
+
+
+class TestGlobeView3D:
+    """Test GlobeView integration."""
+
+    def test_globe_view_spec(self):
+        v = globe_view()
+        assert v["@@type"] == "GlobeView"
+
+    def test_globe_view_with_resolution(self):
+        v = globe_view(resolution=10)
+        assert v["resolution"] == 10
+
+    def test_globe_view_in_update_payload(self):
+        """GlobeView should appear in update() message payload."""
+        w = MapWidget("globe3d", view_state={"longitude": 19, "latitude": 57,
+                      "zoom": 2})
+        fake = _FakeSession()
+        views = [globe_view()]
+        asyncio.run(w.update(fake, [], views=views))
+        msg = fake.messages[0]
+        assert msg[1]["views"][0]["@@type"] == "GlobeView"
+
+
+class TestOrbitViewGeneric:
+    """OrbitView via raw dict (no typed helper exists)."""
+
+    def test_orbit_view_dict(self):
+        """OrbitView via raw dict should appear in update() payload."""
+        view = {"@@type": "OrbitView", "orbitAxis": "Y"}
+        w = MapWidget("orbit3d", view_state={"longitude": 0, "latitude": 0,
+                      "zoom": 5})
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, [], views=[view]))
+        msg = fake.messages[0]
+        assert msg[1]["views"][0]["@@type"] == "OrbitView"
+        assert msg[1]["views"][0]["orbitAxis"] == "Y"
+
+
+class TestCombined3DScene:
+    """Integration: combine 3-D layers, effects, pitched view state."""
+
+    def test_full_3d_scene_to_json(self):
+        from shiny_deckgl._demo_data import (
+            make_bathymetry_grid, BALTIC_VIEW_3D, LIGHTING_EFFECT_3D,
+        )
+        data = make_bathymetry_grid(cols=5, rows=5)
+        w = MapWidget("scene3d", view_state=BALTIC_VIEW_3D)
+        cols = column_layer("bathy-cols", data=data,
+                            elevationScale=200, wireframe=True,
+                            getFillColor=[0, 100, 200])
+
+        j = w.to_json([cols], effects=[LIGHTING_EFFECT_3D])
+        parsed = json.loads(j)
+
+        # View state
+        assert parsed["viewState"]["pitch"] == 45
+        assert parsed["viewState"]["bearing"] == -15
+
+        # Layer
+        lyr = parsed["layers"][0]
+        assert lyr["type"] == "ColumnLayer"
+        assert lyr["extruded"] is True
+        assert lyr["wireframe"] is True
+        assert lyr["elevationScale"] == 200
+        assert len(lyr["data"]) == 25
+
+        # Effects
+        assert len(parsed["effects"]) == 1
+        assert parsed["effects"][0]["type"] == "LightingEffect"
+
+    def test_full_3d_scene_to_html(self):
+        from shiny_deckgl._demo_data import (
+            make_bathymetry_grid, BALTIC_VIEW_3D, LIGHTING_EFFECT_3D,
+        )
+        data = make_bathymetry_grid(cols=3, rows=3)
+        w = MapWidget("scene3d-html", view_state=BALTIC_VIEW_3D)
+        layers = [column_layer("cols", data=data, elevationScale=100)]
+
+        html = w.to_html(layers, effects=[LIGHTING_EFFECT_3D])
+        assert "ColumnLayer" in html
+        assert "LightingEffect" in html
+        assert "elevationScale" in html
+
+    def test_multiple_3d_layers(self):
+        """Multiple 3-D layers in one scene."""
+        from shiny_deckgl._demo_data import make_bathymetry_grid
+        data = make_bathymetry_grid(cols=3, rows=3)
+        pts = [p["position"] for p in data]
+
+        w = MapWidget("multi3d", view_state={"longitude": 19, "latitude": 57,
+                      "zoom": 5, "pitch": 45, "bearing": 0})
+        cols = column_layer("cols", data=data, elevationScale=100)
+        hexs = hexagon_layer("hexs", data=pts, elevationScale=10)
+        grids = grid_layer("grids", data=pts, cellSize=5000)
+
+        j = w.to_json([cols, hexs, grids])
+        parsed = json.loads(j)
+        assert len(parsed["layers"]) == 3
+        types = [l["type"] for l in parsed["layers"]]
+        assert "ColumnLayer" in types
+        assert "HexagonLayer" in types
+        assert "GridLayer" in types
+        for lyr in parsed["layers"]:
+            assert lyr["extruded"] is True

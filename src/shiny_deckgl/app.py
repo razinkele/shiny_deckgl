@@ -1,4 +1,4 @@
-"""Comprehensive shiny_deckgl demo — showcases all v0.1–v0.6 features."""
+"""Comprehensive shiny_deckgl demo — showcases all v0.1–v0.5 features."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from .components import (
     scatterplot_layer,
     geojson_layer,
     tile_layer,
-    layer,
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,

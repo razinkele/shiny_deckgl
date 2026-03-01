@@ -1,6 +1,8 @@
-"""Tests for shiny_deckgl package."""
+﻿"""Tests for shiny_deckgl package."""
 
+import asyncio
 import json
+import pytest
 import tempfile
 import os
 import shiny_deckgl as m
@@ -379,7 +381,7 @@ class TestColorBins:
             assert all(isinstance(v, int) for v in c)
 
     def test_uniform_values(self):
-        """All same value → all mapped to same bin."""
+        """All same value â†’ all mapped to same bin."""
         result = color_bins([5, 5, 5, 5], n_bins=3)
         assert all(c == result[0] for c in result)
 
@@ -417,7 +419,7 @@ class TestPalettes:
 
 
 # ---------------------------------------------------------------------------
-# MapWidget – minZoom / maxZoom & drag
+# MapWidget â€“ minZoom / maxZoom & drag
 # ---------------------------------------------------------------------------
 
 class TestMapWidgetP2:
@@ -677,7 +679,7 @@ class TestToHtmlAdvanced:
         tip = {"html": '<b>{name}</b><br/>"quoted"'}
         w = MapWidget("esc", tooltip=tip)
         html = w.to_html([])
-        # data-tooltip must be properly quoted — no unescaped " inside attr
+        # data-tooltip must be properly quoted â€” no unescaped " inside attr
         assert 'data-tooltip="' in html
         assert "&quot;" in html or "&#x27;" in html or "quoted" in html
 
@@ -731,7 +733,6 @@ class TestUpdateTooltip:
     def test_update_tooltip_sets_attribute(self):
         """Calling update_tooltip should update the widget's tooltip attr
         (the actual message send requires a live session, tested manually)."""
-        import asyncio
 
         w = MapWidget("utt2", tooltip={"html": "<b>{name}</b>"})
         assert w.tooltip is not None
@@ -752,7 +753,6 @@ class TestUpdateTooltip:
         assert fake.messages[0][1]["tooltip"] == new_tip
 
     def test_update_tooltip_none_disables(self):
-        import asyncio
 
         w = MapWidget("utt3", tooltip={"html": "hi"})
 
@@ -781,7 +781,6 @@ class TestSetStyle:
     def test_set_style_updates_attribute_and_message(self):
         """set_style should update the Python-side style attribute
         and send a deck_set_style custom message."""
-        import asyncio
 
         w = MapWidget("ss2", style=CARTO_POSITRON)
         assert w.style == CARTO_POSITRON
@@ -801,7 +800,6 @@ class TestSetStyle:
         assert fake.messages[0][1]["style"] == CARTO_DARK
 
     def test_set_style_custom_url(self):
-        import asyncio
 
         w = MapWidget("ss3")
         custom = "https://example.com/my-style.json"
@@ -819,7 +817,7 @@ class TestSetStyle:
 
 
 # ---------------------------------------------------------------------------
-# v0.2.0 — Phase 1 tests
+# v0.2.0 â€” Phase 1 tests
 # ---------------------------------------------------------------------------
 
 class _FakeSession:
@@ -875,7 +873,6 @@ class TestControlConstants:
 
 class TestAddControl:
     def test_add_control_scale(self):
-        import asyncio
         w = MapWidget("ctrl1")
         fake = _FakeSession()
         asyncio.run(w.add_control(fake, "scale", "bottom-left"))
@@ -887,7 +884,6 @@ class TestAddControl:
         })
 
     def test_add_control_with_options(self):
-        import asyncio
         w = MapWidget("ctrl2")
         fake = _FakeSession()
         asyncio.run(w.add_control(fake, "scale", "bottom-left",
@@ -895,7 +891,6 @@ class TestAddControl:
         assert fake.messages[0][1]["options"] == {"maxWidth": 200, "unit": "metric"}
 
     def test_add_control_fullscreen(self):
-        import asyncio
         w = MapWidget("ctrl_fs")
         fake = _FakeSession()
         asyncio.run(w.add_control(fake, "fullscreen", "top-left"))
@@ -903,35 +898,30 @@ class TestAddControl:
         assert fake.messages[0][1]["position"] == "top-left"
 
     def test_add_control_geolocate(self):
-        import asyncio
         w = MapWidget("ctrl_gl")
         fake = _FakeSession()
         asyncio.run(w.add_control(fake, "geolocate", "top-right"))
         assert fake.messages[0][1]["controlType"] == "geolocate"
 
     def test_add_control_invalid_type_raises(self):
-        import asyncio, pytest
         w = MapWidget("ctrl3")
         fake = _FakeSession()
         with pytest.raises(ValueError, match="Unknown control type"):
             asyncio.run(w.add_control(fake, "invalid"))
 
     def test_add_control_invalid_position_raises(self):
-        import asyncio, pytest
         w = MapWidget("ctrl4")
         fake = _FakeSession()
         with pytest.raises(ValueError, match="Unknown position"):
             asyncio.run(w.add_control(fake, "scale", "middle"))
 
     def test_add_control_default_position(self):
-        import asyncio
         w = MapWidget("ctrl_dp")
         fake = _FakeSession()
         asyncio.run(w.add_control(fake, "navigation"))
         assert fake.messages[0][1]["position"] == "top-right"
 
     def test_remove_control(self):
-        import asyncio
         w = MapWidget("ctrl5")
         fake = _FakeSession()
         asyncio.run(w.remove_control(fake, "navigation"))
@@ -974,7 +964,6 @@ class TestControlsConstructor:
 
 class TestFitBounds:
     def test_fit_bounds_basic(self):
-        import asyncio
         w = MapWidget("fb1")
         fake = _FakeSession()
         asyncio.run(w.fit_bounds(fake, [[10, 54], [30, 66]]))
@@ -984,7 +973,6 @@ class TestFitBounds:
         assert msg[1]["padding"] == 50
 
     def test_fit_bounds_with_options(self):
-        import asyncio
         w = MapWidget("fb2")
         fake = _FakeSession()
         asyncio.run(w.fit_bounds(fake, [[10, 54], [30, 66]],
@@ -996,14 +984,12 @@ class TestFitBounds:
         assert msg["padding"]["top"] == 20
 
     def test_fit_bounds_no_duration_key_when_zero(self):
-        import asyncio
         w = MapWidget("fb3")
         fake = _FakeSession()
         asyncio.run(w.fit_bounds(fake, [[0, 0], [1, 1]]))
         assert "duration" not in fake.messages[0][1]
 
     def test_fit_bounds_custom_padding_int(self):
-        import asyncio
         w = MapWidget("fb4")
         fake = _FakeSession()
         asyncio.run(w.fit_bounds(fake, [[0, 0], [1, 1]], padding=100))
@@ -1095,7 +1081,7 @@ class TestMapClickInputIds:
 
 
 # ===========================================================================
-# Phase 2 (v0.3.0) — Native MapLibre Rendering
+# Phase 2 (v0.3.0) â€” Native MapLibre Rendering
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -1104,7 +1090,6 @@ class TestMapClickInputIds:
 
 class TestNativeSources:
     def test_add_source_geojson(self):
-        import asyncio
         w = MapWidget("ns1")
         fake = _FakeSession()
         spec = {"type": "geojson", "data": {"type": "FeatureCollection", "features": []}}
@@ -1115,7 +1100,6 @@ class TestNativeSources:
         assert msg[1]["spec"]["type"] == "geojson"
 
     def test_add_source_raster_wms(self):
-        import asyncio
         w = MapWidget("ns2")
         fake = _FakeSession()
         spec = {
@@ -1127,7 +1111,6 @@ class TestNativeSources:
         assert fake.messages[0][1]["spec"]["type"] == "raster"
 
     def test_add_maplibre_layer(self):
-        import asyncio
         w = MapWidget("ns3")
         fake = _FakeSession()
         layer_spec = {
@@ -1142,7 +1125,6 @@ class TestNativeSources:
         assert msg[1]["layerSpec"]["id"] == "eez-fill"
 
     def test_add_maplibre_layer_with_before_id(self):
-        import asyncio
         w = MapWidget("ns4")
         fake = _FakeSession()
         asyncio.run(w.add_maplibre_layer(
@@ -1152,7 +1134,6 @@ class TestNativeSources:
         assert fake.messages[0][1]["beforeId"] == "other-layer"
 
     def test_add_maplibre_layer_no_before_id(self):
-        import asyncio
         w = MapWidget("ns4b")
         fake = _FakeSession()
         asyncio.run(w.add_maplibre_layer(
@@ -1161,7 +1142,6 @@ class TestNativeSources:
         assert "beforeId" not in fake.messages[0][1]
 
     def test_remove_maplibre_layer(self):
-        import asyncio
         w = MapWidget("ns5")
         fake = _FakeSession()
         asyncio.run(w.remove_maplibre_layer(fake, "eez-fill"))
@@ -1170,7 +1150,6 @@ class TestNativeSources:
         })
 
     def test_remove_source(self):
-        import asyncio
         w = MapWidget("ns6")
         fake = _FakeSession()
         asyncio.run(w.remove_source(fake, "eez"))
@@ -1179,7 +1158,6 @@ class TestNativeSources:
         })
 
     def test_set_source_data(self):
-        import asyncio
         w = MapWidget("ns7")
         fake = _FakeSession()
         new_data = {"type": "FeatureCollection", "features": []}
@@ -1189,7 +1167,6 @@ class TestNativeSources:
         assert msg[1]["data"]["type"] == "FeatureCollection"
 
     def test_set_source_data_url_string(self):
-        import asyncio
         w = MapWidget("ns8")
         fake = _FakeSession()
         asyncio.run(w.set_source_data(fake, "src", "https://example.com/data.geojson"))
@@ -1203,7 +1180,6 @@ class TestNativeSources:
 
 class TestStyleMutation:
     def test_set_paint_property(self):
-        import asyncio
         w = MapWidget("sp1")
         fake = _FakeSession()
         asyncio.run(w.set_paint_property(fake, "eez-fill", "fill-opacity", 0.8))
@@ -1214,14 +1190,12 @@ class TestStyleMutation:
         assert msg[1]["value"] == 0.8
 
     def test_set_paint_property_color(self):
-        import asyncio
         w = MapWidget("sp1b")
         fake = _FakeSession()
         asyncio.run(w.set_paint_property(fake, "lines", "line-color", "#ff0000"))
         assert fake.messages[0][1]["value"] == "#ff0000"
 
     def test_set_layout_property(self):
-        import asyncio
         w = MapWidget("sp2")
         fake = _FakeSession()
         asyncio.run(w.set_layout_property(fake, "labels", "visibility", "none"))
@@ -1230,14 +1204,12 @@ class TestStyleMutation:
         assert msg[1]["value"] == "none"
 
     def test_set_layout_property_visible(self):
-        import asyncio
         w = MapWidget("sp2b")
         fake = _FakeSession()
         asyncio.run(w.set_layout_property(fake, "labels", "visibility", "visible"))
         assert fake.messages[0][1]["value"] == "visible"
 
     def test_set_filter(self):
-        import asyncio
         w = MapWidget("sp3")
         fake = _FakeSession()
         asyncio.run(w.set_filter(fake, "stations", [">=", ["get", "depth"], 100]))
@@ -1246,14 +1218,12 @@ class TestStyleMutation:
         assert msg[1]["filter"] == [">=", ["get", "depth"], 100]
 
     def test_set_filter_clear(self):
-        import asyncio
         w = MapWidget("sp4")
         fake = _FakeSession()
         asyncio.run(w.set_filter(fake, "stations", None))
         assert fake.messages[0][1]["filter"] is None
 
     def test_set_filter_complex_expression(self):
-        import asyncio
         w = MapWidget("sp5")
         fake = _FakeSession()
         expr = ["all", [">=", ["get", "depth"], 50], ["<=", ["get", "depth"], 200]]
@@ -1262,7 +1232,7 @@ class TestStyleMutation:
 
 
 # ===========================================================================
-# Phase 3 (v0.4.0) — 3D, Globe & Advanced Interaction
+# Phase 3 (v0.4.0) â€” 3D, Globe & Advanced Interaction
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -1271,7 +1241,6 @@ class TestStyleMutation:
 
 class TestSetProjection:
     def test_set_projection_globe(self):
-        import asyncio
         w = MapWidget("proj1")
         fake = _FakeSession()
         asyncio.run(w.set_projection(fake, "globe"))
@@ -1280,14 +1249,12 @@ class TestSetProjection:
         })
 
     def test_set_projection_mercator(self):
-        import asyncio
         w = MapWidget("proj2")
         fake = _FakeSession()
         asyncio.run(w.set_projection(fake, "mercator"))
         assert fake.messages[0][1]["projection"] == "mercator"
 
     def test_set_projection_invalid_raises(self):
-        import asyncio, pytest
         w = MapWidget("proj3")
         fake = _FakeSession()
         with pytest.raises(ValueError, match="Unknown projection"):
@@ -1300,7 +1267,6 @@ class TestSetProjection:
 
 class TestTerrain:
     def test_set_terrain_enable(self):
-        import asyncio
         w = MapWidget("ter1")
         fake = _FakeSession()
         asyncio.run(w.set_terrain(fake, source="dem", exaggeration=1.5))
@@ -1309,21 +1275,18 @@ class TestTerrain:
         assert msg[1]["terrain"] == {"source": "dem", "exaggeration": 1.5}
 
     def test_set_terrain_disable(self):
-        import asyncio
         w = MapWidget("ter2")
         fake = _FakeSession()
         asyncio.run(w.set_terrain(fake, source=None))
         assert fake.messages[0][1]["terrain"] is None
 
     def test_set_terrain_default_exaggeration(self):
-        import asyncio
         w = MapWidget("ter2b")
         fake = _FakeSession()
         asyncio.run(w.set_terrain(fake, source="dem"))
         assert fake.messages[0][1]["terrain"]["exaggeration"] == 1.0
 
     def test_set_sky(self):
-        import asyncio
         w = MapWidget("ter3")
         fake = _FakeSession()
         sky = {"sky-color": "#199EF3", "sky-horizon-blend": 0.5}
@@ -1333,7 +1296,6 @@ class TestTerrain:
         })
 
     def test_set_sky_none_resets(self):
-        import asyncio
         w = MapWidget("ter4")
         fake = _FakeSession()
         asyncio.run(w.set_sky(fake, None))
@@ -1346,7 +1308,6 @@ class TestTerrain:
 
 class TestPopups:
     def test_add_popup(self):
-        import asyncio
         w = MapWidget("pop1")
         fake = _FakeSession()
         asyncio.run(w.add_popup(fake, "stations", "<b>{name}</b>"))
@@ -1357,7 +1318,6 @@ class TestPopups:
         assert msg[1]["closeButton"] is True
 
     def test_add_popup_with_options(self):
-        import asyncio
         w = MapWidget("pop2")
         fake = _FakeSession()
         asyncio.run(w.add_popup(fake, "eez", "{name}",
@@ -1369,14 +1329,12 @@ class TestPopups:
         assert msg["anchor"] == "bottom"
 
     def test_add_popup_no_anchor(self):
-        import asyncio
         w = MapWidget("pop2b")
         fake = _FakeSession()
         asyncio.run(w.add_popup(fake, "layer", "text"))
         assert "anchor" not in fake.messages[0][1]
 
     def test_remove_popup(self):
-        import asyncio
         w = MapWidget("pop3")
         fake = _FakeSession()
         asyncio.run(w.remove_popup(fake, "stations"))
@@ -1395,7 +1353,6 @@ class TestPopups:
 
 class TestSpatialQueries:
     def test_query_rendered_features_point(self):
-        import asyncio
         w = MapWidget("sq1")
         fake = _FakeSession()
         asyncio.run(w.query_rendered_features(
@@ -1409,7 +1366,6 @@ class TestSpatialQueries:
         assert msg[1]["requestId"] == "test-1"
 
     def test_query_rendered_features_bounds(self):
-        import asyncio
         w = MapWidget("sq2")
         fake = _FakeSession()
         asyncio.run(w.query_rendered_features(
@@ -1420,7 +1376,6 @@ class TestSpatialQueries:
         assert "point" not in msg
 
     def test_query_rendered_features_no_geometry(self):
-        import asyncio
         w = MapWidget("sq2b")
         fake = _FakeSession()
         asyncio.run(w.query_rendered_features(fake, layers=["all"]))
@@ -1429,7 +1384,6 @@ class TestSpatialQueries:
         assert "bounds" not in msg
 
     def test_query_rendered_features_with_filter(self):
-        import asyncio
         w = MapWidget("sq2c")
         fake = _FakeSession()
         asyncio.run(w.query_rendered_features(
@@ -1439,7 +1393,6 @@ class TestSpatialQueries:
         assert fake.messages[0][1]["filter"] == ["==", ["get", "type"], "station"]
 
     def test_query_at_lnglat(self):
-        import asyncio
         w = MapWidget("sq3")
         fake = _FakeSession()
         asyncio.run(w.query_at_lnglat(fake, 21.1, 55.7,
@@ -1462,7 +1415,6 @@ class TestSpatialQueries:
 
 class TestMultipleMarkers:
     def test_add_marker_basic(self):
-        import asyncio
         w = MapWidget("mm1")
         fake = _FakeSession()
         asyncio.run(w.add_marker(fake, "station-1", 21.1, 55.7))
@@ -1474,7 +1426,6 @@ class TestMultipleMarkers:
         assert msg[1]["draggable"] is False
 
     def test_add_marker_with_options(self):
-        import asyncio
         w = MapWidget("mm2")
         fake = _FakeSession()
         asyncio.run(w.add_marker(fake, "buoy-A", 20.0, 56.0,
@@ -1486,7 +1437,6 @@ class TestMultipleMarkers:
         assert msg["popupHtml"] == "<b>Buoy A</b>"
 
     def test_remove_marker(self):
-        import asyncio
         w = MapWidget("mm3")
         fake = _FakeSession()
         asyncio.run(w.remove_marker(fake, "station-1"))
@@ -1495,7 +1445,6 @@ class TestMultipleMarkers:
         })
 
     def test_clear_markers(self):
-        import asyncio
         w = MapWidget("mm4")
         fake = _FakeSession()
         asyncio.run(w.clear_markers(fake))
@@ -1511,7 +1460,7 @@ class TestMultipleMarkers:
 
 
 # ===========================================================================
-# Phase 4 (v0.5.0) — Drawing, Data Integration & Export
+# Phase 4 (v0.5.0) â€” Drawing, Data Integration & Export
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
@@ -1520,7 +1469,6 @@ class TestMultipleMarkers:
 
 class TestDrawingTools:
     def test_enable_draw_default(self):
-        import asyncio
         w = MapWidget("dr1")
         fake = _FakeSession()
         asyncio.run(w.enable_draw(fake))
@@ -1529,14 +1477,12 @@ class TestDrawingTools:
         assert msg[1]["defaultMode"] == "simple_select"
 
     def test_enable_draw_polygon_only(self):
-        import asyncio
         w = MapWidget("dr2")
         fake = _FakeSession()
         asyncio.run(w.enable_draw(fake, modes=["draw_polygon"]))
         assert fake.messages[0][1]["modes"] == ["draw_polygon"]
 
     def test_enable_draw_with_controls(self):
-        import asyncio
         w = MapWidget("dr2b")
         fake = _FakeSession()
         controls = {"point": True, "polygon": True, "trash": True}
@@ -1544,28 +1490,24 @@ class TestDrawingTools:
         assert fake.messages[0][1]["controls"] == controls
 
     def test_disable_draw(self):
-        import asyncio
         w = MapWidget("dr3")
         fake = _FakeSession()
         asyncio.run(w.disable_draw(fake))
         assert fake.messages[0][0] == "deck_disable_draw"
 
     def test_get_drawn_features(self):
-        import asyncio
         w = MapWidget("dr3b")
         fake = _FakeSession()
         asyncio.run(w.get_drawn_features(fake))
         assert fake.messages[0][0] == "deck_get_drawn_features"
 
     def test_delete_drawn_features(self):
-        import asyncio
         w = MapWidget("dr4")
         fake = _FakeSession()
         asyncio.run(w.delete_drawn_features(fake, feature_ids=["abc", "def"]))
         assert fake.messages[0][1]["featureIds"] == ["abc", "def"]
 
     def test_delete_all_drawn(self):
-        import asyncio
         w = MapWidget("dr5")
         fake = _FakeSession()
         asyncio.run(w.delete_drawn_features(fake))
@@ -1587,7 +1529,6 @@ class TestDrawingTools:
 class TestGeoPandas:
     def test_add_geodataframe(self):
         """add_geodataframe should call add_source + add_maplibre_layer."""
-        import asyncio
         w = MapWidget("gp1")
         fake = _FakeSession()
 
@@ -1612,7 +1553,6 @@ class TestGeoPandas:
 
     def test_add_geodataframe_default_paint(self):
         """Default paint should be applied based on layer_type."""
-        import asyncio
         w = MapWidget("gp1b")
         fake = _FakeSession()
 
@@ -1630,7 +1570,6 @@ class TestGeoPandas:
 
     def test_add_geodataframe_with_popup(self):
         """add_geodataframe with popup_template should send 3 messages."""
-        import asyncio
         w = MapWidget("gp2")
         fake = _FakeSession()
 
@@ -1648,7 +1587,6 @@ class TestGeoPandas:
             comp._serialise_data = original
 
     def test_update_geodataframe(self):
-        import asyncio
         w = MapWidget("gp3")
         fake = _FakeSession()
 
@@ -1670,7 +1608,6 @@ class TestGeoPandas:
 
 class TestFeatureState:
     def test_set_feature_state(self):
-        import asyncio
         w = MapWidget("fs1")
         fake = _FakeSession()
         asyncio.run(w.set_feature_state(fake, "stations", 42,
@@ -1682,7 +1619,6 @@ class TestFeatureState:
         assert msg[1]["state"] == {"hover": True, "selected": False}
 
     def test_set_feature_state_vector_source(self):
-        import asyncio
         w = MapWidget("fs2")
         fake = _FakeSession()
         asyncio.run(w.set_feature_state(fake, "osm", "abc",
@@ -1691,14 +1627,12 @@ class TestFeatureState:
         assert fake.messages[0][1]["sourceLayer"] == "buildings"
 
     def test_set_feature_state_no_source_layer(self):
-        import asyncio
         w = MapWidget("fs2b")
         fake = _FakeSession()
         asyncio.run(w.set_feature_state(fake, "src", 1, {"a": True}))
         assert "sourceLayer" not in fake.messages[0][1]
 
     def test_remove_feature_state_specific(self):
-        import asyncio
         w = MapWidget("fs3")
         fake = _FakeSession()
         asyncio.run(w.remove_feature_state(fake, "stations", 42, key="hover"))
@@ -1708,7 +1642,6 @@ class TestFeatureState:
         assert msg[1]["key"] == "hover"
 
     def test_remove_feature_state_all(self):
-        import asyncio
         w = MapWidget("fs4")
         fake = _FakeSession()
         asyncio.run(w.remove_feature_state(fake, "stations"))
@@ -1723,7 +1656,6 @@ class TestFeatureState:
 
 class TestExportImage:
     def test_export_image_png(self):
-        import asyncio
         w = MapWidget("exp1")
         fake = _FakeSession()
         asyncio.run(w.export_image(fake, format="png"))
@@ -1733,7 +1665,6 @@ class TestExportImage:
         assert msg[1]["quality"] == 0.92
 
     def test_export_image_jpeg(self):
-        import asyncio
         w = MapWidget("exp2")
         fake = _FakeSession()
         asyncio.run(w.export_image(fake, format="jpeg", quality=0.8,

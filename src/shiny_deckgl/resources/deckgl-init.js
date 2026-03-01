@@ -620,6 +620,10 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
+    if (instance.nativeLayers && Object.keys(instance.nativeLayers).length > 0) {
+      console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
+        + 'Re-add them after the style loads.');
+    }
     instance.map.setStyle(payload.style);
   });
 
@@ -1131,19 +1135,34 @@
       draw.changeMode(payload.defaultMode);
     }
 
+    // Remove any previously-attached draw event listeners to prevent leaks
+    if (instance._drawListeners) {
+      instance.map.off('draw.create', instance._drawListeners.create);
+      instance.map.off('draw.update', instance._drawListeners.update);
+      instance.map.off('draw.delete', instance._drawListeners.del);
+      instance.map.off('draw.modechange', instance._drawListeners.modechange);
+    }
+
     var mapId = payload.id;
     function sendFeatures() {
       var fc = draw.getAll();
       Shiny.setInputValue(mapId + '_drawn_features', fc, { priority: "event" });
     }
+    function onModeChange(e) {
+      Shiny.setInputValue(mapId + '_draw_mode', e.mode);
+    }
 
     instance.map.on('draw.create', sendFeatures);
     instance.map.on('draw.update', sendFeatures);
     instance.map.on('draw.delete', sendFeatures);
-    instance.map.on('draw.modechange', function (e) {
-      Shiny.setInputValue(mapId + '_draw_mode', e.mode);
-    });
+    instance.map.on('draw.modechange', onModeChange);
 
+    instance._drawListeners = {
+      create: sendFeatures,
+      update: sendFeatures,
+      del: sendFeatures,
+      modechange: onModeChange,
+    };
     instance._drawSendFeatures = sendFeatures;
   });
 
@@ -1156,6 +1175,15 @@
     if (!instance || !instance.draw) return;
 
     instance.map.removeControl(instance.draw);
+    // Clean up draw event listeners
+    if (instance._drawListeners) {
+      instance.map.off('draw.create', instance._drawListeners.create);
+      instance.map.off('draw.update', instance._drawListeners.update);
+      instance.map.off('draw.delete', instance._drawListeners.del);
+      instance.map.off('draw.modechange', instance._drawListeners.modechange);
+      delete instance._drawListeners;
+    }
+    delete instance._drawSendFeatures;
     delete instance.draw;
   });
 

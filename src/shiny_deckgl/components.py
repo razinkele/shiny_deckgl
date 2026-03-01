@@ -7,9 +7,15 @@ import pathlib
 from functools import lru_cache
 from importlib import resources as impresources
 from shiny import ui
-
-
 from typing import Any
+
+from ._cdn import (
+    DECKGL_JS,
+    MAPLIBRE_JS,
+    MAPLIBRE_CSS,
+    MAPBOX_DRAW_JS,
+    MAPBOX_DRAW_CSS,
+)
 
 # ---------------------------------------------------------------------------
 # Basemap style constants
@@ -1098,13 +1104,15 @@ class MapWidget:
         request_id
             Identifier included in the result for request matching.
         """
-        await session.send_custom_message("deck_query_at_lnglat", {
+        msg: dict[str, Any] = {
             "id": self.id,
             "longitude": longitude,
             "latitude": latitude,
-            "layers": layers,
             "requestId": request_id,
-        })
+        }
+        if layers is not None:
+            msg["layers"] = layers
+        await session.send_custom_message("deck_query_at_lnglat", msg)
 
     @property
     def query_result_input_id(self) -> str:
@@ -1461,9 +1469,9 @@ class MapWidget:
         session
             The active Shiny ``Session``.
         format
-            Image format: ``"png"`` (default) or ``"jpeg"``.
+            Image format: ``"png"`` (default), ``"jpeg"``, or ``"webp"``.
         quality
-            JPEG quality (0.0–1.0). Ignored for PNG.
+            JPEG/WebP quality (0.0–1.0). Ignored for PNG.
         request_id
             Identifier included in the result for request matching.
         """
@@ -1590,11 +1598,11 @@ class MapWidget:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{title}</title>
-<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.4/dist.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.css"/>
-<script src="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css"/>
+<script src="{DECKGL_JS}"></script>
+<script src="{MAPLIBRE_JS}"></script>
+<link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
+<script src="{MAPBOX_DRAW_JS}"></script>
+<link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>
 <style>{css_src}</style>
 </head>
 <body>

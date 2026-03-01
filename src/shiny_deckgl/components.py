@@ -274,6 +274,13 @@ def first_person_view(**kwargs) -> dict:
     return {"@@type": "FirstPersonView", **kwargs}
 
 
+CONTROL_TYPES = {
+    "navigation", "scale", "fullscreen", "geolocate",
+    "globe", "terrain", "attribution",
+}
+CONTROL_POSITIONS = {"top-left", "top-right", "bottom-left", "bottom-right"}
+
+
 class MapWidget:
     """Reusable deck.gl map widget for Shiny for Python.
 
@@ -298,6 +305,10 @@ class MapWidget:
           ``{"backgroundColor": "#222", "color": "#fff"}``
 
         Set to ``None`` (default) to disable tooltips.
+    controls
+        List of initial controls to add, each a dict with ``type``,
+        ``position`` (optional, default ``"top-right"``), and ``options``
+        (optional). Defaults to ``[{"type": "navigation"}]``.
     """
 
     def __init__(
@@ -307,6 +318,7 @@ class MapWidget:
         style: str = CARTO_POSITRON,
         tooltip: dict | None = None,
         mapbox_api_key: str | None = None,
+        controls: list[dict] | None = None,
     ):
         self.id = id
         self.view_state = view_state or {
@@ -317,6 +329,9 @@ class MapWidget:
         self.style = style
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
+        self.controls = controls if controls is not None else [
+            {"type": "navigation", "position": "top-right"},
+        ]
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -339,6 +354,19 @@ class MapWidget:
     def drag_input_id(self) -> str:
         """The Shiny input name for drag-marker events on this map."""
         return f"{self.id}_drag"
+
+    @property
+    def map_click_input_id(self) -> str:
+        """Shiny input for map-level click events (fires even on empty areas).
+
+        Returns ``{longitude, latitude, point: {x, y}}``.
+        """
+        return f"{self.id}_map_click"
+
+    @property
+    def map_contextmenu_input_id(self) -> str:
+        """Shiny input for right-click / context-menu events on the map."""
+        return f"{self.id}_map_contextmenu"
 
     # -- UI -------------------------------------------------------------------
 
@@ -370,6 +398,8 @@ class MapWidget:
             attrs["data_tooltip"] = json.dumps(self.tooltip)
         if self.mapbox_api_key is not None:
             attrs["data_mapbox_api_key"] = self.mapbox_api_key
+        if self.controls:
+            attrs["data_controls"] = json.dumps(self.controls)
         return ui.div(**attrs)
 
     # -- Server helpers -------------------------------------------------------
@@ -504,6 +534,159 @@ class MapWidget:
             "tooltip": tooltip,
         })
 
+    # -- Controls (v0.2.0) ---------------------------------------------------
+
+    async def add_control(
+        self,
+        session,
+        control_type: str,
+        position: str = "top-right",
+        *,
+        options: dict | None = None,
+    ) -> None:
+        """Add a MapLibre control to the map.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        control_type
+            One of: ``"navigation"``, ``"scale"``, ``"fullscreen"``,
+            ``"geolocate"``, ``"globe"``, ``"terrain"``, ``"attribution"``.
+        position
+            Corner position: ``"top-left"``, ``"top-right"`` (default),
+            ``"bottom-left"``, ``"bottom-right"``.
+        options
+            Optional dict of control-specific options, e.g.
+            ``{"maxWidth": 200, "unit": "metric"}`` for ScaleControl,
+            ``{"source": "terrain-dem", "exaggeration": 1.5}`` for TerrainControl.
+        """
+        if control_type not in CONTROL_TYPES:
+            raise ValueError(
+                f"Unknown control type {control_type!r}. "
+                f"Valid types: {sorted(CONTROL_TYPES)}"
+            )
+        if position not in CONTROL_POSITIONS:
+            raise ValueError(
+                f"Unknown position {position!r}. "
+                f"Valid positions: {sorted(CONTROL_POSITIONS)}"
+            )
+        await session.send_custom_message("deck_add_control", {
+            "id": self.id,
+            "controlType": control_type,
+            "position": position,
+            "options": options or {},
+        })
+
+    async def remove_control(
+        self,
+        session,
+        control_type: str,
+    ) -> None:
+        """Remove a previously added MapLibre control.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        control_type
+            The control type string to remove (e.g. ``"scale"``).
+        """
+        await session.send_custom_message("deck_remove_control", {
+            "id": self.id,
+            "controlType": control_type,
+        })
+
+    # -- Bounds & Navigation (v0.2.0) ----------------------------------------
+
+    async def fit_bounds(
+        self,
+        session,
+        bounds: list[list[float]],
+        *,
+        padding: int | dict[str, int] = 50,
+        max_zoom: float | None = None,
+        duration: int = 0,
+    ) -> None:
+        """Fly/jump the map to fit the given bounds.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        bounds
+            ``[[sw_lng, sw_lat], [ne_lng, ne_lat]]`` in WGS 84.
+            Example: ``[[10.0, 54.0], [30.0, 66.0]]`` for the Baltic Sea.
+        padding
+            Pixels of padding around the bounds. Can be an ``int`` (uniform)
+            or a dict ``{"top": 10, "bottom": 10, "left": 10, "right": 10}``.
+        max_zoom
+            Maximum zoom level to use (prevents over-zooming on small areas).
+        duration
+            Animation duration in milliseconds. ``0`` (default) = instant.
+        """
+        payload: dict = {
+            "id": self.id,
+            "bounds": bounds,
+            "padding": padding,
+        }
+        if max_zoom is not None:
+            payload["maxZoom"] = max_zoom
+        if duration > 0:
+            payload["duration"] = duration
+        await session.send_custom_message("deck_fit_bounds", payload)
+
+    @staticmethod
+    def compute_bounds(geojson: dict) -> list[list[float]]:
+        """Compute ``[[sw_lng, sw_lat], [ne_lng, ne_lat]]`` from GeoJSON.
+
+        Parameters
+        ----------
+        geojson
+            A GeoJSON ``FeatureCollection``, ``Feature``, or geometry dict.
+
+        Returns
+        -------
+        list[list[float]]
+            ``[[min_lng, min_lat], [max_lng, max_lat]]``.
+            Returns ``[[-180, -90], [180, 90]]`` if no coordinates found.
+        """
+        coords: list[list[float]] = []
+
+        def _extract(geom: dict) -> None:
+            gtype = geom.get("type", "")
+            if gtype == "Point":
+                coords.append(geom["coordinates"][:2])
+            elif gtype in ("MultiPoint", "LineString"):
+                coords.extend(c[:2] for c in geom["coordinates"])
+            elif gtype in ("MultiLineString", "Polygon"):
+                for ring in geom["coordinates"]:
+                    coords.extend(c[:2] for c in ring)
+            elif gtype == "MultiPolygon":
+                for poly in geom["coordinates"]:
+                    for ring in poly:
+                        coords.extend(c[:2] for c in ring)
+            elif gtype == "GeometryCollection":
+                for g in geom.get("geometries", []):
+                    _extract(g)
+
+        if geojson.get("type") == "FeatureCollection":
+            for f in geojson.get("features", []):
+                if f.get("geometry"):
+                    _extract(f["geometry"])
+        elif geojson.get("type") == "Feature":
+            if geojson.get("geometry"):
+                _extract(geojson["geometry"])
+        elif geojson.get("type"):
+            _extract(geojson)
+
+        if not coords:
+            return [[-180, -90], [180, 90]]
+
+        lngs = [c[0] for c in coords]
+        lats = [c[1] for c in coords]
+        return [[min(lngs), min(lats)], [max(lngs), max(lats)]]
+
     # -- Serialisation --------------------------------------------------------
 
     def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:
@@ -613,8 +796,8 @@ class MapWidget:
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{title}</title>
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.4/dist.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@3.6.2/dist/maplibre-gl.css"/>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.css"/>
 <style>{css_src}</style>
 </head>
 <body>

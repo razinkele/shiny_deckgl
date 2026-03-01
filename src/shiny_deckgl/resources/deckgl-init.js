@@ -34,6 +34,43 @@
   }
 
   // -----------------------------------------------------------------------
+  // Helper: create MapLibre control by type name
+  // -----------------------------------------------------------------------
+  function createControl(type, opts) {
+    opts = opts || {};
+    switch (type) {
+      case 'navigation':
+        return new maplibregl.NavigationControl(opts);
+      case 'scale':
+        return new maplibregl.ScaleControl(opts);
+      case 'fullscreen':
+        return new maplibregl.FullscreenControl(opts);
+      case 'geolocate':
+        return new maplibregl.GeolocateControl(Object.assign({
+          positionOptions: { enableHighAccuracy: true },
+          trackUserLocation: false
+        }, opts));
+      case 'globe':
+        if (maplibregl.GlobeControl) {
+          return new maplibregl.GlobeControl(opts);
+        }
+        console.warn('[shiny_deckgl] GlobeControl requires MapLibre v5+');
+        return null;
+      case 'terrain':
+        if (maplibregl.TerrainControl) {
+          return new maplibregl.TerrainControl(opts);
+        }
+        console.warn('[shiny_deckgl] TerrainControl requires MapLibre v5+');
+        return null;
+      case 'attribution':
+        return new maplibregl.AttributionControl(opts);
+      default:
+        console.warn('[shiny_deckgl] Unknown control type: ' + type);
+        return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Map initialisation
   // -----------------------------------------------------------------------
   function initMap(el) {
@@ -80,18 +117,61 @@
       };
     }
     const map = new maplibregl.Map(mapOpts);
-    map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    // ---- Configurable initial controls ------------------------------------
+    // Parse controls config from data-controls attribute (JSON array)
+    var controlsConfig = [];
+    if (el.dataset.controls) {
+      try { controlsConfig = JSON.parse(el.dataset.controls); } catch (_) {}
+    }
+    // Default: navigation control in top-right if no config
+    if (!controlsConfig.length) {
+      controlsConfig = [{ type: 'navigation', position: 'top-right' }];
+    }
+
+    var initialControls = {};
+    controlsConfig.forEach(function (cfg) {
+      var ctrl = createControl(cfg.type, cfg.options || {});
+      if (ctrl) {
+        var pos = cfg.position || 'top-right';
+        map.addControl(ctrl, pos);
+        initialControls[cfg.type] = { control: ctrl, position: pos };
+      }
+    });
 
     // Send view state back to Shiny on every meaningful camera move
     map.on('moveend', function () {
-      const center = map.getCenter();
+      var center = map.getCenter();
+      var bounds = map.getBounds();
       Shiny.setInputValue(mapId + '_view_state', {
         longitude: center.lng,
         latitude: center.lat,
         zoom: map.getZoom(),
         pitch: map.getPitch(),
-        bearing: map.getBearing()
+        bearing: map.getBearing(),
+        bounds: {
+          sw: [bounds.getSouthWest().lng, bounds.getSouthWest().lat],
+          ne: [bounds.getNorthEast().lng, bounds.getNorthEast().lat]
+        }
       });
+    });
+
+    // Send map-level click coordinates to Shiny (fires even on empty areas)
+    map.on('click', function (e) {
+      Shiny.setInputValue(mapId + '_map_click', {
+        longitude: e.lngLat.lng,
+        latitude: e.lngLat.lat,
+        point: { x: e.point.x, y: e.point.y }
+      }, { priority: "event" });
+    });
+
+    // Context menu (right-click) for secondary actions
+    map.on('contextmenu', function (e) {
+      Shiny.setInputValue(mapId + '_map_contextmenu', {
+        longitude: e.lngLat.lng,
+        latitude: e.lngLat.lat,
+        point: { x: e.point.x, y: e.point.y }
+      }, { priority: "event" });
     });
 
     const overlay = new deck.MapboxOverlay({
@@ -105,7 +185,8 @@
       overlay: overlay,
       tooltipConfig: tooltipConfig,
       dragMarker: null,
-      lastLayers: []          // cache for visibility toggling
+      lastLayers: [],          // cache for visibility toggling
+      controls: initialControls
     };
   }
 
@@ -539,6 +620,72 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
     instance.map.setStyle(payload.style);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_add_control — add a MapLibre control
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_control", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var type = payload.controlType;
+    var position = payload.position || 'top-right';
+    var opts = payload.options || {};
+
+    // Remove existing control of same type first
+    if (instance.controls[type]) {
+      instance.map.removeControl(instance.controls[type].control);
+      delete instance.controls[type];
+    }
+
+    var control = createControl(type, opts);
+    if (!control) return;
+
+    instance.map.addControl(control, position);
+    instance.controls[type] = { control: control, position: position };
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_control — remove a MapLibre control
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_control", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var type = payload.controlType;
+    if (instance.controls[type]) {
+      instance.map.removeControl(instance.controls[type].control);
+      delete instance.controls[type];
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_fit_bounds — fit map to geographic bounds
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_fit_bounds", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var bounds = payload.bounds;  // [[sw_lng, sw_lat], [ne_lng, ne_lat]]
+    var opts = {};
+
+    if (payload.padding != null) {
+      opts.padding = payload.padding;
+    }
+    if (payload.maxZoom != null) {
+      opts.maxZoom = payload.maxZoom;
+    }
+    if (payload.duration != null && payload.duration > 0) {
+      opts.duration = payload.duration;
+    } else {
+      opts.duration = 0;  // instant
+    }
+
+    instance.map.fitBounds(bounds, opts);
   });
 
   // -----------------------------------------------------------------------

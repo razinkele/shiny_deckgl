@@ -25,6 +25,9 @@ from .components import (
     map_view,
     orthographic_view,
     first_person_view,
+    # Control constants (v0.2.0)
+    CONTROL_TYPES,
+    CONTROL_POSITIONS,
 )
 from .ui import head_includes
 from ._version import __version__
@@ -54,5 +57,7 @@ __all__ = [
     "map_view",
     "orthographic_view",
     "first_person_view",
+    "CONTROL_TYPES",
+    "CONTROL_POSITIONS",
     "__version__",
 ]

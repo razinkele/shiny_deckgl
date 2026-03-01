@@ -31,6 +31,8 @@ from shiny_deckgl.components import (
     map_view,
     orthographic_view,
     first_person_view,
+    CONTROL_TYPES,
+    CONTROL_POSITIONS,
 )
 
 
@@ -53,6 +55,7 @@ def test_public_api_exports():
         "PALETTE_THERMAL", "PALETTE_CHLOROPHYLL",
         "encode_binary_attribute",
         "map_view", "orthographic_view", "first_person_view",
+        "CONTROL_TYPES", "CONTROL_POSITIONS",
         "__version__",
     }
     assert expected.issubset(set(dir(m)))
@@ -110,7 +113,7 @@ def test_app_with_custom_provider():
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
     assert "deck.gl@9.1.4" in html
-    assert "maplibre-gl@3.6.2" in html
+    assert "maplibre-gl@5.3.1" in html
 
 
 def test_head_includes_contains_local_assets():
@@ -457,7 +460,7 @@ class TestToHtml:
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
         assert "deck.gl@9.1.4" in html
-        assert "maplibre-gl@3.6.2" in html
+        assert "maplibre-gl@5.3.1" in html
 
     def test_contains_layer_data(self):
         w = MapWidget("t")
@@ -813,3 +816,279 @@ class TestSetStyle:
         asyncio.run(w.set_style(fake, custom))
         assert w.style == custom
         assert fake.messages[0][1]["style"] == custom
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 — Phase 1 tests
+# ---------------------------------------------------------------------------
+
+class _FakeSession:
+    """Reusable fake session for Phase 1+ tests."""
+    def __init__(self):
+        self.messages = []
+    async def send_custom_message(self, handler, payload):
+        self.messages.append((handler, payload))
+
+
+# ---------------------------------------------------------------------------
+# 1.1 MapLibre v5 upgrade
+# ---------------------------------------------------------------------------
+
+class TestMapLibreVersion:
+    def test_head_includes_maplibre_v5(self):
+        dep = head_includes()
+        assert "maplibre-gl@5.3" in str(dep)
+
+    def test_head_includes_no_old_maplibre(self):
+        dep = head_includes()
+        assert "maplibre-gl@3.6" not in str(dep)
+
+    def test_to_html_maplibre_v5(self):
+        w = MapWidget("v5test")
+        html = w.to_html([])
+        assert "maplibre-gl@5.3" in html
+        assert "maplibre-gl@3.6" not in html
+
+
+# ---------------------------------------------------------------------------
+# 1.2 Map Controls API
+# ---------------------------------------------------------------------------
+
+class TestControlConstants:
+    def test_control_types_is_set(self):
+        assert isinstance(CONTROL_TYPES, set)
+        assert "navigation" in CONTROL_TYPES
+        assert "scale" in CONTROL_TYPES
+        assert "fullscreen" in CONTROL_TYPES
+        assert "geolocate" in CONTROL_TYPES
+        assert "globe" in CONTROL_TYPES
+        assert "terrain" in CONTROL_TYPES
+        assert "attribution" in CONTROL_TYPES
+
+    def test_control_positions_is_set(self):
+        assert isinstance(CONTROL_POSITIONS, set)
+        assert "top-left" in CONTROL_POSITIONS
+        assert "top-right" in CONTROL_POSITIONS
+        assert "bottom-left" in CONTROL_POSITIONS
+        assert "bottom-right" in CONTROL_POSITIONS
+
+
+class TestAddControl:
+    def test_add_control_scale(self):
+        import asyncio
+        w = MapWidget("ctrl1")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "scale", "bottom-left"))
+        assert fake.messages[0] == ("deck_add_control", {
+            "id": "ctrl1",
+            "controlType": "scale",
+            "position": "bottom-left",
+            "options": {},
+        })
+
+    def test_add_control_with_options(self):
+        import asyncio
+        w = MapWidget("ctrl2")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "scale", "bottom-left",
+                                   options={"maxWidth": 200, "unit": "metric"}))
+        assert fake.messages[0][1]["options"] == {"maxWidth": 200, "unit": "metric"}
+
+    def test_add_control_fullscreen(self):
+        import asyncio
+        w = MapWidget("ctrl_fs")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "fullscreen", "top-left"))
+        assert fake.messages[0][1]["controlType"] == "fullscreen"
+        assert fake.messages[0][1]["position"] == "top-left"
+
+    def test_add_control_geolocate(self):
+        import asyncio
+        w = MapWidget("ctrl_gl")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "geolocate", "top-right"))
+        assert fake.messages[0][1]["controlType"] == "geolocate"
+
+    def test_add_control_invalid_type_raises(self):
+        import asyncio, pytest
+        w = MapWidget("ctrl3")
+        fake = _FakeSession()
+        with pytest.raises(ValueError, match="Unknown control type"):
+            asyncio.run(w.add_control(fake, "invalid"))
+
+    def test_add_control_invalid_position_raises(self):
+        import asyncio, pytest
+        w = MapWidget("ctrl4")
+        fake = _FakeSession()
+        with pytest.raises(ValueError, match="Unknown position"):
+            asyncio.run(w.add_control(fake, "scale", "middle"))
+
+    def test_add_control_default_position(self):
+        import asyncio
+        w = MapWidget("ctrl_dp")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "navigation"))
+        assert fake.messages[0][1]["position"] == "top-right"
+
+    def test_remove_control(self):
+        import asyncio
+        w = MapWidget("ctrl5")
+        fake = _FakeSession()
+        asyncio.run(w.remove_control(fake, "navigation"))
+        assert fake.messages[0] == ("deck_remove_control", {
+            "id": "ctrl5",
+            "controlType": "navigation",
+        })
+
+
+class TestControlsConstructor:
+    def test_default_controls(self):
+        w = MapWidget("cc1")
+        assert w.controls == [{"type": "navigation", "position": "top-right"}]
+
+    def test_custom_controls(self):
+        ctrls = [
+            {"type": "navigation", "position": "top-right"},
+            {"type": "scale", "position": "bottom-left"},
+        ]
+        w = MapWidget("cc2", controls=ctrls)
+        assert w.controls == ctrls
+
+    def test_empty_controls(self):
+        w = MapWidget("cc3", controls=[])
+        assert w.controls == []
+
+    def test_controls_in_ui_data_attribute(self):
+        ctrls = [
+            {"type": "scale", "position": "bottom-left"},
+        ]
+        w = MapWidget("cc4", controls=ctrls)
+        tag = w.ui()
+        html_str = str(tag)
+        assert "data-controls" in html_str
+
+
+# ---------------------------------------------------------------------------
+# 1.3 fit_bounds()
+# ---------------------------------------------------------------------------
+
+class TestFitBounds:
+    def test_fit_bounds_basic(self):
+        import asyncio
+        w = MapWidget("fb1")
+        fake = _FakeSession()
+        asyncio.run(w.fit_bounds(fake, [[10, 54], [30, 66]]))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_fit_bounds"
+        assert msg[1]["bounds"] == [[10, 54], [30, 66]]
+        assert msg[1]["padding"] == 50
+
+    def test_fit_bounds_with_options(self):
+        import asyncio
+        w = MapWidget("fb2")
+        fake = _FakeSession()
+        asyncio.run(w.fit_bounds(fake, [[10, 54], [30, 66]],
+                                  padding={"top": 20, "bottom": 20, "left": 10, "right": 10},
+                                  max_zoom=12, duration=1000))
+        msg = fake.messages[0][1]
+        assert msg["maxZoom"] == 12
+        assert msg["duration"] == 1000
+        assert msg["padding"]["top"] == 20
+
+    def test_fit_bounds_no_duration_key_when_zero(self):
+        import asyncio
+        w = MapWidget("fb3")
+        fake = _FakeSession()
+        asyncio.run(w.fit_bounds(fake, [[0, 0], [1, 1]]))
+        assert "duration" not in fake.messages[0][1]
+
+    def test_fit_bounds_custom_padding_int(self):
+        import asyncio
+        w = MapWidget("fb4")
+        fake = _FakeSession()
+        asyncio.run(w.fit_bounds(fake, [[0, 0], [1, 1]], padding=100))
+        assert fake.messages[0][1]["padding"] == 100
+
+    def test_compute_bounds_feature_collection(self):
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "geometry": {"type": "Point", "coordinates": [10, 50]}},
+                {"type": "Feature", "geometry": {"type": "Point", "coordinates": [30, 60]}},
+            ]
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[10, 50], [30, 60]]
+
+    def test_compute_bounds_single_feature(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[5, 40], [15, 55], [25, 45]]
+            }
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[5, 40], [25, 55]]
+
+    def test_compute_bounds_polygon(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]]
+            }
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[0, 0], [10, 10]]
+
+    def test_compute_bounds_multi_polygon(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0, 0], [5, 0], [5, 5], [0, 5], [0, 0]]],
+                    [[[10, 10], [20, 10], [20, 20], [10, 20], [10, 10]]],
+                ]
+            }
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[0, 0], [20, 20]]
+
+    def test_compute_bounds_geometry_collection(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "GeometryCollection",
+                "geometries": [
+                    {"type": "Point", "coordinates": [1, 2]},
+                    {"type": "Point", "coordinates": [3, 4]},
+                ]
+            }
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[1, 2], [3, 4]]
+
+    def test_compute_bounds_empty(self):
+        bounds = MapWidget.compute_bounds({"type": "FeatureCollection", "features": []})
+        assert bounds == [[-180, -90], [180, 90]]
+
+    def test_compute_bounds_bare_geometry(self):
+        geojson = {"type": "Point", "coordinates": [5.5, 52.3]}
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[5.5, 52.3], [5.5, 52.3]]
+
+
+# ---------------------------------------------------------------------------
+# 1.5 Map click events (input property helpers)
+# ---------------------------------------------------------------------------
+
+class TestMapClickInputIds:
+    def test_map_click_input_id(self):
+        w = MapWidget("mc1")
+        assert w.map_click_input_id == "mc1_map_click"
+
+    def test_map_contextmenu_input_id(self):
+        w = MapWidget("mc2")
+        assert w.map_contextmenu_input_id == "mc2_map_contextmenu"

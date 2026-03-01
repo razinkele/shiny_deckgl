@@ -48,6 +48,7 @@ from .components import (
     trips_layer,
     great_circle_layer,
     grid_layer,
+    hexagon_layer,
     # Color utilities
     color_range,
     color_bins,
@@ -90,6 +91,12 @@ from ._demo_data import (
     make_port_geojson,
     make_trips_data,
     SAMPLE_STUDY_AREA,
+    make_bathymetry_grid,
+    make_fish_observations,
+    make_bathymetry_geojson,
+    make_3d_arc_data,
+    BALTIC_VIEW_3D,
+    LIGHTING_EFFECT_3D,
 )
 from ._demo_css import MARINE_CSS, sidebar_hint
 
@@ -208,6 +215,20 @@ v1_widget = MapWidget(
     tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
     controls=[],
+)
+
+# Tab 10 — 3D Visualization
+three_d_widget = MapWidget(
+    "three_d_map",
+    tooltip={
+        "html": (
+            "<b>{name}</b><br/>"
+            "Depth: {depth_m} m<br/>"
+            "Species: {species}"
+        ),
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW_3D,
 )
 
 
@@ -778,6 +799,112 @@ app_ui = ui.page_navbar(
                     "\u2728 v1.0.0 Features — Extensions, Clusters & Gestures"
                 ),
                 v1_widget.ui(height="75vh"),
+            ),
+        ),
+    ),
+
+    # -- Tab 10: 3-D Visualization -----------------------------------------
+    ui.nav_panel(
+        "\U0001F30D 3D Visualisation",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F3D4 Bathymetry",
+                        sidebar_hint(
+                            "3-D extruded columns showing synthetic Baltic "
+                            "Sea bathymetry. Deepest point ~459 m near the "
+                            "Landsort Deep."
+                        ),
+                        ui.input_switch(
+                            "td_bathy", "Show bathymetry grid",
+                            value=True,
+                        ),
+                        ui.input_slider(
+                            "td_bathy_elev", "Elevation scale",
+                            min=1, max=50, value=10, step=1,
+                        ),
+                        ui.input_switch(
+                            "td_bathy_wireframe", "Wireframe",
+                            value=False,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F41F Fish Observations",
+                        sidebar_hint(
+                            "Species depth observations rendered as extruded "
+                            "hexagons (aggregated) or individual columns. "
+                            "Height encodes observation depth."
+                        ),
+                        ui.input_switch(
+                            "td_fish", "Show fish observations",
+                            value=False,
+                        ),
+                        ui.input_select(
+                            "td_fish_mode", "Render mode",
+                            choices={
+                                "hexagon": "Hexagon aggregation",
+                                "column": "Individual columns",
+                            },
+                        ),
+                        ui.input_slider(
+                            "td_fish_elev", "Elevation scale",
+                            min=1, max=30, value=5, step=1,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F310 3-D Arcs",
+                        sidebar_hint(
+                            "Port-to-port shipping arcs in 3-D with altitude "
+                            "proportional to route length."
+                        ),
+                        ui.input_switch(
+                            "td_arcs", "Show 3-D arcs",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "td_arc_width", "Arc width (px)",
+                            min=1, max=10, value=3, step=1,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4A1 Lighting & Camera",
+                        sidebar_hint(
+                            "Control the LightingEffect and camera pitch / "
+                            "bearing for the 3-D scene."
+                        ),
+                        ui.input_switch(
+                            "td_lighting", "Enable lighting",
+                            value=True,
+                        ),
+                        ui.input_slider(
+                            "td_ambient", "Ambient intensity",
+                            min=0.0, max=3.0, value=1.0, step=0.1,
+                        ),
+                        ui.input_slider(
+                            "td_point_light", "Point-light intensity",
+                            min=0.0, max=5.0, value=2.0, step=0.1,
+                        ),
+                        ui.input_slider(
+                            "td_pitch", "Camera pitch (\u00b0)",
+                            min=0, max=85, value=45, step=5,
+                        ),
+                        ui.input_slider(
+                            "td_bearing", "Camera bearing (\u00b0)",
+                            min=-180, max=180, value=-15, step=5,
+                        ),
+                    ),
+                    id="tab10_accordion",
+                    open=["Bathymetry"],
+                    multiple=True,
+                ),
+                width=300,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\U0001F30D 3-D Baltic Sea Visualisation"
+                ),
+                three_d_widget.ui(height="80vh"),
             ),
         ),
     ),
@@ -2075,6 +2202,170 @@ def server(input, output, session: Session):
         await v1_widget.set_cooperative_gestures(
             session, input.v1_cooperative()
         )
+
+    # =================================================================
+    # Tab 10: 3-D Visualisation
+    # =================================================================
+
+    # Pre-generate data (constant for the session)
+    _bathy_grid = make_bathymetry_grid()
+    _fish_obs = make_fish_observations()
+    _arc_3d = make_3d_arc_data()
+
+    @reactive.Effect
+    @reactive.event(
+        input.td_bathy, input.td_bathy_elev, input.td_bathy_wireframe,
+        input.td_fish, input.td_fish_mode, input.td_fish_elev,
+        input.td_arcs, input.td_arc_width,
+        input.td_lighting, input.td_ambient, input.td_point_light,
+        input.td_pitch, input.td_bearing,
+    )
+    async def _td_rebuild():
+        layers: list[dict] = []
+
+        # --- Bathymetry columns ---
+        if input.td_bathy():
+            bathy_data = [
+                {
+                    **pt,
+                    "color": _bathy_color(pt["elevation"]),
+                }
+                for pt in _bathy_grid
+            ]
+            layers.append(
+                column_layer(
+                    "td-bathy",
+                    data=bathy_data,
+                    getPosition="@@=d.position",
+                    getElevation="@@=d.elevation",
+                    getFillColor="@@=d.color",
+                    elevationScale=input.td_bathy_elev(),
+                    diskResolution=6,
+                    radius=12000,
+                    extruded=True,
+                    wireframe=input.td_bathy_wireframe(),
+                    pickable=True,
+                    opacity=0.85,
+                ),
+            )
+
+        # --- Fish observations ---
+        if input.td_fish():
+            mode = input.td_fish_mode()
+            if mode == "hexagon":
+                fish_positions = [
+                    pt["position"] for pt in _fish_obs
+                ]
+                layers.append(
+                    hexagon_layer(
+                        "td-fish-hex",
+                        data=fish_positions,
+                        getPosition="@@=d",
+                        elevationScale=input.td_fish_elev() * 100,
+                        radius=25000,
+                        extruded=True,
+                        pickable=True,
+                        colorRange=[
+                            [255, 255, 178],
+                            [254, 204, 92],
+                            [253, 141, 60],
+                            [240, 59, 32],
+                            [189, 0, 38],
+                        ],
+                        opacity=0.7,
+                    ),
+                )
+            else:
+                fish_data = [
+                    {
+                        **pt,
+                        "color": _species_color(pt["species"]),
+                    }
+                    for pt in _fish_obs
+                ]
+                layers.append(
+                    column_layer(
+                        "td-fish-col",
+                        data=fish_data,
+                        getPosition="@@=d.position",
+                        getElevation="@@=d.elevation",
+                        getFillColor="@@=d.color",
+                        elevationScale=input.td_fish_elev() * 100,
+                        diskResolution=8,
+                        radius=8000,
+                        extruded=True,
+                        pickable=True,
+                        opacity=0.8,
+                    ),
+                )
+
+        # --- 3-D arcs ---
+        if input.td_arcs():
+            layers.append(
+                arc_layer(
+                    "td-arcs",
+                    data=_arc_3d,
+                    getSourcePosition="@@=d.sourcePosition",
+                    getTargetPosition="@@=d.targetPosition",
+                    getSourceColor="@@=d.sourceColor",
+                    getTargetColor="@@=d.targetColor",
+                    getHeight="@@=d.height",
+                    getWidth=input.td_arc_width(),
+                    pickable=True,
+                ),
+            )
+
+        # --- Lighting ---
+        effects = None
+        if input.td_lighting():
+            effects = [{
+                "type": "LightingEffect",
+                "ambientLight": {
+                    "color": [255, 255, 255],
+                    "intensity": input.td_ambient(),
+                },
+                "pointLights": [{
+                    "color": [255, 255, 220],
+                    "intensity": input.td_point_light(),
+                    "position": [19.5, 57.0, 80000],
+                }],
+            }]
+
+        await three_d_widget.update(session, layers, effects=effects)
+
+        # Fly to the current pitch / bearing
+        await three_d_widget.fly_to(
+            session,
+            longitude=19.5,
+            latitude=57.0,
+            zoom=5,
+            pitch=input.td_pitch(),
+            bearing=input.td_bearing(),
+        )
+
+    # -- colour helpers (pure functions, no I/O) --
+
+    def _bathy_color(elevation: float) -> list[int]:
+        """Map depth (0–459 m) to a blue-gradient RGBA."""
+        t = min(elevation / 459.0, 1.0)
+        r = int(10 + 40 * (1 - t))
+        g = int(60 + 120 * (1 - t))
+        b = int(120 + 135 * t)
+        return [r, g, b, 210]
+
+    _SPECIES_COLORS: dict[str, list[int]] = {
+        "Atlantic cod":       [230, 25, 75, 200],
+        "Baltic herring":     [60, 180, 75, 200],
+        "European sprat":     [255, 225, 25, 200],
+        "Atlantic salmon":    [0, 130, 200, 200],
+        "European flounder":  [245, 130, 48, 200],
+        "Pike-perch":         [145, 30, 180, 200],
+        "Three-spined stickleback": [70, 240, 240, 200],
+        "Ringed seal":        [240, 50, 230, 200],
+    }
+
+    def _species_color(species: str) -> list[int]:
+        return _SPECIES_COLORS.get(species, [180, 180, 180, 200])
 
 
 app = App(app_ui, server)

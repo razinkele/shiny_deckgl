@@ -119,6 +119,22 @@
     }
     const map = new maplibregl.Map(mapOpts);
 
+    // Apply initial controller setting from data attribute
+    if (el.dataset.controller !== undefined) {
+      try {
+        var ctrlVal = JSON.parse(el.dataset.controller);
+        if (ctrlVal === false) {
+          map.dragPan.disable();
+          map.scrollZoom.disable();
+          map.boxZoom.disable();
+          map.dragRotate.disable();
+          map.keyboard.disable();
+          map.doubleClickZoom.disable();
+          map.touchZoomRotate.disable();
+        }
+      } catch (_) {}
+    }
+
     // ---- Configurable initial controls ------------------------------------
     // Parse controls config from data-controls attribute (JSON array)
     var controlsConfig = [];
@@ -179,6 +195,25 @@
       interleaved: false,
       layers: []
     });
+
+    // Apply initial deck-level props from data attributes
+    var initialDeckProps = {};
+    if (el.dataset.pickingRadius) {
+      initialDeckProps.pickingRadius = parseInt(el.dataset.pickingRadius, 10) || 0;
+    }
+    if (el.dataset.useDevicePixels !== undefined) {
+      try { initialDeckProps.useDevicePixels = JSON.parse(el.dataset.useDevicePixels); } catch (_) {}
+    }
+    if (el.dataset.animate === 'true') {
+      initialDeckProps._animate = true;
+    }
+    if (el.dataset.parameters) {
+      try { initialDeckProps.parameters = JSON.parse(el.dataset.parameters); } catch (_) {}
+    }
+    if (Object.keys(initialDeckProps).length) {
+      overlay.setProps(initialDeckProps);
+    }
+
     map.addControl(overlay);
 
     mapInstances[mapId] = {
@@ -238,13 +273,27 @@
   // -----------------------------------------------------------------------
   function resolveExtensions(layerProps) {
     if (!Array.isArray(layerProps['@@extensions'])) return;
-    layerProps.extensions = layerProps['@@extensions'].map(name => {
-      const Cls = deck[name];
-      if (!Cls) {
-        console.warn('[shiny_deckgl] Unknown extension: ' + name);
-        return null;
+    layerProps.extensions = layerProps['@@extensions'].map(item => {
+      // String form: instantiate with no arguments
+      if (typeof item === 'string') {
+        const Cls = deck[item];
+        if (!Cls) {
+          console.warn('[shiny_deckgl] Unknown extension: ' + item);
+          return null;
+        }
+        return new Cls();
       }
-      return new Cls();
+      // Object form: { "@@extClass": "Name", "@@extOpts": {...} }
+      if (item && item['@@extClass']) {
+        const Cls = deck[item['@@extClass']];
+        if (!Cls) {
+          console.warn('[shiny_deckgl] Unknown extension: ' + item['@@extClass']);
+          return null;
+        }
+        return new Cls(item['@@extOpts'] || {});
+      }
+      console.warn('[shiny_deckgl] Invalid extension spec:', item);
+      return null;
     }).filter(e => e !== null);
     delete layerProps['@@extensions'];
   }
@@ -541,8 +590,26 @@
     const views = buildViews(payload.views);
     if (views) overlayProps.views = views;
 
+    // Deck-level props (v0.7.0)
+    if (payload.pickingRadius !== undefined) overlayProps.pickingRadius = payload.pickingRadius;
+    if (payload.useDevicePixels !== undefined) overlayProps.useDevicePixels = payload.useDevicePixels;
+    if (payload._animate !== undefined) overlayProps._animate = payload._animate;
+
     overlay.setProps(overlayProps);
     map.triggerRepaint();
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_controller — configure map controller behaviour
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_controller", function (payload) {
+    if (!payload || !payload.id) return;
+    const instance = ensureInstance(payload.id);
+    if (!instance) return;
+    const ctrl = payload.controller;
+    // MapboxOverlay exposes controller via setProps
+    instance.overlay.setProps({ controller: ctrl });
+    instance.map.triggerRepaint();
   });
 
   // -----------------------------------------------------------------------

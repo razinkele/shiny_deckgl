@@ -6,6 +6,29 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.0] — 2025-06-12
+
+### Added
+
+- **Extension constructor options** — `layer()` now accepts mixed extension
+  specs: plain strings (no-args) and `[name, options]` pairs, e.g.
+  `extensions=[["DataFilterExtension", {"filterSize": 2}]]`.  JS
+  `resolveExtensions()` handles both forms.
+- **Deck-level props** — `MapWidget.__init__` accepts `picking_radius`,
+  `use_device_pixels`, `animate`, `parameters`, and `controller`.  Passed
+  through as `data-*` attributes and read by `initMap()` in JS.
+- **`update()` deck props** — `update()` accepts `picking_radius`,
+  `use_device_pixels`, `animate` overrides, applied via `overlay.setProps()`.
+- **`set_controller()`** — new async method to dynamically enable/disable or
+  fine-tune map controller behaviour.
+- **10 new layer helpers** — `arc_layer`, `icon_layer`, `path_layer`,
+  `line_layer`, `text_layer`, `column_layer`, `polygon_layer`,
+  `heatmap_layer`, `hexagon_layer`, `h3_hexagon_layer`.
+- **`globe_view()`** — convenience helper for `GlobeView` spec dicts.
+- **68 new tests** (378 total).
+
+---
+
 ## [Unreleased]
 
 ### Added

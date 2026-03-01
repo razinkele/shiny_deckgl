@@ -283,6 +283,14 @@ def first_person_view(**kwargs) -> dict:
     return {"@@type": "FirstPersonView", **kwargs}
 
 
+def globe_view(**kwargs) -> dict:
+    """Create a ``GlobeView`` spec for a 3D globe projection.
+
+    Renders the earth as a globe rather than a flat Mercator projection.
+    """
+    return {"@@type": "GlobeView", **kwargs}
+
+
 CONTROL_TYPES = {
     "navigation", "scale", "fullscreen", "geolocate",
     "globe", "terrain", "attribution",
@@ -318,6 +326,24 @@ class MapWidget:
         List of initial controls to add, each a dict with ``type``,
         ``position`` (optional, default ``"top-right"``), and ``options``
         (optional). Defaults to ``[{"type": "navigation"}]``.
+    picking_radius
+        Extra pixels around the pointer for picking (click/hover).
+        Higher values make small objects easier to select.  Default ``0``.
+    use_device_pixels
+        Whether to use high-resolution rendering on HiDPI displays.
+        ``True`` (default) uses the full device pixel ratio; ``False``
+        renders at CSS pixels (faster).  An ``int`` value sets an explicit
+        ratio.
+    animate
+        When ``True``, enables the deck.gl animation loop (required for
+        ``TripsLayer`` and other time-based layers).  Default ``False``.
+    parameters
+        WebGL parameters dict, e.g. ``{"depthTest": False}``.
+    controller
+        Map controller configuration.  ``True`` (default) enables the
+        default controller; ``False`` disables all interaction.  A dict
+        can fine-tune behaviour, e.g.
+        ``{"touchRotate": True, "doubleClickZoom": False}``.
     """
 
     def __init__(
@@ -328,6 +354,12 @@ class MapWidget:
         tooltip: dict | None = None,
         mapbox_api_key: str | None = None,
         controls: list[dict] | None = None,
+        # Deck-level props (v0.7.0)
+        picking_radius: int = 0,
+        use_device_pixels: bool | int = True,
+        animate: bool = False,
+        parameters: dict | None = None,
+        controller: bool | dict = True,
     ):
         self.id = id
         self.view_state = view_state or {
@@ -341,6 +373,11 @@ class MapWidget:
         self.controls = controls if controls is not None else [
             {"type": "navigation", "position": "top-right"},
         ]
+        self.picking_radius = picking_radius
+        self.use_device_pixels = use_device_pixels
+        self.animate = animate
+        self.parameters = parameters
+        self.controller = controller
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -409,6 +446,17 @@ class MapWidget:
             attrs["data_mapbox_api_key"] = self.mapbox_api_key
         if self.controls:
             attrs["data_controls"] = json.dumps(self.controls)
+        # Deck-level props (v0.7.0)
+        if self.picking_radius != 0:
+            attrs["data_picking_radius"] = str(self.picking_radius)
+        if self.use_device_pixels is not True:
+            attrs["data_use_device_pixels"] = json.dumps(self.use_device_pixels)
+        if self.animate:
+            attrs["data_animate"] = "true"
+        if self.parameters is not None:
+            attrs["data_parameters"] = json.dumps(self.parameters)
+        if self.controller is not True:
+            attrs["data_controller"] = json.dumps(self.controller)
         return ui.div(**attrs)
 
     # -- Server helpers -------------------------------------------------------
@@ -421,6 +469,10 @@ class MapWidget:
         transition_duration: int = 0,
         effects: list[dict] | None = None,
         views: list[dict] | None = None,
+        # Deck-level props (v0.7.0)
+        picking_radius: int | None = None,
+        use_device_pixels: bool | int | None = None,
+        animate: bool | None = None,
     ) -> None:
         """Push a new set of deck.gl layers to this map.
 
@@ -442,6 +494,12 @@ class MapWidget:
             Optional list of view dicts (e.g. from ``map_view()``,
             ``orthographic_view()``).  When provided the JS client passes
             them to ``overlay.setProps({views})``.
+        picking_radius
+            Override picking radius for this update.
+        use_device_pixels
+            Override device pixel setting for this update.
+        animate
+            Override animation loop setting for this update.
         """
         payload: dict = {
             "id": self.id,
@@ -455,6 +513,13 @@ class MapWidget:
             payload["effects"] = effects
         if views:
             payload["views"] = views
+        # Deck-level props
+        if picking_radius is not None:
+            payload["pickingRadius"] = picking_radius
+        if use_device_pixels is not None:
+            payload["useDevicePixels"] = use_device_pixels
+        if animate is not None:
+            payload["_animate"] = animate
         await session.send_custom_message("deck_update", payload)
 
     async def set_layer_visibility(
@@ -474,6 +539,27 @@ class MapWidget:
         await session.send_custom_message("deck_layer_visibility", {
             "id": self.id,
             "visibility": visibility,
+        })
+
+    async def set_controller(
+        self,
+        session: Session,
+        options: bool | dict,
+    ) -> None:
+        """Configure map controller behaviour.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        options
+            ``True`` enables the default controller.  ``False`` disables
+            all map interaction.  A dict fine-tunes behaviour, e.g.
+            ``{"touchRotate": True, "doubleClickZoom": False}``.
+        """
+        await session.send_custom_message("deck_set_controller", {
+            "id": self.id,
+            "controller": options,
         })
 
     async def add_drag_marker(
@@ -1763,7 +1849,7 @@ if (typeof Shiny === 'undefined') {{
 # Generic layer helper
 # ---------------------------------------------------------------------------
 
-def layer(type: str, id: str, data=None, *, extensions: list[str] | None = None, **kwargs) -> dict:
+def layer(type: str, id: str, data=None, *, extensions: list | None = None, **kwargs) -> dict:
     """Create an arbitrary deck.gl layer definition.
 
     Works for *any* deck.gl layer class (e.g. ``"HeatmapLayer"``,
@@ -1779,9 +1865,21 @@ def layer(type: str, id: str, data=None, *, extensions: list[str] | None = None,
     data
         Layer data – list, dict, URL string, DataFrame, or GeoDataFrame.
     extensions
-        Optional list of deck.gl extension class names, e.g.
-        ``["DataFilterExtension", "BrushingExtension"]``.
-        The JS client resolves these into ``new deck.<Name>()`` instances.
+        Optional list of deck.gl extension specs.  Each element can be:
+
+        - A **string** — extension class name, instantiated with no args::
+
+              extensions=["BrushingExtension", "ClipExtension"]
+
+        - A **[name, options] pair** (list or tuple) — instantiated with
+          the given options dict::
+
+              extensions=[["DataFilterExtension", {"filterSize": 2}]]
+
+        Mixed forms are allowed::
+
+              extensions=["ClipExtension",
+                          ["DataFilterExtension", {"filterSize": 2}]]
     **kwargs
         Any additional deck.gl properties.  ``visible=False`` hides the
         layer without removing it from the stack.
@@ -1790,7 +1888,18 @@ def layer(type: str, id: str, data=None, *, extensions: list[str] | None = None,
     if data is not None:
         lyr["data"] = _serialise_data(data)
     if extensions:
-        lyr["@@extensions"] = extensions
+        resolved: list = []
+        for ext in extensions:
+            if isinstance(ext, str):
+                resolved.append(ext)
+            elif isinstance(ext, (list, tuple)) and len(ext) == 2:
+                resolved.append({"@@extClass": ext[0], "@@extOpts": ext[1]})
+            else:
+                raise ValueError(
+                    f"Invalid extension spec: {ext!r}. "
+                    "Expected a string or a [name, options] pair."
+                )
+        lyr["@@extensions"] = resolved
     lyr.update(kwargs)
     return lyr
 
@@ -1886,3 +1995,245 @@ def bitmap_layer(id: str, image: str, bounds: list, **kwargs) -> dict:
         ``[left, bottom, right, top]`` in WGS 84.
     """
     return layer("BitmapLayer", id, **{"image": image, "bounds": bounds, **kwargs})
+
+
+# ---------------------------------------------------------------------------
+# Additional layer helpers (v0.7.0)
+# ---------------------------------------------------------------------------
+
+def arc_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``ArcLayer`` for drawing arcs between two points.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``sourcePosition`` and ``targetPosition`` keys,
+        a remote data URL, or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getSourceColor``, ``getWidth``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getSourcePosition": "@@d.sourcePosition",
+        "getTargetPosition": "@@d.targetPosition",
+        "getSourceColor": [0, 128, 200],
+        "getTargetColor": [200, 0, 80],
+        "getWidth": 2,
+    }
+    defaults.update(kwargs)
+    return layer("ArcLayer", id, data, **defaults)
+
+
+def icon_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``IconLayer`` for rendering icons at locations.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts, a remote data URL,
+        or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``iconAtlas``, ``iconMapping``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "getSize": 24,
+        "sizeScale": 1,
+    }
+    defaults.update(kwargs)
+    return layer("IconLayer", id, data, **defaults)
+
+
+def path_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``PathLayer`` for rendering polylines.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with a ``path`` key (array of coordinates),
+        a remote data URL, or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getColor``, ``getWidth``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPath": "@@d.path",
+        "getColor": [0, 128, 255],
+        "getWidth": 3,
+        "widthMinPixels": 1,
+    }
+    defaults.update(kwargs)
+    return layer("PathLayer", id, data, **defaults)
+
+
+def line_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``LineLayer`` for straight lines between two points.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``sourcePosition`` and ``targetPosition`` keys.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getColor``, ``getWidth``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getSourcePosition": "@@d.sourcePosition",
+        "getTargetPosition": "@@d.targetPosition",
+        "getColor": [0, 0, 0, 128],
+        "getWidth": 1,
+    }
+    defaults.update(kwargs)
+    return layer("LineLayer", id, data, **defaults)
+
+
+def text_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``TextLayer`` for rendering text labels.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with a ``text`` key, a remote data URL,
+        or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getText``, ``getSize``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "getText": "@@d.text",
+        "getSize": 16,
+        "getColor": [0, 0, 0, 255],
+        "getTextAnchor": "middle",
+        "getAlignmentBaseline": "center",
+    }
+    defaults.update(kwargs)
+    return layer("TextLayer", id, data, **defaults)
+
+
+def column_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``ColumnLayer`` for 3D columns.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``elevation`` key, coordinates, etc.
+    **kwargs
+        Extra deck.gl properties (e.g. ``radius``, ``extruded``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "getElevation": "@@d.elevation",
+        "getFillColor": [255, 140, 0],
+        "radius": 100,
+        "extruded": True,
+    }
+    defaults.update(kwargs)
+    return layer("ColumnLayer", id, data, **defaults)
+
+
+def polygon_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``PolygonLayer`` for rendering filled polygons.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with a ``polygon`` key (array of coordinates).
+    **kwargs
+        Extra deck.gl properties (e.g. ``getFillColor``, ``extruded``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPolygon": "@@d.polygon",
+        "getFillColor": [0, 128, 255, 80],
+        "getLineColor": [0, 0, 0, 200],
+        "getLineWidth": 1,
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("PolygonLayer", id, data, **defaults)
+
+
+def heatmap_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``HeatmapLayer`` for density visualisation.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts, a remote data URL,
+        or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``radiusPixels``, ``intensity``).
+    """
+    defaults: dict[str, Any] = {
+        "getPosition": "@@d",
+        "getWeight": 1,
+        "radiusPixels": 30,
+        "intensity": 1,
+        "threshold": 0.05,
+    }
+    defaults.update(kwargs)
+    return layer("HeatmapLayer", id, data, **defaults)
+
+
+def hexagon_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``HexagonLayer`` for hexagonal binning.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts.
+    **kwargs
+        Extra deck.gl properties (e.g. ``radius``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "radius": 1000,
+        "elevationScale": 4,
+        "extruded": True,
+    }
+    defaults.update(kwargs)
+    return layer("HexagonLayer", id, data, **defaults)
+
+
+def h3_hexagon_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``H3HexagonLayer`` for H3 index-based hexagons.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``hex`` (H3 index) and ``color`` keys.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getHexagon``, ``extruded``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getHexagon": "@@d.hex",
+        "getFillColor": "@@d.color",
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("H3HexagonLayer", id, data, **defaults)

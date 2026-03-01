@@ -16,6 +16,16 @@ from shiny_deckgl.components import (
     geojson_layer,
     tile_layer,
     bitmap_layer,
+    arc_layer,
+    icon_layer,
+    path_layer,
+    line_layer,
+    text_layer,
+    column_layer,
+    polygon_layer,
+    heatmap_layer,
+    hexagon_layer,
+    h3_hexagon_layer,
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,
@@ -33,6 +43,7 @@ from shiny_deckgl.components import (
     map_view,
     orthographic_view,
     first_person_view,
+    globe_view,
     CONTROL_TYPES,
     CONTROL_POSITIONS,
 )
@@ -50,13 +61,16 @@ def test_public_api_exports():
     expected = {
         "app", "MapWidget", "layer",
         "scatterplot_layer", "geojson_layer", "tile_layer", "bitmap_layer",
+        "arc_layer", "icon_layer", "path_layer", "line_layer",
+        "text_layer", "column_layer", "polygon_layer",
+        "heatmap_layer", "hexagon_layer", "h3_hexagon_layer",
         "head_includes",
         "CARTO_POSITRON", "CARTO_DARK", "CARTO_VOYAGER", "OSM_LIBERTY",
         "color_range", "color_bins", "color_quantiles",
         "PALETTE_VIRIDIS", "PALETTE_PLASMA", "PALETTE_OCEAN",
         "PALETTE_THERMAL", "PALETTE_CHLOROPHYLL",
         "encode_binary_attribute",
-        "map_view", "orthographic_view", "first_person_view",
+        "map_view", "orthographic_view", "first_person_view", "globe_view",
         "CONTROL_TYPES", "CONTROL_POSITIONS",
         "__version__",
     }
@@ -2891,3 +2905,456 @@ class TestImageWorkflow:
         asyncio.run(w.remove_image(fake, "temp-icon"))
         assert fake.messages[0][0] == "deck_add_image"
         assert fake.messages[1][0] == "deck_remove_image"
+
+
+# ===========================================================================
+# Phase 5 (v0.7.0) — Extensions, DeckProps & Layer Helpers
+# ===========================================================================
+
+
+class TestExtensionConstructorOptions:
+    """Extension constructor options in layer()."""
+
+    def test_extension_string_only(self):
+        """Backward-compatible: list of strings."""
+        spec = layer("ScatterplotLayer", "e1", data=[],
+                      extensions=["BrushingExtension", "ClipExtension"])
+        assert spec["@@extensions"] == ["BrushingExtension", "ClipExtension"]
+
+    def test_extension_with_options_tuple(self):
+        """Tuple form: [name, options]."""
+        spec = layer("ScatterplotLayer", "e2", data=[],
+                      extensions=[["DataFilterExtension", {"filterSize": 2}]])
+        ext = spec["@@extensions"]
+        assert len(ext) == 1
+        assert ext[0] == {"@@extClass": "DataFilterExtension",
+                          "@@extOpts": {"filterSize": 2}}
+
+    def test_extension_with_options_list(self):
+        """List form (not tuple): [name, options]."""
+        spec = layer("ScatterplotLayer", "e3", data=[],
+                      extensions=[["MaskExtension", {"maskByInstance": True}]])
+        ext = spec["@@extensions"]
+        assert ext[0]["@@extClass"] == "MaskExtension"
+        assert ext[0]["@@extOpts"] == {"maskByInstance": True}
+
+    def test_extension_mixed(self):
+        """Mix of string-only and [name, opts] forms."""
+        spec = layer("ScatterplotLayer", "e4", data=[],
+                      extensions=[
+                          "ClipExtension",
+                          ["DataFilterExtension", {"filterSize": 2}],
+                          "BrushingExtension",
+                      ])
+        ext = spec["@@extensions"]
+        assert len(ext) == 3
+        assert ext[0] == "ClipExtension"
+        assert ext[1] == {"@@extClass": "DataFilterExtension",
+                          "@@extOpts": {"filterSize": 2}}
+        assert ext[2] == "BrushingExtension"
+
+    def test_extension_invalid_raises(self):
+        """Invalid spec (e.g. bare dict) raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid extension spec"):
+            layer("ScatterplotLayer", "e5", data=[],
+                  extensions=[{"bad": True}])
+
+    def test_extension_invalid_tuple_length_raises(self):
+        """Tuple with wrong length raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid extension spec"):
+            layer("ScatterplotLayer", "e6", data=[],
+                  extensions=[("a", "b", "c")])
+
+    def test_extension_none_omitted(self):
+        """extensions=None produces no @@extensions key."""
+        spec = layer("ScatterplotLayer", "e7", data=[])
+        assert "@@extensions" not in spec
+
+    def test_extension_empty_list_omitted(self):
+        """extensions=[] (empty) produces no @@extensions key."""
+        spec = layer("ScatterplotLayer", "e8", data=[], extensions=[])
+        assert "@@extensions" not in spec
+
+
+class TestDeckLevelProps:
+    """Deck-level props on MapWidget.__init__, ui(), and update()."""
+
+    def test_default_picking_radius(self):
+        w = MapWidget("dp1")
+        assert w.picking_radius == 0
+
+    def test_custom_picking_radius(self):
+        w = MapWidget("dp2", picking_radius=5)
+        assert w.picking_radius == 5
+
+    def test_default_use_device_pixels(self):
+        w = MapWidget("dp3")
+        assert w.use_device_pixels is True
+
+    def test_custom_use_device_pixels_false(self):
+        w = MapWidget("dp4", use_device_pixels=False)
+        assert w.use_device_pixels is False
+
+    def test_custom_use_device_pixels_int(self):
+        w = MapWidget("dp5", use_device_pixels=2)
+        assert w.use_device_pixels == 2
+
+    def test_default_animate(self):
+        w = MapWidget("dp6")
+        assert w.animate is False
+
+    def test_animate_true(self):
+        w = MapWidget("dp7", animate=True)
+        assert w.animate is True
+
+    def test_default_parameters(self):
+        w = MapWidget("dp8")
+        assert w.parameters is None
+
+    def test_custom_parameters(self):
+        w = MapWidget("dp9", parameters={"depthTest": False})
+        assert w.parameters == {"depthTest": False}
+
+    def test_default_controller(self):
+        w = MapWidget("dp10")
+        assert w.controller is True
+
+    def test_controller_false(self):
+        w = MapWidget("dp11", controller=False)
+        assert w.controller is False
+
+    def test_controller_dict(self):
+        opts = {"touchRotate": True, "doubleClickZoom": False}
+        w = MapWidget("dp12", controller=opts)
+        assert w.controller == opts
+
+    # -- ui() data attributes --
+
+    def test_ui_picking_radius_omitted_when_zero(self):
+        w = MapWidget("dp13")
+        tag = w.ui()
+        html = str(tag)
+        assert "data-picking-radius" not in html
+
+    def test_ui_picking_radius_set(self):
+        w = MapWidget("dp14", picking_radius=10)
+        tag = w.ui()
+        html = str(tag)
+        assert 'data-picking-radius="10"' in html
+
+    def test_ui_use_device_pixels_omitted_default(self):
+        w = MapWidget("dp15")
+        tag = w.ui()
+        html = str(tag)
+        assert "data-use-device-pixels" not in html
+
+    def test_ui_use_device_pixels_false(self):
+        w = MapWidget("dp16", use_device_pixels=False)
+        tag = w.ui()
+        html = str(tag)
+        assert "data-use-device-pixels" in html
+
+    def test_ui_animate_omitted_default(self):
+        w = MapWidget("dp17")
+        html = str(w.ui())
+        assert "data-animate" not in html
+
+    def test_ui_animate_true(self):
+        w = MapWidget("dp18", animate=True)
+        html = str(w.ui())
+        assert 'data-animate="true"' in html
+
+    def test_ui_parameters_omitted_default(self):
+        w = MapWidget("dp19")
+        html = str(w.ui())
+        assert "data-parameters" not in html
+
+    def test_ui_parameters_set(self):
+        w = MapWidget("dp20", parameters={"depthTest": False})
+        html = str(w.ui())
+        assert "data-parameters" in html
+
+    def test_ui_controller_omitted_default(self):
+        w = MapWidget("dp21")
+        html = str(w.ui())
+        assert "data-controller" not in html
+
+    def test_ui_controller_false(self):
+        w = MapWidget("dp22", controller=False)
+        html = str(w.ui())
+        assert "data-controller" in html
+
+    # -- update() deck-level props --
+
+    def test_update_with_picking_radius(self):
+        w = MapWidget("dp23")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, layers=[], picking_radius=5))
+        payload = fake.messages[0][1]
+        assert payload["pickingRadius"] == 5
+
+    def test_update_with_use_device_pixels(self):
+        w = MapWidget("dp24")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, layers=[], use_device_pixels=False))
+        payload = fake.messages[0][1]
+        assert payload["useDevicePixels"] is False
+
+    def test_update_with_animate(self):
+        w = MapWidget("dp25")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, layers=[], animate=True))
+        payload = fake.messages[0][1]
+        assert payload["_animate"] is True
+
+    def test_update_without_deck_props_omits_keys(self):
+        w = MapWidget("dp26")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, layers=[]))
+        payload = fake.messages[0][1]
+        assert "pickingRadius" not in payload
+        assert "useDevicePixels" not in payload
+        assert "_animate" not in payload
+
+
+class TestSetController:
+    """set_controller() async method."""
+
+    def test_set_controller_true(self):
+        w = MapWidget("sc1")
+        fake = _FakeSession()
+        asyncio.run(w.set_controller(fake, True))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_controller"
+        assert payload["controller"] is True
+
+    def test_set_controller_false(self):
+        w = MapWidget("sc2")
+        fake = _FakeSession()
+        asyncio.run(w.set_controller(fake, False))
+        payload = fake.messages[0][1]
+        assert payload["controller"] is False
+
+    def test_set_controller_dict(self):
+        opts = {"touchRotate": True, "doubleClickZoom": False}
+        w = MapWidget("sc3")
+        fake = _FakeSession()
+        asyncio.run(w.set_controller(fake, opts))
+        payload = fake.messages[0][1]
+        assert payload["controller"] == opts
+
+
+class TestArcLayer:
+    def test_defaults(self):
+        spec = arc_layer("a1", data=[])
+        assert spec["type"] == "ArcLayer"
+        assert spec["id"] == "a1"
+        assert spec["pickable"] is True
+        assert spec["getSourcePosition"] == "@@d.sourcePosition"
+        assert spec["getTargetPosition"] == "@@d.targetPosition"
+        assert spec["getWidth"] == 2
+
+    def test_kwargs_override(self):
+        spec = arc_layer("a2", data=[], getWidth=5, getSourceColor=[255, 0, 0])
+        assert spec["getWidth"] == 5
+        assert spec["getSourceColor"] == [255, 0, 0]
+
+
+class TestIconLayer:
+    def test_defaults(self):
+        spec = icon_layer("i1", data=[])
+        assert spec["type"] == "IconLayer"
+        assert spec["pickable"] is True
+        assert spec["getPosition"] == "@@d"
+        assert spec["getSize"] == 24
+
+    def test_kwargs_override(self):
+        spec = icon_layer("i2", data=[], getSize=48, sizeScale=2)
+        assert spec["getSize"] == 48
+        assert spec["sizeScale"] == 2
+
+
+class TestPathLayer:
+    def test_defaults(self):
+        spec = path_layer("p1", data=[])
+        assert spec["type"] == "PathLayer"
+        assert spec["getPath"] == "@@d.path"
+        assert spec["getWidth"] == 3
+        assert spec["widthMinPixels"] == 1
+
+    def test_kwargs_override(self):
+        spec = path_layer("p2", data=[], getColor=[255, 0, 0], getWidth=10)
+        assert spec["getColor"] == [255, 0, 0]
+        assert spec["getWidth"] == 10
+
+
+class TestLineLayer:
+    def test_defaults(self):
+        spec = line_layer("l1", data=[])
+        assert spec["type"] == "LineLayer"
+        assert spec["getSourcePosition"] == "@@d.sourcePosition"
+        assert spec["getTargetPosition"] == "@@d.targetPosition"
+        assert spec["getWidth"] == 1
+
+    def test_kwargs_override(self):
+        spec = line_layer("l2", data=[], getColor=[0, 255, 0], getWidth=3)
+        assert spec["getColor"] == [0, 255, 0]
+
+
+class TestTextLayer:
+    def test_defaults(self):
+        spec = text_layer("t1", data=[])
+        assert spec["type"] == "TextLayer"
+        assert spec["getText"] == "@@d.text"
+        assert spec["getSize"] == 16
+        assert spec["getTextAnchor"] == "middle"
+
+    def test_kwargs_override(self):
+        spec = text_layer("t2", data=[], getSize=24, getText="@@d.label")
+        assert spec["getSize"] == 24
+        assert spec["getText"] == "@@d.label"
+
+
+class TestColumnLayer:
+    def test_defaults(self):
+        spec = column_layer("c1", data=[])
+        assert spec["type"] == "ColumnLayer"
+        assert spec["extruded"] is True
+        assert spec["radius"] == 100
+        assert spec["getFillColor"] == [255, 140, 0]
+
+    def test_kwargs_override(self):
+        spec = column_layer("c2", data=[], radius=500, extruded=False)
+        assert spec["radius"] == 500
+        assert spec["extruded"] is False
+
+
+class TestPolygonLayer:
+    def test_defaults(self):
+        spec = polygon_layer("pg1", data=[])
+        assert spec["type"] == "PolygonLayer"
+        assert spec["getPolygon"] == "@@d.polygon"
+        assert spec["extruded"] is False
+        assert spec["getLineWidth"] == 1
+
+    def test_kwargs_override(self):
+        spec = polygon_layer("pg2", data=[], extruded=True,
+                             getFillColor=[255, 0, 0, 128])
+        assert spec["extruded"] is True
+        assert spec["getFillColor"] == [255, 0, 0, 128]
+
+
+class TestHeatmapLayer:
+    def test_defaults(self):
+        spec = heatmap_layer("h1", data=[])
+        assert spec["type"] == "HeatmapLayer"
+        assert spec["radiusPixels"] == 30
+        assert spec["intensity"] == 1
+        assert spec["threshold"] == 0.05
+        # HeatmapLayer is not pickable by default
+        assert "pickable" not in spec or spec.get("pickable") != True
+
+    def test_kwargs_override(self):
+        spec = heatmap_layer("h2", data=[], radiusPixels=60, intensity=2)
+        assert spec["radiusPixels"] == 60
+        assert spec["intensity"] == 2
+
+
+class TestHexagonLayer:
+    def test_defaults(self):
+        spec = hexagon_layer("hx1", data=[])
+        assert spec["type"] == "HexagonLayer"
+        assert spec["radius"] == 1000
+        assert spec["elevationScale"] == 4
+        assert spec["extruded"] is True
+
+    def test_kwargs_override(self):
+        spec = hexagon_layer("hx2", data=[], radius=500, extruded=False)
+        assert spec["radius"] == 500
+        assert spec["extruded"] is False
+
+
+class TestH3HexagonLayer:
+    def test_defaults(self):
+        spec = h3_hexagon_layer("h3_1", data=[])
+        assert spec["type"] == "H3HexagonLayer"
+        assert spec["getHexagon"] == "@@d.hex"
+        assert spec["getFillColor"] == "@@d.color"
+        assert spec["extruded"] is False
+
+    def test_kwargs_override(self):
+        spec = h3_hexagon_layer("h3_2", data=[], extruded=True,
+                                 getHexagon="@@d.h3_index")
+        assert spec["extruded"] is True
+        assert spec["getHexagon"] == "@@d.h3_index"
+
+
+class TestGlobeView:
+    """globe_view() helper."""
+
+    def test_basic(self):
+        v = globe_view()
+        assert v == {"@@type": "GlobeView"}
+
+    def test_with_kwargs(self):
+        v = globe_view(resolution=2, id="globe1")
+        assert v["@@type"] == "GlobeView"
+        assert v["resolution"] == 2
+        assert v["id"] == "globe1"
+
+
+class TestUpdateTriggers:
+    """updateTriggers passthrough (no code needed, just validation)."""
+
+    def test_update_triggers_passthrough(self):
+        spec = layer("ScatterplotLayer", "ut1", data=[],
+                     getRadius="@@d.r",
+                     updateTriggers={"getRadius": ["r_version"]})
+        assert spec["updateTriggers"] == {"getRadius": ["r_version"]}
+
+    def test_update_triggers_multiple(self):
+        spec = layer("GeoJsonLayer", "ut2", data=[],
+                     updateTriggers={
+                         "getFillColor": ["color_mode"],
+                         "getLineWidth": ["width_scale"],
+                     })
+        assert "getFillColor" in spec["updateTriggers"]
+        assert "getLineWidth" in spec["updateTriggers"]
+
+
+class TestLayerHelpersDataSerialization:
+    """All new layer helpers correctly serialise data."""
+
+    def test_arc_layer_url_data(self):
+        spec = arc_layer("ds1", data="https://example.com/arcs.json")
+        assert spec["data"] == "https://example.com/arcs.json"
+
+    def test_icon_layer_list_data(self):
+        pts = [[1.0, 2.0], [3.0, 4.0]]
+        spec = icon_layer("ds2", data=pts)
+        assert spec["data"] == pts
+
+    def test_path_layer_dict_data(self):
+        d = [{"path": [[0, 0], [1, 1]]}]
+        spec = path_layer("ds3", data=d)
+        assert spec["data"] == d
+
+    def test_heatmap_layer_url(self):
+        spec = heatmap_layer("ds4", data="https://example.com/heat.json")
+        assert spec["data"] == "https://example.com/heat.json"
+
+    def test_hexagon_layer_list(self):
+        spec = hexagon_layer("ds5", data=[[1, 2], [3, 4]])
+        assert len(spec["data"]) == 2
+
+    def test_h3_hexagon_layer_list(self):
+        d = [{"hex": "891f1d48177ffff", "color": [255, 0, 0]}]
+        spec = h3_hexagon_layer("ds6", data=d)
+        assert spec["data"][0]["hex"] == "891f1d48177ffff"
+
+
+class TestV070Version:
+    """Version bump verification."""
+
+    def test_version_is_070(self):
+        assert m.__version__ == "0.7.0"

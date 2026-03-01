@@ -1,4 +1,3 @@
-from .app import app
 from .components import (
     MapWidget,
     layer,
@@ -58,6 +57,16 @@ from .components import (
 )
 from .ui import head_includes
 from ._version import __version__
+
+
+def __getattr__(name: str):
+    """Lazy-load the built-in demo ``app`` to avoid importing the full Shiny
+    application framework when users only need components like ``MapWidget``."""
+    if name == "app":
+        from .app import app  # noqa: F811
+
+        return app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "app",

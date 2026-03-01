@@ -71,10 +71,12 @@
   }
 
   // -----------------------------------------------------------------------
-  // Style-readiness guard — defers callback until map style is loaded
+  // Style-readiness guard — defers callback until map style is loaded.
+  // Also respects _deckStyleChanging flag set by deck_set_style to avoid
+  // a race where isStyleLoaded() briefly returns true during a style swap.
   // -----------------------------------------------------------------------
   function whenStyleReady(map, fn) {
-    if (map.isStyleLoaded()) {
+    if (map.isStyleLoaded() && !map._deckStyleChanging) {
       fn();
     } else {
       map.once('style.load', fn);
@@ -798,7 +800,16 @@
       console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
         + 'Re-add them after the style loads.');
     }
+    // Guard against whenStyleReady race: mark the map as style-changing so
+    // that any Shiny messages arriving between setStyle() and the next
+    // 'style.load' event correctly queue instead of running immediately.
+    instance.map._deckStyleChanging = true;
+    instance.map.once('style.load', function () {
+      instance.map._deckStyleChanging = false;
+    });
     instance.map.setStyle(payload.style);
+    // Clear stale tracker — all native layers/sources are removed by setStyle
+    instance.nativeLayers = {};
   });
 
   // -----------------------------------------------------------------------

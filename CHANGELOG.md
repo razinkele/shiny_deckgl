@@ -56,6 +56,15 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`deck_legend_control()`** — custom legend panel for deck.gl overlay layers.
+  Five swatch shapes (`circle`, `rect`, `line`, `arc`, `gradient`), optional
+  visibility checkboxes that toggle deck.gl layers, collapsible header, and
+  fully configurable entries.  Implemented as a MapLibre `IControl` in JS with
+  dedicated CSS.
+- **`legend_control()`** — native MapLibre layer legend powered by
+  `@watergis/maplibre-gl-legend`, with checkbox toggles and `targets` filter.
+- **`opacity_control()`** — layer switcher / opacity slider control powered by
+  `maplibre-gl-opacity`.
 - **Custom map images** — `add_image()`, `remove_image()`, `has_image()` for
   loading icons (PNG, JPEG, WebP, SVG, data-URI) into the map style.  Supports
   SDF (signed-distance-field) recolouring and retina `pixel_ratio`.

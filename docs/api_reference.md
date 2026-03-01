@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 0.6.0** — A Shiny for Python bridge to deck.gl (v9.1.4) and MapLibre GL JS (v5.3.1).
+> **Version 0.8.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -60,12 +60,37 @@ import shiny_deckgl as sdgl
   - [set\_feature\_state()](#set_feature_state)
   - [remove\_feature\_state()](#remove_feature_state)
   - [export\_image()](#export_image)
-- [Layer Helpers](#layer-helpers)
+- [Control Helpers (v0.6)](#control-helpers-v06)
+  - [set\_controls()](#set_controls)
+  - [geolocate\_control()](#geolocate_control)
+  - [globe\_control()](#globe_control)
+  - [terrain\_control()](#terrain_control)
+  - [legend\_control()](#legend_control)
+  - [opacity\_control()](#opacity_control)
+  - [deck\_legend\_control()](#deck_legend_control)
+- [Layer Helpers (v0.7)](#layer-helpers-v07)
   - [layer()](#layer)
   - [scatterplot\_layer()](#scatterplot_layer)
   - [geojson\_layer()](#geojson_layer)
   - [tile\_layer()](#tile_layer)
   - [bitmap\_layer()](#bitmap_layer)
+  - [arc\_layer()](#arc_layer)
+  - [icon\_layer()](#icon_layer)
+  - [path\_layer()](#path_layer)
+  - [line\_layer()](#line_layer)
+  - [text\_layer()](#text_layer)
+  - [column\_layer()](#column_layer)
+  - [polygon\_layer()](#polygon_layer)
+  - [heatmap\_layer()](#heatmap_layer)
+  - [hexagon\_layer()](#hexagon_layer)
+  - [h3\_hexagon\_layer()](#h3_hexagon_layer)
+- [Widgets (v0.8)](#widgets-v08)
+  - [set\_widgets()](#set_widgets)
+  - [Widget Helper Functions](#widget-helper-functions)
+- [Camera Transitions (v0.8)](#camera-transitions-v08)
+  - [fly\_to()](#fly_to)
+  - [ease\_to()](#ease_to)
+- [Transition Helper (v0.8)](#transition-helper-v08)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
@@ -78,6 +103,7 @@ import shiny_deckgl as sdgl
   - [map\_view()](#map_view)
   - [orthographic\_view()](#orthographic_view)
   - [first\_person\_view()](#first_person_view)
+  - [globe\_view()](#globe_view)
 - [Accessor Syntax](#accessor-syntax)
 - [WMS Tile Layers](#wms-tile-layers)
 - [Tooltip Configuration](#tooltip-configuration)
@@ -1011,7 +1037,213 @@ await widget.export_image(session, format="jpeg", quality=0.85,
 
 ---
 
-## Layer Helpers
+## Control Helpers (v0.6)
+
+### `set_controls()`
+
+```python
+await widget.set_controls(
+    session: Session,
+    controls: list[dict],
+) -> None
+```
+
+Replace **all** MapLibre controls on the map at once. Existing controls are removed before the new set is applied. Each control dict has `type` (one of `CONTROL_TYPES`), `position` (default `"top-right"`), and `options` (default `{}`).
+
+Use the `*_control()` helper functions to build control specs, or construct dicts manually.
+
+```python
+await widget.set_controls(session, [
+    {"type": "navigation", "position": "top-right", "options": {}},
+    geolocate_control(position="top-right", trackUserLocation=True),
+    globe_control(position="top-right"),
+    legend_control(targets={"water": "Water"}, position="bottom-left"),
+    deck_legend_control(
+        entries=[{"layer_id": "ports", "label": "Ports", "color": [0, 200, 100]}],
+        position="bottom-right", title="Deck.gl Layers",
+    ),
+])
+```
+
+### `geolocate_control()`
+
+```python
+geolocate_control(position: str = "top-right", **options) -> dict
+```
+
+Create a MapLibre `GeolocateControl` spec. Adds a button that uses the browser Geolocation API to locate the user.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `position` | `str` | `"top-right"` | Control position. |
+| `**options` | | | Passed to `GeolocateControl`: `trackUserLocation`, `showAccuracyCircle`, `positionOptions`, etc. |
+
+```python
+geolocate_control(position="top-right", trackUserLocation=True)
+```
+
+### `globe_control()`
+
+```python
+globe_control(position: str = "top-right", **options) -> dict
+```
+
+Create a MapLibre `GlobeControl` spec (flat ↔ globe toggle). Requires MapLibre GL JS ≥ 5.0.
+
+```python
+globe_control(position="top-right")
+```
+
+### `terrain_control()`
+
+```python
+terrain_control(position: str = "top-right", **options) -> dict
+```
+
+Create a MapLibre `TerrainControl` spec (3D terrain toggle). Requires MapLibre GL JS ≥ 5.0 and a terrain source in the style.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `position` | `str` | `"top-right"` | Control position. |
+| `**options` | | | Passed to `TerrainControl`: `source` (terrain source id), `exaggeration` (height multiplier). |
+
+```python
+terrain_control(position="top-right", source="terrain-dem", exaggeration=1.5)
+```
+
+### `legend_control()`
+
+```python
+legend_control(
+    targets: dict[str, str] | None = None,
+    position: str = "bottom-left",
+    *,
+    show_default: bool = False,
+    show_checkbox: bool = True,
+    only_rendered: bool = True,
+    reverse_order: bool = False,
+    title: str | None = None,
+) -> dict
+```
+
+Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend`). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
+
+> **Note:** This control only sees native MapLibre layers added via `add_maplibre_layer()`. For deck.gl overlay layers, use [`deck_legend_control()`](#deck_legend_control) instead.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `targets` | `dict \| None` | `None` | Map of layer id → display label. `None` shows all layers. |
+| `position` | `str` | `"bottom-left"` | Control position. |
+| `show_default` | `bool` | `False` | Whether the panel starts expanded. |
+| `show_checkbox` | `bool` | `True` | Show visibility toggle checkboxes. |
+| `only_rendered` | `bool` | `True` | Only show currently rendered layers. |
+| `reverse_order` | `bool` | `False` | Reverse layer order in the legend. |
+| `title` | `str \| None` | `None` | Panel title text. |
+
+```python
+legend_control(
+    targets={"mpa-fill": "Marine Protected Areas", "ports-circle": "Ports"},
+    position="bottom-left",
+    show_default=True,
+    only_rendered=False,
+)
+```
+
+### `opacity_control()`
+
+```python
+opacity_control(
+    position: str = "top-left",
+    *,
+    base_layers: dict[str, str] | None = None,
+    over_layers: dict[str, str] | None = None,
+    opacity_control_enabled: bool = True,
+) -> dict
+```
+
+Create an opacity / layer-switcher control (powered by `maplibre-gl-opacity`). Displays radio buttons for base layers and checkboxes with opacity sliders for overlay layers.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `position` | `str` | `"top-left"` | Control position. |
+| `base_layers` | `dict \| None` | `None` | Layer id → label for mutually exclusive base layers (radio buttons). |
+| `over_layers` | `dict \| None` | `None` | Layer id → label for overlay layers (checkboxes + opacity sliders). |
+| `opacity_control_enabled` | `bool` | `True` | Show the opacity slider for overlays. |
+
+```python
+opacity_control(
+    over_layers={"mpa-fill": "Marine Protected Areas", "ports-circle": "Ports"},
+)
+```
+
+### `deck_legend_control()`
+
+```python
+deck_legend_control(
+    entries: list[dict],
+    position: str = "bottom-right",
+    *,
+    show_checkbox: bool = True,
+    collapsed: bool = False,
+    title: str | None = None,
+) -> dict
+```
+
+Create a legend control for **deck.gl overlay layers**. Unlike `legend_control()` (which wraps the `@watergis/maplibre-gl-legend` plugin and can only see native MapLibre style layers), this control displays user-defined entries with colour swatches and optional visibility checkboxes that toggle deck.gl layers on and off.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `entries` | `list[dict]` | *(required)* | Legend entries (see table below). |
+| `position` | `str` | `"bottom-right"` | Control position. |
+| `show_checkbox` | `bool` | `True` | Show checkboxes to toggle deck.gl layer visibility. |
+| `collapsed` | `bool` | `False` | Start the panel in collapsed state. |
+| `title` | `str \| None` | `None` | Header text. When set, the panel is collapsible. |
+
+**Entry dict keys:**
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `layer_id` | `str` | deck.gl layer id (used by the visibility checkbox). |
+| `label` | `str` | Human-readable display label. |
+| `color` | `list \| str` | `[r, g, b]`, `[r, g, b, a]`, or CSS colour string. |
+| `shape` | `str` | Swatch shape: `"circle"` (default), `"rect"`, `"line"`, `"arc"`, `"gradient"`. |
+| `color2` | `list \| str` | Second colour for `"arc"` shape (gradient end). |
+| `colors` | `list` | List of colours for `"gradient"` shape (e.g. HeatmapLayer `colorRange`). |
+
+**Swatch shapes and typical use:**
+
+| Shape | CSS Class | Best For |
+| --- | --- | --- |
+| `circle` | 12 × 12 px circle | `ScatterplotLayer` |
+| `rect` | 16 × 12 px rectangle | `GeoJsonLayer` fill, `ColumnLayer` |
+| `line` | 20 × 3 px bar | `PathLayer`, `LineLayer` |
+| `arc` | 24 × 4 px gradient bar | `ArcLayer` (source → target colour) |
+| `gradient` | 40 × 10 px multi-stop gradient | `HeatmapLayer`, `HexagonLayer` |
+
+```python
+deck_legend_control(
+    entries=[
+        {"layer_id": "ports", "label": "Baltic Ports",
+         "color": [65, 182, 196], "shape": "circle"},
+        {"layer_id": "mpa-zones", "label": "Marine Protected Areas",
+         "color": [0, 128, 0, 100], "shape": "rect"},
+        {"layer_id": "port-arcs", "label": "Shipping Routes",
+         "color": [255, 140, 0], "color2": [200, 0, 80], "shape": "arc"},
+        {"layer_id": "observation-heat", "label": "Observation Heatmap",
+         "colors": [[0, 25, 0], [0, 209, 0], [255, 255, 0], [255, 0, 0]],
+         "shape": "gradient"},
+        {"layer_id": "route-paths", "label": "Route Paths",
+         "color": [100, 100, 200], "shape": "line"},
+    ],
+    position="bottom-right",
+    title="Deck.gl Layers",
+    show_checkbox=True,
+)
+```
+
+---
+
+## Layer Helpers (v0.7)
 
 All layer helpers return plain `dict` objects that are passed to `widget.update()`.
 
@@ -1131,6 +1363,225 @@ bitmap_layer("overlay", "https://example.com/chart.png",
              bounds=[-10, 35, 40, 70])
 ```
 
+### `arc_layer()`
+
+```python
+arc_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create an `ArcLayer` for drawing arcs between two points.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts, remote URL, or DataFrame. |
+| `getSourcePosition` | `"@@d.sourcePosition"` | Source coordinate accessor. |
+| `getTargetPosition` | `"@@d.targetPosition"` | Target coordinate accessor. |
+| `getSourceColor` | `[0, 128, 200]` | Source end colour. |
+| `getTargetColor` | `[200, 0, 80]` | Target end colour. |
+| `getWidth` | `2` | Arc width in pixels. |
+
+```python
+arc_layer("routes", data, getSourceColor=[0, 200, 0], getWidth=3)
+```
+
+### `icon_layer()`
+
+```python
+icon_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create an `IconLayer` for rendering icons at locations.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of `[lon, lat]` points / dicts / URL / DataFrame. |
+| `getPosition` | `"@@d"` | Position accessor. |
+| `getSize` | `24` | Icon size. |
+| `sizeScale` | `1` | Global size multiplier. |
+
+```python
+icon_layer("markers", data, iconAtlas="atlas.png",
+           iconMapping={"marker": {"x": 0, "y": 0, "width": 128, "height": 128}},
+           getIcon="marker")
+```
+
+### `path_layer()`
+
+```python
+path_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `PathLayer` for rendering polylines.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts with `path` key / URL / DataFrame. |
+| `getPath` | `"@@d.path"` | Path accessor. |
+| `getColor` | `[0, 128, 255]` | Line colour. |
+| `getWidth` | `3` | Line width. |
+| `widthMinPixels` | `1` | Minimum width in pixels. |
+
+```python
+path_layer("trails", data, getColor=[255, 0, 0], getWidth=5)
+```
+
+### `line_layer()`
+
+```python
+line_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `LineLayer` for straight lines between two points. Unlike `ArcLayer`, lines are drawn as straight segments (no curve).
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts with `sourcePosition`/`targetPosition`. |
+| `getSourcePosition` | `"@@d.sourcePosition"` | Source coordinate accessor. |
+| `getTargetPosition` | `"@@d.targetPosition"` | Target coordinate accessor. |
+| `getColor` | `[0, 0, 0, 128]` | Line colour. |
+| `getWidth` | `1` | Line width. |
+
+```python
+line_layer("connections", data, getColor=[80, 80, 200])
+```
+
+### `text_layer()`
+
+```python
+text_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `TextLayer` for rendering text labels at locations.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts with `text` key / URL / DataFrame. |
+| `getPosition` | `"@@d"` | Position accessor. |
+| `getText` | `"@@d.text"` | Text content accessor. |
+| `getSize` | `16` | Font size. |
+| `getColor` | `[0, 0, 0, 255]` | Text colour. |
+| `getTextAnchor` | `"middle"` | Horizontal alignment. |
+| `getAlignmentBaseline` | `"center"` | Vertical alignment. |
+
+```python
+text_layer("labels", data, getSize=12, getColor=[255, 255, 255])
+```
+
+### `column_layer()`
+
+```python
+column_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `ColumnLayer` for 3D extruded columns.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts / URL / DataFrame. |
+| `getPosition` | `"@@d"` | Position accessor. |
+| `getElevation` | `"@@d.elevation"` | Column height accessor. |
+| `getFillColor` | `[255, 140, 0]` | Fill colour. |
+| `radius` | `100` | Column radius in meters. |
+| `extruded` | `True` | Enable 3D extrusion. |
+
+```python
+column_layer("towers", data, radius=500, getFillColor=[65, 182, 196])
+```
+
+### `polygon_layer()`
+
+```python
+polygon_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `PolygonLayer` for rendering filled polygons.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts with `polygon` key. |
+| `getPolygon` | `"@@d.polygon"` | Polygon accessor. |
+| `getFillColor` | `[0, 128, 255, 80]` | Fill colour (RGBA). |
+| `getLineColor` | `[0, 0, 0, 200]` | Outline colour. |
+| `getLineWidth` | `1` | Outline width. |
+| `extruded` | `False` | Enable 3D extrusion. |
+
+```python
+polygon_layer("zones", data, getFillColor=[0, 200, 0, 60], extruded=True,
+              getElevation="@@d.height")
+```
+
+### `heatmap_layer()`
+
+```python
+heatmap_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `HeatmapLayer` for density visualisation.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of `[lon, lat]` points / dicts / URL / DataFrame. |
+| `getPosition` | `"@@d"` | Position accessor. |
+| `getWeight` | `1` | Weight accessor or constant. |
+| `radiusPixels` | `30` | Kernel radius in pixels. |
+| `intensity` | `1` | Intensity multiplier. |
+| `threshold` | `0.05` | Minimum density threshold. |
+
+```python
+heatmap_layer("density", data, radiusPixels=50, intensity=2)
+```
+
+### `hexagon_layer()`
+
+```python
+hexagon_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create a `HexagonLayer` for hexagonal binning. Points are aggregated into hexagonal bins.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of `[lon, lat]` points / dicts. |
+| `getPosition` | `"@@d"` | Position accessor. |
+| `radius` | `1000` | Hex radius in meters. |
+| `elevationScale` | `4` | Elevation multiplier. |
+| `extruded` | `True` | Enable 3D extrusion. |
+
+```python
+hexagon_layer("hex-bins", data, radius=500, extruded=True,
+              elevationScale=10)
+```
+
+### `h3_hexagon_layer()`
+
+```python
+h3_hexagon_layer(id: str, data: list | dict, **kwargs) -> dict
+```
+
+Create an `H3HexagonLayer` for H3 index-based hexagons. Renders pre-computed H3 spatial indices.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `id` | *(required)* | Unique layer identifier. |
+| `data` | *(required)* | Array of dicts with `hex` (H3 index) and `color`. |
+| `getHexagon` | `"@@d.hex"` | H3 index accessor. |
+| `getFillColor` | `"@@d.color"` | Fill colour accessor. |
+| `extruded` | `False` | Enable 3D extrusion. |
+
+```python
+h3_hexagon_layer("h3-grid", data, extruded=True,
+                 getElevation="@@d.count", elevationScale=100)
+```
+
 ---
 
 ## Basemap & Control Constants
@@ -1150,13 +1601,188 @@ Pass any MapLibre-compatible style URL to `MapWidget(style=...)`.
 
 ### Control Constants
 
-**`CONTROL_TYPES`** — Valid control type strings for `add_control()` and the constructor's `controls` parameter:
+**`CONTROL_TYPES`** — Valid control type strings for `add_control()`, `set_controls()`, and the constructor's `controls` parameter:
 
-`{"navigation", "scale", "fullscreen", "geolocate", "globe", "terrain", "attribution"}`
+`{"navigation", "scale", "fullscreen", "geolocate", "globe", "terrain", "attribution", "legend", "opacity", "deck_legend"}`
 
 **`CONTROL_POSITIONS`** — Valid position strings for controls:
 
 `{"top-left", "top-right", "bottom-left", "bottom-right"}`
+
+---
+
+## Widgets (v0.8)
+
+deck.gl ships with its own widget system, independent of MapLibre controls. Widgets are rendered in the WebGL overlay and provide UI affordances such as zoom buttons, compass, fullscreen toggle, etc.
+
+### `set_widgets()`
+
+```python
+await widget.set_widgets(
+    session: Session,
+    widgets: list[dict],
+) -> None
+```
+
+Replace **all** deck.gl widgets at once (without resending layers). Each dict in `widgets` is built with a `*_widget()` helper.
+
+```python
+await widget.set_widgets(session, [
+    zoom_widget(placement="top-right"),
+    compass_widget(placement="top-right"),
+    fullscreen_widget(),
+    scale_widget(placement="bottom-left"),
+])
+```
+
+### Widget Helper Functions
+
+All helpers return a plain `dict` with a `"@@widgetClass"` key consumed by the JS client.
+
+| Helper | Class | Default Placement | Description |
+| --- | --- | --- | --- |
+| `zoom_widget()` | `ZoomWidget` | `"top-right"` | Zoom-in / zoom-out buttons |
+| `compass_widget()` | `CompassWidget` | `"top-right"` | Bearing indicator / reset |
+| `fullscreen_widget()` | `FullscreenWidget` | `"top-right"` | Toggle fullscreen |
+| `scale_widget()` | `ScaleWidget` | `"bottom-left"` | Distance scale bar |
+| `gimbal_widget()` | `GimbalWidget` | `"top-right"` | 3D camera gimbal control |
+| `reset_view_widget()` | `ResetViewWidget` | `"top-right"` | Reset camera to initial state |
+| `screenshot_widget()` | `ScreenshotWidget` | `"top-right"` | Take a screenshot |
+| `fps_widget()` | `FpsWidget` | `"top-left"` | Frames-per-second counter |
+| `loading_widget()` | `LoadingWidget` | — | Spinner during layer loading |
+| `timeline_widget()` | `TimelineWidget` | `"bottom-left"` | Time scrubber for animated layers |
+| `geocoder_widget()` | `GeocoderWidget` | `"top-left"` | Address search |
+| `theme_widget()` | `ThemeWidget` | — | Light/dark theme toggle |
+
+**Experimental widgets** (deck.gl ≥ 9.2):
+
+| Helper | Class | Default Placement | Description |
+| --- | --- | --- | --- |
+| `context_menu_widget()` | `ContextMenuWidget` | — | Right-click context menu |
+| `info_widget()` | `InfoWidget` | `"top-left"` | Layer hover/pick information |
+| `splitter_widget()` | `SplitterWidget` | — | Split-screen view divider |
+| `stats_widget()` | `StatsWidget` | `"top-left"` | GPU/CPU performance statistics |
+| `view_selector_widget()` | `ViewSelectorWidget` | `"top-left"` | Switch between view modes |
+
+Every helper accepts `placement` (where supported) and `**kwargs` passed directly as widget properties.
+
+```python
+from shiny_deckgl import (
+    zoom_widget, compass_widget, fullscreen_widget,
+    scale_widget, fps_widget, loading_widget,
+)
+
+await widget.set_widgets(session, [
+    zoom_widget(),
+    compass_widget(),
+    fullscreen_widget(),
+    scale_widget(placement="bottom-left"),
+    fps_widget(placement="top-left"),
+    loading_widget(),
+])
+```
+
+---
+
+## Camera Transitions (v0.8)
+
+Smooth camera movements powered by MapLibre's built-in `flyTo` and `easeTo` methods.
+
+### `fly_to()`
+
+```python
+await widget.fly_to(
+    session: Session,
+    longitude: float,
+    latitude: float,
+    zoom: float | None = None,
+    pitch: float | None = None,
+    bearing: float | None = None,
+    speed: float = 1.2,
+    duration: int | str = "auto",
+) -> None
+```
+
+Smooth fly-to camera transition using MapLibre `flyTo`. The camera departs the current view, zooms out to show both origin and destination, then zooms in to the target.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `longitude` | `float` | *(required)* | Target longitude. |
+| `latitude` | `float` | *(required)* | Target latitude. |
+| `zoom` | `float \| None` | `None` | Target zoom (unchanged if `None`). |
+| `pitch` | `float \| None` | `None` | Target pitch in degrees. |
+| `bearing` | `float \| None` | `None` | Target bearing in degrees. |
+| `speed` | `float` | `1.2` | Fly speed multiplier. |
+| `duration` | `int \| str` | `"auto"` | Duration in ms, or `"auto"` for MapLibre-calculated. |
+
+```python
+await widget.fly_to(session, longitude=20.0, latitude=55.5,
+                    zoom=8, pitch=45, speed=0.8)
+```
+
+### `ease_to()`
+
+```python
+await widget.ease_to(
+    session: Session,
+    longitude: float,
+    latitude: float,
+    zoom: float | None = None,
+    pitch: float | None = None,
+    bearing: float | None = None,
+    duration: int = 1000,
+) -> None
+```
+
+Smooth ease-to camera transition using MapLibre `easeTo`. Unlike `fly_to`, this is a simple linear interpolation without the zoom-out/zoom-in arc.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `longitude` | `float` | *(required)* | Target longitude. |
+| `latitude` | `float` | *(required)* | Target latitude. |
+| `zoom` | `float \| None` | `None` | Target zoom (unchanged if `None`). |
+| `pitch` | `float \| None` | `None` | Target pitch in degrees. |
+| `bearing` | `float \| None` | `None` | Target bearing in degrees. |
+| `duration` | `int` | `1000` | Duration in milliseconds. |
+
+```python
+await widget.ease_to(session, longitude=21.0, latitude=56.0,
+                     zoom=10, duration=2000)
+```
+
+---
+
+## Transition Helper (v0.8)
+
+### `transition()`
+
+```python
+transition(
+    duration: int = 1000,
+    easing: str | None = None,
+    type: str = "interpolation",
+    **kwargs,
+) -> dict
+```
+
+Build a transition spec for a layer property. When assigned to a layer's `transitions` dict, the property will smoothly animate between values on data update.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `duration` | `int` | `1000` | Duration in ms (for `"interpolation"` type). |
+| `easing` | `str \| None` | `None` | Named easing: `"ease-in-cubic"`, `"ease-out-cubic"`, `"ease-in-out-cubic"`, `"ease-in-out-sine"`. |
+| `type` | `str` | `"interpolation"` | `"interpolation"` or `"spring"`. |
+| `**kwargs` | | | Additional props, e.g. `stiffness`, `damping` for spring. |
+
+```python
+scatterplot_layer("pts", data,
+    getRadius=10,
+    transitions={
+        "getRadius": transition(800, easing="ease-in-out-cubic"),
+        "getFillColor": transition(500),
+    },
+)
+```
 
 ---
 
@@ -1280,6 +1906,19 @@ first_person_view(**kwargs) -> dict
 ```
 
 Create a `FirstPersonView` spec for immersive 3D walkthroughs.
+
+### `globe_view()`
+
+```python
+globe_view(**kwargs) -> dict
+```
+
+Create a `GlobeView` spec for a 3D globe projection. Renders the earth as a globe rather than a flat Mercator projection. Useful for visualising global datasets.
+
+```python
+await widget.update(session, layers=my_layers,
+                    views=[globe_view(controller=True)])
+```
 
 **Multi-view example:**
 

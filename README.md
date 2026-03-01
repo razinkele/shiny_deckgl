@@ -2,7 +2,7 @@
 
 ## Shiny for Python → deck.gl bridge (Java-free)
 
-A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.1.4) and
+A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.2.10) and
 [MapLibre GL JS](https://maplibre.org/) (v5.3.1) into
 [Shiny for Python](https://shiny.posit.co/py/) applications.
 Built for marine science and GIS visualisation — WMS layers, EMODnet,
@@ -36,7 +36,7 @@ browser, all without Java dependencies.
 | **HTML export** | `widget.to_html(layers, path="map.html")` — standalone HTML file viewable in any browser. |
 | **JSON spec** | `to_json()` / `from_json()` for serialising and restoring map configurations. |
 | **`@@` accessor convention** | Python strings like `"@@d"` or `"@@d.position"` are resolved to JS arrow functions on the client. |
-| **CDN-pinned assets** | deck.gl 9.1.4, MapLibre GL 5.3.1 — deterministic builds. |
+| **CDN-pinned assets** | deck.gl 9.2.10, MapLibre GL 5.3.1 — deterministic builds. |
 | **Conda recipe** | Bundled `conda.recipe/meta.yaml` for micromamba / conda-build. |
 
 ### Phase 1 — Controls & Navigation (v0.2)
@@ -81,6 +81,35 @@ browser, all without Java dependencies.
 | **GeoPandas integration** | `add_geodataframe()` — directly add a GeoDataFrame as a GeoJSON source + native layers. |
 | **Feature state** | `set_feature_state()` / `remove_feature_state()` — interactive styling without redrawing. |
 | **Map export** | `export_image(format="png"/"jpeg"/"webp")` — screenshot the map as a base64 data URL. |
+
+### Phase 5 — Control Helpers & Legend Plugins (v0.6)
+
+| Capability | Details |
+| --- | --- |
+| **`set_controls()`** | Replace all MapLibre controls at once with a list of control specs. |
+| **Control helpers** | `geolocate_control()`, `globe_control()`, `terrain_control()` — typed factory functions. |
+| **Legend control** | `legend_control()` — native MapLibre layer legend with checkboxes (`@watergis/maplibre-gl-legend`). |
+| **Opacity control** | `opacity_control()` — layer switcher with opacity sliders (`maplibre-gl-opacity`). |
+| **deck.gl legend** | `deck_legend_control()` — custom legend panel for deck.gl overlay layers with 5 swatch shapes. |
+
+### Phase 6 — Extended Layer Helpers (v0.7)
+
+| Capability | Details |
+| --- | --- |
+| **10 new layer helpers** | `arc_layer()`, `icon_layer()`, `path_layer()`, `line_layer()`, `text_layer()`, `column_layer()`, `polygon_layer()`, `heatmap_layer()`, `hexagon_layer()`, `h3_hexagon_layer()`. |
+| **Deck-level properties** | `parameters`, `effects`, `views` — full control over the deck.gl `Deck` instance through `update()`. |
+| **Layer extensions** | `layer(..., extensions=["DataFilterExtension"])` with auto-resolution on the client. |
+
+### Phase 7 — Widgets, Camera Transitions & Globe (v0.8)
+
+| Capability | Details |
+| --- | --- |
+| **deck.gl widgets** | `set_widgets()` with 17 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `fps_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()` + 5 experimental. |
+| **Camera transitions** | `fly_to(longitude, latitude, zoom, speed)` — smooth MapLibre flyTo animation. |
+| | `ease_to(longitude, latitude, zoom, duration)` — linear easeTo animation. |
+| **Transition helper** | `transition(duration, easing, type)` — animate layer property changes on data update. |
+| **Globe view** | `globe_view()` — render the earth as a 3D globe with `GlobeView`. |
+| **deck.gl 9.2.10** | CDN upgraded from 9.1.4 to 9.2.10 with widget support. |
 
 ## Environment & Prerequisites
 
@@ -191,6 +220,41 @@ layers = [scatterplot_layer("pts", [[21.12, 55.70]])]
 map_widget.to_html(layers, path="my_map.html", title="Exported Map")
 ```
 
+### deck.gl legend for overlay layers
+
+```python
+from shiny_deckgl import deck_legend_control, scatterplot_layer, arc_layer, heatmap_layer
+
+await widget.set_controls(session, [
+    {"type": "navigation", "position": "top-right"},
+    deck_legend_control(
+        entries=[
+            {"layer_id": "ports", "label": "Baltic Ports",
+             "color": [65, 182, 196], "shape": "circle"},
+            {"layer_id": "routes", "label": "Shipping Routes",
+             "color": [255, 140, 0], "color2": [200, 0, 80], "shape": "arc"},
+            {"layer_id": "density", "label": "Observation Density",
+             "colors": [[0, 25, 0, 255], [0, 209, 0, 255], [255, 255, 0, 255], [255, 0, 0, 255]],
+             "shape": "gradient"},
+        ],
+        position="bottom-right",
+        title="Deck.gl Layers",
+    ),
+])
+```
+
+### Widgets and camera transitions
+
+```python
+from shiny_deckgl import zoom_widget, compass_widget, fullscreen_widget
+
+await widget.set_widgets(session, [
+    zoom_widget(), compass_widget(), fullscreen_widget(),
+])
+
+await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
+```
+
 ## Codebase Structure
 
 | File | Purpose |
@@ -204,7 +268,7 @@ map_widget.to_html(layers, path="my_map.html", title="Exported Map")
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 310 unit tests covering all features. |
+| `tests/test_basic.py` | 461 unit tests covering all features. |
 
 ## Running Tests
 

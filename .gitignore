@@ -39,3 +39,18 @@ conda.recipe/build/
 *.png
 
 .Rhistory
+
+# Local / user-specific files
+desktop.ini
+.claude/
+*.zip
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.cpg
+IMPLEMENTATION_PLAN*.md
+ROADMAP.md
+ags_*/

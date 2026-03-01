@@ -419,13 +419,19 @@
   // -----------------------------------------------------------------------
   // Helper: resolve widget specs → deck.gl Widget instances (v0.8.0)
   // -----------------------------------------------------------------------
-  function buildWidgets(widgetSpecs) {
+  function buildWidgets(widgetSpecs, targetId) {
     if (!widgetSpecs || !widgetSpecs.length) return undefined;
+    // Resolve the map container element so FullscreenWidget can target it
+    var containerEl = targetId ? document.getElementById(targetId) : null;
     return widgetSpecs.map(spec => {
       var className = spec['@@widgetClass'];
       if (!className) return null;
       var props = Object.assign({}, spec);
       delete props['@@widgetClass'];
+      // FullscreenWidget must target the map container, not the deck canvas
+      if (className === 'FullscreenWidget' && containerEl && !props.container) {
+        props.container = containerEl;
+      }
       var Cls = deck[className] || deck['_' + className];
       if (!Cls) {
         console.warn('[shiny_deckgl] Unknown widget: ' + className);
@@ -665,7 +671,7 @@
     if (payload._animate !== undefined) overlayProps._animate = payload._animate;
 
     // Widgets (v0.8.0)
-    var widgets = buildWidgets(payload.widgets);
+    var widgets = buildWidgets(payload.widgets, targetId);
     if (widgets) overlayProps.widgets = widgets;
 
     overlay.setProps(overlayProps);
@@ -679,7 +685,7 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    var widgets = buildWidgets(payload.widgets);
+    var widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
       instance.overlay.setProps({ widgets: widgets });
       instance.map.triggerRepaint();

@@ -179,6 +179,13 @@ app_ui = ui.page_navbar(
             ui.sidebar(
                 ui.accordion(
                     ui.accordion_panel(
+                        "\u2693 Basemap",
+                        ui.input_select(
+                            "basemap", "Basemap style",
+                            choices=list(BASEMAP_CHOICES.keys()),
+                        ),
+                    ),
+                    ui.accordion_panel(
                         "\u2728 Symbology",
                         ui.input_select(
                             "palette", "Port colour palette",
@@ -688,6 +695,13 @@ def server(input, output, session: Session):
         layers = _build_main_layers()
         _main_layers.set(layers)
         await map_widget.update(session, layers)
+
+    # Basemap switching (Tab 1)
+    @reactive.Effect
+    @reactive.event(input.basemap)
+    async def _switch_basemap():
+        style_url = BASEMAP_CHOICES.get(input.basemap(), CARTO_POSITRON)
+        await map_widget.set_style(session, style_url)
 
     # Fly-to / ease-to transitions
     @reactive.Effect

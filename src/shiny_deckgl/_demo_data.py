@@ -257,3 +257,22 @@ def make_port_data_simple() -> list[dict]:
         }
         for p in PORTS
     ]
+
+
+def make_port_geojson() -> dict:
+    """Convert port data to a GeoJSON FeatureCollection (for native layers)."""
+    features = []
+    for p in PORTS:
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [p["lon"], p["lat"]],
+            },
+            "properties": {
+                "name": p["name"],
+                "country": p["country"],
+                "cargo_mt": p["cargo_mt"],
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}

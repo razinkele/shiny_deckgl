@@ -75,6 +75,7 @@ from ._demo_data import (
     make_heatmap_points,
     make_path_data,
     make_port_data_simple,
+    make_port_geojson,
 )
 from ._demo_css import MARINE_CSS, sidebar_hint
 
@@ -271,10 +272,9 @@ app_ui = ui.page_navbar(
                         ui.input_switch("ml_globe",
                                         "GlobeControl", value=False),
                         sidebar_hint(
-                            "\u26A0\uFE0F Globe projection does not support "
-                            "deck.gl overlay layers — they will float above "
-                            "the curved surface. Use interleaved mode or "
-                            "native MapLibre layers for globe support."
+                            "\u2139\uFE0F This tab uses native MapLibre layers "
+                            "(not deck.gl overlays), so MPAs and ports "
+                            "render correctly on the globe surface."
                         ),
                         ui.input_switch("ml_terrain",
                                         "TerrainControl", value=False),
@@ -288,11 +288,11 @@ app_ui = ui.page_navbar(
                     ui.accordion_panel(
                         "\U0001F4DC Legend Plugin",
                         sidebar_hint(
-                            "watergis/maplibre-gl-legend — auto-generates "
-                            "a legend panel from the MapLibre style layers. "
-                            "Note: deck.gl overlay layers (the port dots "
-                            "and MPA polygons) are not included — only "
-                            "native basemap style layers appear."
+                            "watergis/maplibre-gl-legend \u2014 auto-generates "
+                            "a legend panel from the MapLibre style. "
+                            "This tab uses native layers, so MPAs and ports "
+                            "appear in the legend. Toggle visibility with "
+                            "checkboxes."
                         ),
                         ui.input_switch("ml_legend",
                                         "Legend panel", value=True),
@@ -772,28 +772,60 @@ def server(input, output, session: Session):
     # Tab 2 — MapLibre Controls
     # =================================================================
 
+    async def _ml_add_native_layers():
+        """Add native MapLibre sources + layers for MPAs and ports.
+
+        Native layers render correctly in globe projection and are
+        visible to the legend / opacity plugins (unlike deck.gl overlays).
+        """
+        # --- MPA polygons (GeoJSON source + fill + line layers) ---
+        await maplibre_widget.add_source(session, "mpa-source", {
+            "type": "geojson",
+            "data": MPA_GEOJSON,
+        })
+        await maplibre_widget.add_maplibre_layer(session, {
+            "id": "mpa-fill",
+            "type": "fill",
+            "source": "mpa-source",
+            "paint": {
+                "fill-color": "rgba(0, 180, 120, 0.25)",
+                "fill-outline-color": "rgba(0, 180, 120, 0.8)",
+            },
+        })
+        await maplibre_widget.add_maplibre_layer(session, {
+            "id": "mpa-line",
+            "type": "line",
+            "source": "mpa-source",
+            "paint": {
+                "line-color": "rgba(0, 180, 120, 0.8)",
+                "line-width": 2,
+            },
+        })
+        # --- Port circles (GeoJSON source + circle layer) ---
+        await maplibre_widget.add_source(session, "ports-source", {
+            "type": "geojson",
+            "data": make_port_geojson(),
+        })
+        await maplibre_widget.add_maplibre_layer(session, {
+            "id": "ports-circle",
+            "type": "circle",
+            "source": "ports-source",
+            "paint": {
+                "circle-radius": 7,
+                "circle-color": "rgba(0, 140, 200, 0.8)",
+                "circle-stroke-color": "#fff",
+                "circle-stroke-width": 1,
+            },
+        })
+
     @reactive.Effect
     async def _ml_init():
-        """Push initial layers + controls to the MapLibre tab."""
-        layers = [
-            geojson_layer(
-                "ml-mpa", MPA_GEOJSON,
-                getFillColor=[0, 180, 120, 60],
-                getLineColor=[0, 180, 120, 200],
-                lineWidthMinPixels=2,
-                pickable=True,
-            ),
-            scatterplot_layer(
-                "ml-ports", make_port_data_simple(),
-                getPosition="@@=d.position",
-                getFillColor=[0, 140, 200, 200],
-                radiusMinPixels=7,
-                radiusMaxPixels=20,
-                pickable=True,
-            ),
-        ]
+        """Push initial native layers + controls to the MapLibre tab."""
+        # Send an empty deck.gl update so the overlay is initialised
+        await maplibre_widget.update(session, [])
+        # Add native MapLibre layers (globe-safe, legend/opacity visible)
+        await _ml_add_native_layers()
         controls = _build_ml_controls()
-        await maplibre_widget.update(session, layers)
         await maplibre_widget.set_controls(session, controls)
 
     def _build_ml_controls() -> list[dict]:
@@ -816,12 +848,22 @@ def server(input, output, session: Session):
             ctrls.append(terrain_control(position="top-right"))
         if input.ml_legend():
             ctrls.append(legend_control(
+                targets={
+                    "mpa-fill": "Marine Protected Areas",
+                    "ports-circle": "Baltic Ports",
+                },
                 position="bottom-left",
                 show_default=input.ml_legend_default(),
                 show_checkbox=input.ml_legend_checkbox(),
             ))
         if input.ml_opacity():
-            ctrls.append(opacity_control(position="top-left"))
+            ctrls.append(opacity_control(
+                position="top-left",
+                over_layers={
+                    "mpa-fill": "Marine Protected Areas",
+                    "ports-circle": "Baltic Ports",
+                },
+            ))
         return ctrls
 
     # Re-build controls when any toggle changes
@@ -836,7 +878,7 @@ def server(input, output, session: Session):
         controls = _build_ml_controls()
         await maplibre_widget.set_controls(session, controls)
 
-    # Basemap switching
+    # Basemap switching — re-add native layers after style swap
     @reactive.Effect
     @reactive.event(input.ml_basemap)
     async def _ml_switch_basemap():
@@ -844,6 +886,11 @@ def server(input, output, session: Session):
             input.ml_basemap(), CARTO_POSITRON,
         )
         await maplibre_widget.set_style(session, style_url)
+        # set_style removes all sources/layers; re-add ours
+        await _ml_add_native_layers()
+        # Re-apply controls so legend picks up the fresh layers
+        controls = _build_ml_controls()
+        await maplibre_widget.set_controls(session, controls)
 
     # Drag marker (MapLibre tab)
     @reactive.Effect

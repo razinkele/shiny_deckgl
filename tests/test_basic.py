@@ -1092,3 +1092,170 @@ class TestMapClickInputIds:
     def test_map_contextmenu_input_id(self):
         w = MapWidget("mc2")
         assert w.map_contextmenu_input_id == "mc2_map_contextmenu"
+
+
+# ===========================================================================
+# Phase 2 (v0.3.0) — Native MapLibre Rendering
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 2.1 Native Sources & Layers
+# ---------------------------------------------------------------------------
+
+class TestNativeSources:
+    def test_add_source_geojson(self):
+        import asyncio
+        w = MapWidget("ns1")
+        fake = _FakeSession()
+        spec = {"type": "geojson", "data": {"type": "FeatureCollection", "features": []}}
+        asyncio.run(w.add_source(fake, "my-source", spec))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_source"
+        assert msg[1]["sourceId"] == "my-source"
+        assert msg[1]["spec"]["type"] == "geojson"
+
+    def test_add_source_raster_wms(self):
+        import asyncio
+        w = MapWidget("ns2")
+        fake = _FakeSession()
+        spec = {
+            "type": "raster",
+            "tiles": ["https://ows.emodnet.eu/wms?...&BBOX={bbox-epsg-3857}"],
+            "tileSize": 256,
+        }
+        asyncio.run(w.add_source(fake, "bathy", spec))
+        assert fake.messages[0][1]["spec"]["type"] == "raster"
+
+    def test_add_maplibre_layer(self):
+        import asyncio
+        w = MapWidget("ns3")
+        fake = _FakeSession()
+        layer_spec = {
+            "id": "eez-fill",
+            "type": "fill",
+            "source": "eez",
+            "paint": {"fill-color": "#088", "fill-opacity": 0.4},
+        }
+        asyncio.run(w.add_maplibre_layer(fake, layer_spec))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_maplibre_layer"
+        assert msg[1]["layerSpec"]["id"] == "eez-fill"
+
+    def test_add_maplibre_layer_with_before_id(self):
+        import asyncio
+        w = MapWidget("ns4")
+        fake = _FakeSession()
+        asyncio.run(w.add_maplibre_layer(
+            fake, {"id": "a", "type": "fill", "source": "s"},
+            before_id="other-layer",
+        ))
+        assert fake.messages[0][1]["beforeId"] == "other-layer"
+
+    def test_add_maplibre_layer_no_before_id(self):
+        import asyncio
+        w = MapWidget("ns4b")
+        fake = _FakeSession()
+        asyncio.run(w.add_maplibre_layer(
+            fake, {"id": "b", "type": "line", "source": "s"},
+        ))
+        assert "beforeId" not in fake.messages[0][1]
+
+    def test_remove_maplibre_layer(self):
+        import asyncio
+        w = MapWidget("ns5")
+        fake = _FakeSession()
+        asyncio.run(w.remove_maplibre_layer(fake, "eez-fill"))
+        assert fake.messages[0] == ("deck_remove_maplibre_layer", {
+            "id": "ns5", "layerId": "eez-fill",
+        })
+
+    def test_remove_source(self):
+        import asyncio
+        w = MapWidget("ns6")
+        fake = _FakeSession()
+        asyncio.run(w.remove_source(fake, "eez"))
+        assert fake.messages[0] == ("deck_remove_source", {
+            "id": "ns6", "sourceId": "eez",
+        })
+
+    def test_set_source_data(self):
+        import asyncio
+        w = MapWidget("ns7")
+        fake = _FakeSession()
+        new_data = {"type": "FeatureCollection", "features": []}
+        asyncio.run(w.set_source_data(fake, "my-source", new_data))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_source_data"
+        assert msg[1]["data"]["type"] == "FeatureCollection"
+
+    def test_set_source_data_url_string(self):
+        import asyncio
+        w = MapWidget("ns8")
+        fake = _FakeSession()
+        asyncio.run(w.set_source_data(fake, "src", "https://example.com/data.geojson"))
+        msg = fake.messages[0]
+        assert msg[1]["data"] == "https://example.com/data.geojson"
+
+
+# ---------------------------------------------------------------------------
+# 2.2 Runtime Style Mutation
+# ---------------------------------------------------------------------------
+
+class TestStyleMutation:
+    def test_set_paint_property(self):
+        import asyncio
+        w = MapWidget("sp1")
+        fake = _FakeSession()
+        asyncio.run(w.set_paint_property(fake, "eez-fill", "fill-opacity", 0.8))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_paint_property"
+        assert msg[1]["layerId"] == "eez-fill"
+        assert msg[1]["name"] == "fill-opacity"
+        assert msg[1]["value"] == 0.8
+
+    def test_set_paint_property_color(self):
+        import asyncio
+        w = MapWidget("sp1b")
+        fake = _FakeSession()
+        asyncio.run(w.set_paint_property(fake, "lines", "line-color", "#ff0000"))
+        assert fake.messages[0][1]["value"] == "#ff0000"
+
+    def test_set_layout_property(self):
+        import asyncio
+        w = MapWidget("sp2")
+        fake = _FakeSession()
+        asyncio.run(w.set_layout_property(fake, "labels", "visibility", "none"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_layout_property"
+        assert msg[1]["value"] == "none"
+
+    def test_set_layout_property_visible(self):
+        import asyncio
+        w = MapWidget("sp2b")
+        fake = _FakeSession()
+        asyncio.run(w.set_layout_property(fake, "labels", "visibility", "visible"))
+        assert fake.messages[0][1]["value"] == "visible"
+
+    def test_set_filter(self):
+        import asyncio
+        w = MapWidget("sp3")
+        fake = _FakeSession()
+        asyncio.run(w.set_filter(fake, "stations", [">=", ["get", "depth"], 100]))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_filter"
+        assert msg[1]["filter"] == [">=", ["get", "depth"], 100]
+
+    def test_set_filter_clear(self):
+        import asyncio
+        w = MapWidget("sp4")
+        fake = _FakeSession()
+        asyncio.run(w.set_filter(fake, "stations", None))
+        assert fake.messages[0][1]["filter"] is None
+
+    def test_set_filter_complex_expression(self):
+        import asyncio
+        w = MapWidget("sp5")
+        fake = _FakeSession()
+        expr = ["all", [">=", ["get", "depth"], 50], ["<=", ["get", "depth"], 200]]
+        asyncio.run(w.set_filter(fake, "stations", expr))
+        assert fake.messages[0][1]["filter"] == expr

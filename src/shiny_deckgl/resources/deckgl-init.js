@@ -689,6 +689,124 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_add_source — add a native MapLibre source
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_source", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var sourceId = payload.sourceId;
+    var spec = payload.spec;
+
+    // Remove existing source if present (along with its layers)
+    if (map.getSource(sourceId)) {
+      var style = map.getStyle();
+      if (style && style.layers) {
+        style.layers.forEach(function (l) {
+          if (l.source === sourceId) {
+            map.removeLayer(l.id);
+          }
+        });
+      }
+      map.removeSource(sourceId);
+    }
+
+    map.addSource(sourceId, spec);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_add_maplibre_layer — add a native MapLibre rendering layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_maplibre_layer", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var layerSpec = payload.layerSpec;
+    var beforeId = payload.beforeId || undefined;
+
+    // Remove existing layer with same id
+    if (map.getLayer(layerSpec.id)) {
+      map.removeLayer(layerSpec.id);
+    }
+
+    map.addLayer(layerSpec, beforeId);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_maplibre_layer — remove a native MapLibre layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_maplibre_layer", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (instance.map.getLayer(payload.layerId)) {
+      instance.map.removeLayer(payload.layerId);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_source — remove a native MapLibre source
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_source", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (instance.map.getSource(payload.sourceId)) {
+      instance.map.removeSource(payload.sourceId);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_source_data — update GeoJSON source data
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_source_data", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var source = instance.map.getSource(payload.sourceId);
+    if (source && typeof source.setData === 'function') {
+      source.setData(payload.data);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_paint_property — set paint property on a MapLibre layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_paint_property", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    instance.map.setPaintProperty(payload.layerId, payload.name, payload.value);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_layout_property — set layout property on a MapLibre layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_layout_property", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    instance.map.setLayoutProperty(payload.layerId, payload.name, payload.value);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_filter — set data-driven filter on a MapLibre layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_filter", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    instance.map.setFilter(payload.layerId, payload.filter || null);
+  });
+
+  // -----------------------------------------------------------------------
   // Tab visibility: resize maps when a Bootstrap tab becomes visible
   // -----------------------------------------------------------------------
   document.addEventListener('shown.bs.tab', function (event) {

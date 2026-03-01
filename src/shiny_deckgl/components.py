@@ -687,6 +687,205 @@ class MapWidget:
         lats = [c[1] for c in coords]
         return [[min(lngs), min(lats)], [max(lngs), max(lats)]]
 
+    # -- Native MapLibre Sources & Layers (v0.3.0) ----------------------------
+
+    async def add_source(
+        self,
+        session,
+        source_id: str,
+        source_spec: dict,
+    ) -> None:
+        """Add a native MapLibre source.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            Unique source identifier.
+        source_spec
+            MapLibre source specification dict. Must include ``"type"``
+            (``"geojson"``, ``"raster"``, ``"vector"``, ``"raster-dem"``,
+            ``"image"``).
+        """
+        await session.send_custom_message("deck_add_source", {
+            "id": self.id,
+            "sourceId": source_id,
+            "spec": source_spec,
+        })
+
+    async def add_maplibre_layer(
+        self,
+        session,
+        layer_spec: dict,
+        *,
+        before_id: str | None = None,
+    ) -> None:
+        """Add a native MapLibre rendering layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_spec
+            MapLibre layer specification dict with at minimum ``"id"``,
+            ``"type"``, and ``"source"``.
+        before_id
+            Insert this layer before the given layer ID in the stack.
+            ``None`` adds on top of all MapLibre layers.
+        """
+        payload: dict = {
+            "id": self.id,
+            "layerSpec": layer_spec,
+        }
+        if before_id is not None:
+            payload["beforeId"] = before_id
+        await session.send_custom_message("deck_add_maplibre_layer", payload)
+
+    async def remove_maplibre_layer(
+        self,
+        session,
+        layer_id: str,
+    ) -> None:
+        """Remove a native MapLibre layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The ``id`` of the MapLibre layer to remove.
+        """
+        await session.send_custom_message("deck_remove_maplibre_layer", {
+            "id": self.id,
+            "layerId": layer_id,
+        })
+
+    async def remove_source(
+        self,
+        session,
+        source_id: str,
+    ) -> None:
+        """Remove a native MapLibre source.
+
+        All layers using this source must be removed first.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            The source identifier to remove.
+        """
+        await session.send_custom_message("deck_remove_source", {
+            "id": self.id,
+            "sourceId": source_id,
+        })
+
+    async def set_source_data(
+        self,
+        session,
+        source_id: str,
+        data: dict | str,
+    ) -> None:
+        """Update the data of an existing GeoJSON source.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            The source identifier (must be a GeoJSON source).
+        data
+            New GeoJSON dict or URL string.
+        """
+        serialised = _serialise_data(data)
+        await session.send_custom_message("deck_set_source_data", {
+            "id": self.id,
+            "sourceId": source_id,
+            "data": serialised,
+        })
+
+    # -- Runtime Style Mutation (v0.3.0) --------------------------------------
+
+    async def set_paint_property(
+        self,
+        session,
+        layer_id: str,
+        name: str,
+        value,
+    ) -> None:
+        """Set a paint property on a native MapLibre layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The MapLibre layer id.
+        name
+            Paint property name (e.g. ``"fill-opacity"``, ``"line-color"``).
+        value
+            New value (number, string, array, or MapLibre expression).
+        """
+        await session.send_custom_message("deck_set_paint_property", {
+            "id": self.id,
+            "layerId": layer_id,
+            "name": name,
+            "value": value,
+        })
+
+    async def set_layout_property(
+        self,
+        session,
+        layer_id: str,
+        name: str,
+        value,
+    ) -> None:
+        """Set a layout property on a native MapLibre layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The MapLibre layer id.
+        name
+            Layout property name (e.g. ``"visibility"``).
+        value
+            New value (e.g. ``"visible"`` or ``"none"``).
+        """
+        await session.send_custom_message("deck_set_layout_property", {
+            "id": self.id,
+            "layerId": layer_id,
+            "name": name,
+            "value": value,
+        })
+
+    async def set_filter(
+        self,
+        session,
+        layer_id: str,
+        filter_expr: list | None = None,
+    ) -> None:
+        """Set a data-driven filter on a native MapLibre layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The MapLibre layer id.
+        filter_expr
+            A MapLibre filter expression, e.g.
+            ``[">=", ["get", "depth"], 100]``. Pass ``None`` to clear.
+        """
+        await session.send_custom_message("deck_set_filter", {
+            "id": self.id,
+            "layerId": layer_id,
+            "filter": filter_expr,
+        })
+
     # -- Serialisation --------------------------------------------------------
 
     def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:

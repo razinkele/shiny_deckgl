@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 0.1.0** — A Shiny for Python bridge to deck.gl and MapLibre GL JS.
+> **Version 0.6.0** — A Shiny for Python bridge to deck.gl (v9.1.4) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -21,13 +21,49 @@ import shiny_deckgl as sdgl
   - [update\_tooltip()](#update_tooltip)
   - [to\_json() / from\_json()](#to_json--from_json)
   - [to\_html()](#to_html)
+- [Controls & Navigation (v0.2)](#controls--navigation-v02)
+  - [add\_control()](#add_control)
+  - [remove\_control()](#remove_control)
+  - [fit\_bounds()](#fit_bounds)
+  - [compute\_bounds()](#compute_bounds)
+- [Native Sources & Layers (v0.3)](#native-sources--layers-v03)
+  - [add\_source()](#add_source)
+  - [remove\_source()](#remove_source)
+  - [set\_source\_data()](#set_source_data)
+  - [add\_maplibre\_layer()](#add_maplibre_layer)
+  - [remove\_maplibre\_layer()](#remove_maplibre_layer)
+  - [set\_paint\_property()](#set_paint_property)
+  - [set\_layout\_property()](#set_layout_property)
+  - [set\_filter()](#set_filter)
+  - [set\_style()](#set_style)
+- [Projection, Terrain & Popups (v0.4)](#projection-terrain--popups-v04)
+  - [set\_projection()](#set_projection)
+  - [set\_terrain()](#set_terrain)
+  - [set\_sky()](#set_sky)
+  - [add\_popup()](#add_popup)
+  - [remove\_popup()](#remove_popup)
+  - [query\_rendered\_features()](#query_rendered_features)
+  - [query\_at\_lnglat()](#query_at_lnglat)
+  - [add\_marker()](#add_marker)
+  - [remove\_marker()](#remove_marker)
+  - [clear\_markers()](#clear_markers)
+- [Drawing, GeoPandas & Export (v0.5)](#drawing-geopandas--export-v05)
+  - [enable\_draw()](#enable_draw)
+  - [disable\_draw()](#disable_draw)
+  - [get\_drawn\_features()](#get_drawn_features)
+  - [delete\_drawn\_features()](#delete_drawn_features)
+  - [add\_geodataframe()](#add_geodataframe)
+  - [update\_geodataframe()](#update_geodataframe)
+  - [set\_feature\_state()](#set_feature_state)
+  - [remove\_feature\_state()](#remove_feature_state)
+  - [export\_image()](#export_image)
 - [Layer Helpers](#layer-helpers)
   - [layer()](#layer)
   - [scatterplot\_layer()](#scatterplot_layer)
   - [geojson\_layer()](#geojson_layer)
   - [tile\_layer()](#tile_layer)
   - [bitmap\_layer()](#bitmap_layer)
-- [Basemap Constants](#basemap-constants)
+- [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
   - [color\_range()](#color_range)
@@ -55,7 +91,7 @@ import shiny_deckgl as sdgl
 shiny_deckgl.head_includes() -> HTMLDependency
 ```
 
-Returns an `HTMLDependency` that injects deck.gl v9.1.4, MapLibre GL JS v3.6.2, and local shiny\_deckgl assets into the page `<head>`.
+Returns an `HTMLDependency` that injects deck.gl v9.1.4, MapLibre GL JS v5.3.1, MapboxDraw v1.4.3, and local shiny\_deckgl assets into the page `<head>`.
 
 Place as a **direct child** of any `ui.page_*()` layout:
 
@@ -116,41 +152,21 @@ map_widget = MapWidget(
 
 Each `MapWidget` exposes reactive Shiny inputs automatically:
 
-| Property | Shiny Input Name | Fires When |
-|---|---|---|
-| `widget.click_input_id` | `"{id}_click"` | User clicks a pickable feature |
-| `widget.hover_input_id` | `"{id}_hover"` | User hovers over a pickable feature |
-| `widget.view_state_input_id` | `"{id}_view_state"` | Camera stops moving (`moveend`) |
-| `widget.drag_input_id` | `"{id}_drag"` | User finishes dragging a marker |
-
-**Click / Hover payload:**
-
-```python
-{
-    "mapId": "mymap",
-    "layerId": "scatter",
-    "object": { ... },        # the picked feature's properties
-    "coordinate": [lng, lat]
-}
-```
-
-**View state payload:**
-
-```python
-{
-    "longitude": -122.4,
-    "latitude": 37.8,
-    "zoom": 11.5,
-    "pitch": 45,
-    "bearing": 0
-}
-```
-
-**Drag payload:**
-
-```python
-{"longitude": -122.41, "latitude": 37.79}
-```
+| Property | Shiny Input Name | Fires When | Payload |
+|---|---|---|---|
+| `click_input_id` | `"{id}_click"` | User clicks a pickable deck.gl feature | `{mapId, layerId, object, coordinate}` |
+| `hover_input_id` | `"{id}_hover"` | User hovers over a pickable deck.gl feature | `{mapId, layerId, object, coordinate}` |
+| `view_state_input_id` | `"{id}_view_state"` | Camera stops moving (`moveend`) | `{longitude, latitude, zoom, pitch, bearing}` |
+| `drag_input_id` | `"{id}_drag"` | User finishes dragging legacy drag marker | `{longitude, latitude}` |
+| `map_click_input_id` | `"{id}_map_click"` | User clicks on the basemap (even empty areas) | `{longitude, latitude, point: {x, y}}` |
+| `map_contextmenu_input_id` | `"{id}_map_contextmenu"` | User right-clicks on the map | `{longitude, latitude, point: {x, y}}` |
+| `feature_click_input_id` | `"{id}_feature_click"` | User clicks a native MapLibre layer feature (with popup) | `{layerId, properties, longitude, latitude}` |
+| `query_result_input_id` | `"{id}_query_result"` | Spatial query result arrives | `{requestId, features}` |
+| `marker_click_input_id` | `"{id}_marker_click"` | User clicks a named marker | `{markerId, longitude, latitude}` |
+| `marker_drag_input_id` | `"{id}_marker_drag"` | User finishes dragging a named marker | `{markerId, longitude, latitude}` |
+| `drawn_features_input_id` | `"{id}_drawn_features"` | User creates/updates/deletes drawn geometry | GeoJSON FeatureCollection |
+| `draw_mode_input_id` | `"{id}_draw_mode"` | Drawing mode changes | Mode string (e.g. `"draw_polygon"`) |
+| `export_result_input_id` | `"{id}_export_result"` | Map screenshot is ready | `{requestId, dataUrl, width, height}` |
 
 ### `ui()`
 
@@ -295,6 +311,640 @@ html = map_widget.to_html(
     layers=[scatterplot_layer("pts", data)],
     path="export/mymap.html",
 )
+```
+
+---
+
+## Controls & Navigation (v0.2)
+
+### `add_control()`
+
+```python
+await widget.add_control(
+    session,
+    control_type: str,
+    position: str = "top-right",
+    *,
+    options: dict | None = None,
+) -> None
+```
+
+Add a MapLibre control to the map.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `control_type` | `str` | *(required)* | One of `CONTROL_TYPES`: `"navigation"`, `"scale"`, `"fullscreen"`, `"geolocate"`, `"globe"`, `"terrain"`, `"attribution"`. |
+| `position` | `str` | `"top-right"` | One of `CONTROL_POSITIONS`: `"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`. |
+| `options` | `dict \| None` | `None` | Control-specific options, e.g. `{"maxWidth": 200, "unit": "metric"}` for ScaleControl. |
+
+```python
+await widget.add_control(session, "navigation", "top-left")
+await widget.add_control(session, "scale", "bottom-left",
+                         options={"maxWidth": 200, "unit": "metric"})
+```
+
+### `remove_control()`
+
+```python
+await widget.remove_control(session, control_type: str) -> None
+```
+
+Remove a previously added MapLibre control by type.
+
+```python
+await widget.remove_control(session, "scale")
+```
+
+### `fit_bounds()`
+
+```python
+await widget.fit_bounds(
+    session,
+    bounds: list[list[float]],
+    *,
+    padding: int | dict[str, int] = 50,
+    max_zoom: float | None = None,
+    duration: int = 0,
+) -> None
+```
+
+Fly/jump the camera to fit the given geographic bounds.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `bounds` | `list` | *(required)* | `[[sw_lng, sw_lat], [ne_lng, ne_lat]]` in WGS 84. |
+| `padding` | `int \| dict` | `50` | Pixels of padding. Can be uniform `int` or `{"top": 10, "bottom": 10, "left": 10, "right": 10}`. |
+| `max_zoom` | `float \| None` | `None` | Maximum zoom level (prevents over-zooming on small areas). |
+| `duration` | `int` | `0` | Animation duration in ms. `0` = instant. |
+
+```python
+# Fit to Baltic Sea
+await widget.fit_bounds(session, [[10.0, 54.0], [30.0, 66.0]],
+                        padding=80, duration=2000)
+```
+
+### `compute_bounds()`
+
+```python
+MapWidget.compute_bounds(geojson: dict) -> list[list[float]]  # static
+```
+
+Compute `[[sw_lng, sw_lat], [ne_lng, ne_lat]]` from a GeoJSON object.  Useful with `fit_bounds()`.
+
+```python
+bounds = MapWidget.compute_bounds(my_geojson)
+await widget.fit_bounds(session, bounds)
+```
+
+---
+
+## Native Sources & Layers (v0.3)
+
+### `add_source()`
+
+```python
+await widget.add_source(
+    session,
+    source_id: str,
+    source_spec: dict,
+) -> None
+```
+
+Add a native MapLibre source.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `session` | `Session` | The active Shiny session. |
+| `source_id` | `str` | Unique source identifier. |
+| `source_spec` | `dict` | MapLibre source spec. Must include `"type"` (`"geojson"`, `"raster"`, `"vector"`, `"raster-dem"`, `"image"`, `"video"`). |
+
+```python
+await widget.add_source(session, "cities", {
+    "type": "geojson",
+    "data": {"type": "FeatureCollection", "features": [...]},
+})
+```
+
+### `remove_source()`
+
+```python
+await widget.remove_source(session, source_id: str) -> None
+```
+
+Remove a native MapLibre source. All layers using this source must be removed first.
+
+### `set_source_data()`
+
+```python
+await widget.set_source_data(session, source_id: str, data: dict) -> None
+```
+
+Update the data of an existing GeoJSON source without removing/re-adding it.
+
+```python
+await widget.set_source_data(session, "cities", updated_geojson)
+```
+
+### `add_maplibre_layer()`
+
+```python
+await widget.add_maplibre_layer(
+    session,
+    layer_spec: dict,
+    *,
+    before_id: str | None = None,
+) -> None
+```
+
+Add a native MapLibre rendering layer.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `layer_spec` | `dict` | *(required)* | MapLibre layer spec with at minimum `"id"`, `"type"`, and `"source"`. |
+| `before_id` | `str \| None` | `None` | Insert before this layer ID.  `None` = on top. |
+
+```python
+await widget.add_maplibre_layer(session, {
+    "id": "cities-circles",
+    "type": "circle",
+    "source": "cities",
+    "paint": {"circle-radius": 6, "circle-color": "#FF0000"},
+})
+```
+
+### `remove_maplibre_layer()`
+
+```python
+await widget.remove_maplibre_layer(session, layer_id: str) -> None
+```
+
+Remove a native MapLibre layer by id.
+
+### `set_paint_property()`
+
+```python
+await widget.set_paint_property(
+    session,
+    layer_id: str,
+    name: str,
+    value,
+) -> None
+```
+
+Set a paint property on a native MapLibre layer at runtime.
+
+```python
+await widget.set_paint_property(session, "cities-circles",
+                                "circle-color", "#00FF00")
+```
+
+### `set_layout_property()`
+
+```python
+await widget.set_layout_property(
+    session,
+    layer_id: str,
+    name: str,
+    value,
+) -> None
+```
+
+Set a layout property on a native MapLibre layer at runtime.
+
+```python
+await widget.set_layout_property(session, "cities-circles",
+                                 "visibility", "none")
+```
+
+### `set_filter()`
+
+```python
+await widget.set_filter(
+    session,
+    layer_id: str,
+    filter_expr: list | None = None,
+) -> None
+```
+
+Set a data-driven filter on a native MapLibre layer.  Pass `None` to clear.
+
+```python
+await widget.set_filter(session, "cities-circles",
+                        [">=", ["get", "population"], 100000])
+```
+
+### `set_style()`
+
+```python
+await widget.set_style(session, style: str) -> None
+```
+
+Change the entire basemap style dynamically.
+
+> **Warning:** This destroys all native sources and layers.  Re-add them after the style loads.
+
+```python
+await widget.set_style(session, CARTO_DARK)
+```
+
+---
+
+## Projection, Terrain & Popups (v0.4)
+
+### `set_projection()`
+
+```python
+await widget.set_projection(
+    session,
+    projection: str = "mercator",
+) -> None
+```
+
+Set the map projection.  Requires MapLibre GL JS v4+.
+
+| Parameter | Values |
+| --- | --- |
+| `projection` | `"mercator"` (flat map, default) or `"globe"` (3D sphere). |
+
+```python
+await widget.set_projection(session, "globe")
+```
+
+### `set_terrain()`
+
+```python
+await widget.set_terrain(
+    session,
+    source: str | None = None,
+    exaggeration: float = 1.0,
+) -> None
+```
+
+Enable or disable 3D terrain rendering.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `source` | `str \| None` | *(required)* | ID of a `raster-dem` source (added via `add_source()`). Pass `None` to disable terrain. |
+| `exaggeration` | `float` | `1.0` | Vertical exaggeration factor.  Values > 1 amplify relief. |
+
+```python
+# Add a DEM source first
+await widget.add_source(session, "dem", {
+    "type": "raster-dem",
+    "url": "https://demotiles.maplibre.org/terrain-tiles/tiles.json",
+    "tileSize": 256,
+})
+await widget.set_terrain(session, "dem", exaggeration=1.5)
+```
+
+### `set_sky()`
+
+```python
+await widget.set_sky(session, sky: dict | None = None) -> None
+```
+
+Set sky/atmosphere properties (works with terrain). Pass `None` to remove.
+
+```python
+await widget.set_sky(session, {
+    "sky-color": "#199EF3",
+    "horizon-color": "#ffffff",
+    "fog-color": "#ffffff",
+})
+```
+
+### `add_popup()`
+
+```python
+await widget.add_popup(
+    session,
+    layer_id: str,
+    template: str,
+    *,
+    close_button: bool = True,
+    close_on_click: bool = True,
+    max_width: str = "300px",
+    anchor: str | None = None,
+) -> None
+```
+
+Attach a click popup to a native MapLibre layer.  Clicking a feature opens a popup with interpolated HTML.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `layer_id` | `str` | *(required)* | The MapLibre layer to attach popup to. |
+| `template` | `str` | *(required)* | HTML template with `{property}` placeholders. |
+| `close_button` | `bool` | `True` | Show a close button. |
+| `close_on_click` | `bool` | `True` | Close when clicking elsewhere. |
+| `max_width` | `str` | `"300px"` | CSS max-width. |
+| `anchor` | `str \| None` | `None` | Popup anchor position. |
+
+```python
+await widget.add_popup(session, "cities-circles",
+                       "<b>{name}</b><br/>Pop: {population}")
+```
+
+### `remove_popup()`
+
+```python
+await widget.remove_popup(session, layer_id: str) -> None
+```
+
+Remove a previously attached popup handler from a native layer.
+
+### `query_rendered_features()`
+
+```python
+await widget.query_rendered_features(
+    session,
+    *,
+    point: list[float] | None = None,
+    bounds: list[list[float]] | None = None,
+    layers: list[str] | None = None,
+    filter_expr: list | None = None,
+    request_id: str = "default",
+) -> None
+```
+
+Query visible features at a pixel point or within a pixel bounding box.  The result arrives asynchronously as `input[widget.query_result_input_id]()`.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `point` | `list \| None` | `None` | `[x, y]` pixel coordinates on the canvas. |
+| `bounds` | `list \| None` | `None` | `[[x1, y1], [x2, y2]]` pixel bounding box. |
+| `layers` | `list \| None` | `None` | Restrict to these layer IDs. |
+| `filter_expr` | `list \| None` | `None` | MapLibre filter expression. |
+| `request_id` | `str` | `"default"` | Identifier for matching results. |
+
+> Provide either `point` or `bounds`, not both.
+
+### `query_at_lnglat()`
+
+```python
+await widget.query_at_lnglat(
+    session,
+    longitude: float,
+    latitude: float,
+    *,
+    layers: list[str] | None = None,
+    request_id: str = "default",
+) -> None
+```
+
+Query features at a geographic coordinate (WGS 84).  The result arrives as `input[widget.query_result_input_id]()`.
+
+```python
+await widget.query_at_lnglat(session, 21.12, 55.71,
+                             layers=["cities-circles"],
+                             request_id="my-query")
+```
+
+### `add_marker()`
+
+```python
+await widget.add_marker(
+    session,
+    marker_id: str,
+    longitude: float,
+    latitude: float,
+    *,
+    color: str = "#3FB1CE",
+    draggable: bool = False,
+    popup_html: str | None = None,
+) -> None
+```
+
+Add a named marker to the map.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `marker_id` | `str` | *(required)* | Unique marker identifier. |
+| `longitude, latitude` | `float` | *(required)* | Marker position (WGS 84). |
+| `color` | `str` | `"#3FB1CE"` | CSS color for the default marker pin. |
+| `draggable` | `bool` | `False` | Allow the user to drag this marker. |
+| `popup_html` | `str \| None` | `None` | HTML popup content shown on click. |
+
+When `draggable=True`, drag-end position is sent to `input[widget.marker_drag_input_id]()`.
+Clicks sent to `input[widget.marker_click_input_id]()`.
+
+```python
+await widget.add_marker(session, "hq", 21.12, 55.71,
+                        color="#FF0000", draggable=True,
+                        popup_html="<b>Headquarters</b>")
+```
+
+### `remove_marker()`
+
+```python
+await widget.remove_marker(session, marker_id: str) -> None
+```
+
+Remove a named marker from the map.
+
+### `clear_markers()`
+
+```python
+await widget.clear_markers(session) -> None
+```
+
+Remove all named markers from the map.
+
+---
+
+## Drawing, GeoPandas & Export (v0.5)
+
+### `enable_draw()`
+
+```python
+await widget.enable_draw(
+    session,
+    *,
+    modes: list[str] | None = None,
+    controls: dict[str, bool] | None = None,
+    default_mode: str = "simple_select",
+) -> None
+```
+
+Enable MapboxDraw drawing tools on the map.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `modes` | `list \| None` | `["draw_point", "draw_line_string", "draw_polygon"]` | Which drawing modes to enable. |
+| `controls` | `dict \| None` | `None` | Override individual control visibility, e.g. `{"point": True, "polygon": False}`. |
+| `default_mode` | `str` | `"simple_select"` | Initial mode. |
+
+Drawn features are sent to `input[widget.drawn_features_input_id]()` as a GeoJSON FeatureCollection.
+Mode changes sent to `input[widget.draw_mode_input_id]()`.
+
+```python
+await widget.enable_draw(session, modes=["draw_polygon"])
+```
+
+### `disable_draw()`
+
+```python
+await widget.disable_draw(session) -> None
+```
+
+Remove drawing tools from the map.  Also cleans up all draw event listeners.
+
+### `get_drawn_features()`
+
+```python
+await widget.get_drawn_features(session) -> None
+```
+
+Request the current set of drawn features.  Result arrives as `input[widget.drawn_features_input_id]()`.
+
+### `delete_drawn_features()`
+
+```python
+await widget.delete_drawn_features(
+    session,
+    feature_ids: list[str] | None = None,
+) -> None
+```
+
+Delete drawn features.  If `feature_ids` is `None`, deletes all drawn geometry.
+
+```python
+# Delete specific features
+await widget.delete_drawn_features(session, ["feature-abc", "feature-xyz"])
+
+# Delete all
+await widget.delete_drawn_features(session)
+```
+
+### `add_geodataframe()`
+
+```python
+await widget.add_geodataframe(
+    session,
+    source_id: str,
+    gdf,
+    *,
+    layer_type: str = "fill",
+    paint: dict | None = None,
+    layout: dict | None = None,
+    before_id: str | None = None,
+    popup_template: str | None = None,
+) -> None
+```
+
+Add a GeoPandas GeoDataFrame as a native MapLibre source + layer.  Convenience method that serialises the GeoDataFrame, adds source + layer, and optionally attaches a popup.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `source_id` | `str` | *(required)* | Unique identifier (used for both source and layer). |
+| `gdf` | `GeoDataFrame` | *(required)* | A `geopandas.GeoDataFrame`. |
+| `layer_type` | `str` | `"fill"` | MapLibre layer type. |
+| `paint` | `dict \| None` | `None` | Paint properties.  Defaults by type: `"fill"` → `{"fill-color": "#088", "fill-opacity": 0.5}`, `"line"` → `{"line-color": "#333", "line-width": 2}`, `"circle"` → `{"circle-radius": 5, "circle-color": "#088"}`. |
+| `layout` | `dict \| None` | `None` | Layout properties. |
+| `before_id` | `str \| None` | `None` | Insert layer before this ID. |
+| `popup_template` | `str \| None` | `None` | HTML template for click popup (e.g. `"<b>{name}</b>"`). |
+
+```python
+import geopandas as gpd
+gdf = gpd.read_file("regions.geojson")
+await widget.add_geodataframe(session, "regions", gdf,
+                              layer_type="fill",
+                              popup_template="<b>{region_name}</b>")
+```
+
+### `update_geodataframe()`
+
+```python
+await widget.update_geodataframe(
+    session,
+    source_id: str,
+    gdf,
+) -> None
+```
+
+Update the data of an existing GeoDataFrame source in-place.
+
+```python
+updated_gdf = gdf[gdf["population"] > 50000]
+await widget.update_geodataframe(session, "regions", updated_gdf)
+```
+
+### `set_feature_state()`
+
+```python
+await widget.set_feature_state(
+    session,
+    source_id: str,
+    feature_id: str | int,
+    state: dict,
+    *,
+    source_layer: str | None = None,
+) -> None
+```
+
+Set the state of a feature in a source.  Useful for interactive data-driven styling without redrawing.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `source_id` | `str` | *(required)* | Source containing the feature. |
+| `feature_id` | `str \| int` | *(required)* | Feature's unique identifier. |
+| `state` | `dict` | *(required)* | State properties, e.g. `{"hover": True, "selected": True}`. |
+| `source_layer` | `str \| None` | `None` | Required for vector tile sources. |
+
+```python
+await widget.set_feature_state(session, "cities", "feature-123",
+                               {"hover": True})
+```
+
+### `remove_feature_state()`
+
+```python
+await widget.remove_feature_state(
+    session,
+    source_id: str,
+    feature_id: str | int | None = None,
+    *,
+    key: str | None = None,
+    source_layer: str | None = None,
+) -> None
+```
+
+Remove feature state.  If `feature_id` is `None`, clears all features.  If `key` is `None`, removes all state keys.
+
+```python
+# Remove hover state from one feature
+await widget.remove_feature_state(session, "cities", "feature-123",
+                                  key="hover")
+
+# Clear all state from all features
+await widget.remove_feature_state(session, "cities")
+```
+
+### `export_image()`
+
+```python
+await widget.export_image(
+    session,
+    *,
+    format: str = "png",
+    quality: float = 0.92,
+    request_id: str = "default",
+) -> None
+```
+
+Request a screenshot of the map.  The base64-encoded image arrives as `input[widget.export_result_input_id]()`.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `format` | `str` | `"png"` | Image format: `"png"`, `"jpeg"`, or `"webp"`. |
+| `quality` | `float` | `0.92` | JPEG/WebP quality (0.0–1.0).  Ignored for PNG. |
+| `request_id` | `str` | `"default"` | Identifier for matching results. |
+
+```python
+await widget.export_image(session, format="jpeg", quality=0.85,
+                          request_id="snapshot-1")
 ```
 
 ---

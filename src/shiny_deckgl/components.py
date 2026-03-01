@@ -770,8 +770,9 @@ class MapWidget:
             attrs["data_tooltip"] = json.dumps(self.tooltip)
         if self.mapbox_api_key is not None:
             attrs["data_mapbox_api_key"] = self.mapbox_api_key
-        if self.controls:
-            attrs["data_controls"] = json.dumps(self.controls)
+        # Always emit data-controls so JS can distinguish "no controls"
+        # (empty list) from "use defaults" (attribute absent).
+        attrs["data_controls"] = json.dumps(self.controls)
         # Deck-level props (v0.7.0)
         if self.picking_radius != 0:
             attrs["data_picking_radius"] = str(self.picking_radius)

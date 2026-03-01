@@ -2525,10 +2525,11 @@ class TestMapWidgetUiExtended:
         assert "data-mapbox-api-key" not in html
 
     def test_no_controls_attr_when_empty(self):
+        """controls=[] should emit data-controls='[]' (explicit no-controls)."""
         w = MapWidget("uid5", controls=[])
         tag = w.ui()
         html = str(tag)
-        assert "data-controls" not in html
+        assert 'data-controls="[]"' in html
 
 
 class TestSetSourceDataExtended:

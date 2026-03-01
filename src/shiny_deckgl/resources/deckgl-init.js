@@ -164,13 +164,14 @@
     }
 
     // ---- Configurable initial controls ------------------------------------
-    // Parse controls config from data-controls attribute (JSON array)
+    // Parse controls config from data-controls attribute (JSON array).
+    // When the attribute is present (even as "[]") honour it exactly;
+    // only fall back to a default NavigationControl when the attribute
+    // is absent (i.e. the widget was constructed with controls=None).
     var controlsConfig = [];
-    if (el.dataset.controls) {
+    if (el.dataset.controls !== undefined) {
       try { controlsConfig = JSON.parse(el.dataset.controls); } catch (_) {}
-    }
-    // Default: navigation control in top-right if no config
-    if (!controlsConfig.length) {
+    } else {
       controlsConfig = [{ type: 'navigation', position: 'top-right' }];
     }
 

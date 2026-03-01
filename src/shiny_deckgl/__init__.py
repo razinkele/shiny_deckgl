@@ -62,6 +62,8 @@ from .components import (
     # Third-party MapLibre plugin controls
     legend_control,
     opacity_control,
+    # Custom deck.gl legend
+    deck_legend_control,
     # Transition helper (v0.8.0)
     transition,
     # Control constants (v0.2.0)
@@ -139,6 +141,7 @@ __all__ = [
     "terrain_control",
     "legend_control",
     "opacity_control",
+    "deck_legend_control",
     "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",

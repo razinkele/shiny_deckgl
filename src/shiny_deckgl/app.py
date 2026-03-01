@@ -59,6 +59,8 @@ from .components import (
     # Third-party MapLibre plugin controls
     legend_control,
     opacity_control,
+    # Custom deck.gl legend
+    deck_legend_control,
 )
 
 from ._demo_data import (
@@ -691,12 +693,70 @@ def server(input, output, session: Session):
 
         return layers
 
+    def _build_deck_legend() -> dict:
+        """Build the deck.gl legend control spec for Tab 1."""
+        entries: list[dict] = []
+        if input.wms_layer():
+            entries.append({
+                "layer_id": f"wms-{input.wms_layer().replace(' ', '-').lower()}",
+                "label": f"WMS: {input.wms_layer()}",
+                "color": [70, 130, 180],
+                "shape": "rect",
+            })
+        if input.show_mpa():
+            entries.append({
+                "layer_id": "mpa-zones",
+                "label": "Marine Protected Areas",
+                "color": [0, 128, 0, 100],
+                "shape": "rect",
+            })
+        if input.show_heatmap():
+            entries.append({
+                "layer_id": "observation-heat",
+                "label": "Observation heatmap",
+                "colors": [
+                    [0, 25, 0, 25], [0, 85, 0, 85],
+                    [0, 170, 0, 170], [0, 255, 0],
+                    [255, 255, 0], [255, 0, 0],
+                ],
+                "shape": "gradient",
+            })
+        if input.show_paths():
+            entries.append({
+                "layer_id": "route-paths",
+                "label": "Route paths",
+                "color": [100, 100, 200],
+                "shape": "line",
+            })
+        if input.show_routes():
+            entries.append({
+                "layer_id": "port-arcs",
+                "label": "Shipping routes",
+                "color": [255, 140, 0],
+                "color2": [200, 0, 80],
+                "shape": "arc",
+            })
+        if input.show_ports():
+            entries.append({
+                "layer_id": "ports",
+                "label": "Baltic Ports",
+                "color": [65, 182, 196],
+                "shape": "circle",
+            })
+        return deck_legend_control(
+            entries=entries,
+            position="bottom-right",
+            title="Deck.gl Layers",
+        )
+
     # Initial push (with widgets)
     @reactive.Effect
     async def _main_init():
         layers = _build_main_layers()
         _main_layers.set(layers)
         await map_widget.update(session, layers, widgets=MAP_WIDGETS)
+        # Push deck.gl legend
+        await map_widget.set_controls(session, [_build_deck_legend()])
 
     # Reactive rebuild on control change
     @reactive.Effect
@@ -709,6 +769,7 @@ def server(input, output, session: Session):
         layers = _build_main_layers()
         _main_layers.set(layers)
         await map_widget.update(session, layers)
+        await map_widget.set_controls(session, [_build_deck_legend()])
 
     # Basemap switching (Tab 1)
     @reactive.Effect

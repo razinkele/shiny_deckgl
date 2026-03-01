@@ -72,6 +72,8 @@ from shiny_deckgl.components import (
     # Third-party plugin controls
     legend_control,
     opacity_control,
+    # Custom deck.gl legend
+    deck_legend_control,
     # v0.8.0 transition
     transition,
 )
@@ -108,6 +110,7 @@ def test_public_api_exports():
         "context_menu_widget", "info_widget", "splitter_widget",
         "stats_widget", "view_selector_widget",
         "geolocate_control", "globe_control", "terrain_control",
+        "legend_control", "opacity_control", "deck_legend_control",
         "transition",
         "__version__",
     }
@@ -1096,6 +1099,86 @@ class TestOpacityControl:
         """CONTROL_TYPES should include the new plugin-based types."""
         assert "legend" in CONTROL_TYPES
         assert "opacity" in CONTROL_TYPES
+        assert "deck_legend" in CONTROL_TYPES
+
+
+# ---------------------------------------------------------------------------
+# TestDeckLegendControl
+# ---------------------------------------------------------------------------
+
+class TestDeckLegendControl:
+    def test_deck_legend_control_defaults(self):
+        entries = [{"layer_id": "ports", "label": "Ports", "color": [0, 0, 255]}]
+        ctrl = deck_legend_control(entries=entries)
+        assert ctrl["type"] == "deck_legend"
+        assert ctrl["position"] == "bottom-right"
+        opts = ctrl["options"]
+        assert opts["showCheckbox"] is True
+        assert opts["collapsed"] is False
+        assert "title" not in opts
+        assert opts["entries"] == entries
+
+    def test_deck_legend_control_custom_position(self):
+        ctrl = deck_legend_control(entries=[], position="top-left")
+        assert ctrl["position"] == "top-left"
+
+    def test_deck_legend_control_with_title(self):
+        ctrl = deck_legend_control(entries=[], title="My Legend")
+        assert ctrl["options"]["title"] == "My Legend"
+
+    def test_deck_legend_control_collapsed(self):
+        ctrl = deck_legend_control(entries=[], collapsed=True, title="T")
+        assert ctrl["options"]["collapsed"] is True
+
+    def test_deck_legend_control_no_checkbox(self):
+        ctrl = deck_legend_control(entries=[], show_checkbox=False)
+        assert ctrl["options"]["showCheckbox"] is False
+
+    def test_deck_legend_control_multiple_entries(self):
+        entries = [
+            {"layer_id": "a", "label": "Layer A", "color": [255, 0, 0], "shape": "circle"},
+            {"layer_id": "b", "label": "Layer B", "color": [0, 255, 0], "shape": "rect"},
+            {"layer_id": "c", "label": "Layer C", "color": [0, 0, 255],
+             "color2": [255, 0, 0], "shape": "arc"},
+            {"layer_id": "d", "label": "Heatmap",
+             "colors": [[0, 0, 0], [255, 255, 0], [255, 0, 0]], "shape": "gradient"},
+        ]
+        ctrl = deck_legend_control(entries=entries, title="All Layers")
+        assert len(ctrl["options"]["entries"]) == 4
+        assert ctrl["options"]["entries"][2]["shape"] == "arc"
+        assert ctrl["options"]["entries"][3]["colors"] == [[0, 0, 0], [255, 255, 0], [255, 0, 0]]
+
+    def test_deck_legend_control_in_constructor(self):
+        ctrl = deck_legend_control(
+            entries=[{"layer_id": "x", "label": "X", "color": [0, 0, 0]}],
+            position="bottom-left",
+        )
+        w = MapWidget("dlc1", controls=[ctrl])
+        assert w.controls[0]["type"] == "deck_legend"
+
+    def test_deck_legend_control_in_set_controls(self):
+        ctrl = deck_legend_control(
+            entries=[{"layer_id": "y", "label": "Y", "color": [255, 0, 0]}],
+        )
+        w = MapWidget("dlc2")
+        fake = _FakeSession()
+        asyncio.run(w.set_controls(fake, [ctrl]))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_controls"
+        assert msg[1]["controls"][0]["type"] == "deck_legend"
+
+    def test_deck_legend_entries_are_copied(self):
+        """Entries list should be a copy, not a reference."""
+        original = [{"layer_id": "z", "label": "Z", "color": [0, 0, 0]}]
+        ctrl = deck_legend_control(entries=original)
+        ctrl["options"]["entries"].append({"layer_id": "extra"})
+        assert len(original) == 1  # original unmodified
+
+    def test_deck_legend_importable_from_package(self):
+        """deck_legend_control should be importable from the top-level package."""
+        import shiny_deckgl
+        assert hasattr(shiny_deckgl, "deck_legend_control")
+        assert callable(shiny_deckgl.deck_legend_control)
 
 
 # ---------------------------------------------------------------------------

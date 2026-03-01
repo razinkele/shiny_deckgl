@@ -34,6 +34,178 @@
   }
 
   // -----------------------------------------------------------------------
+  // DeckLegendControl — custom legend for deck.gl overlay layers
+  //
+  // Implements the MapLibre IControl interface (onAdd / onRemove).
+  // Reads entries from the user-provided config, supports colour swatches,
+  // visibility checkboxes, and a collapsible panel.
+  // -----------------------------------------------------------------------
+  class DeckLegendControl {
+    constructor(options) {
+      this._options = Object.assign({
+        entries: [],
+        showCheckbox: true,
+        collapsed: false,
+        title: null,
+      }, options);
+      this._container = null;
+      this._map = null;
+      this._mapId = null;
+    }
+
+    onAdd(map) {
+      this._map = map;
+      // Resolve the mapInstances key for this map
+      for (const id of Object.keys(mapInstances)) {
+        if (mapInstances[id].map === map) {
+          this._mapId = id;
+          break;
+        }
+      }
+
+      this._container = document.createElement('div');
+      this._container.className = 'maplibregl-ctrl deck-legend-ctrl';
+      this._render();
+      return this._container;
+    }
+
+    onRemove() {
+      if (this._container && this._container.parentNode) {
+        this._container.parentNode.removeChild(this._container);
+      }
+      this._map = null;
+      this._mapId = null;
+    }
+
+    /* ---- private rendering ---- */
+
+    _render() {
+      const opts = this._options;
+      const container = this._container;
+      container.innerHTML = '';
+
+      // Header (click to collapse / expand)
+      if (opts.title) {
+        const header = document.createElement('button');
+        header.className = 'deck-legend-header';
+        header.setAttribute('aria-label', 'Toggle legend');
+        header.innerHTML = '<span class="deck-legend-title">' +
+          this._esc(opts.title) + '</span><span class="deck-legend-arrow">' +
+          (opts.collapsed ? '\u25B6' : '\u25BC') + '</span>';
+        header.addEventListener('click', () => {
+          const body = container.querySelector('.deck-legend-body');
+          const arrow = header.querySelector('.deck-legend-arrow');
+          if (!body) return;
+          const hidden = body.style.display === 'none';
+          body.style.display = hidden ? '' : 'none';
+          if (arrow) arrow.textContent = hidden ? '\u25BC' : '\u25B6';
+        });
+        container.appendChild(header);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'deck-legend-body';
+      if (opts.collapsed) body.style.display = 'none';
+
+      const entries = opts.entries || [];
+      for (const entry of entries) {
+        const row = document.createElement('label');
+        row.className = 'deck-legend-row';
+
+        // Checkbox for visibility toggle
+        if (opts.showCheckbox && entry.layer_id) {
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = this._isLayerVisible(entry.layer_id);
+          cb.className = 'deck-legend-cb';
+          const self = this;
+          cb.addEventListener('change', function () {
+            self._toggleLayer(entry.layer_id, this.checked);
+          });
+          row.appendChild(cb);
+        }
+
+        // Swatch
+        row.appendChild(this._createSwatch(entry));
+
+        // Label text
+        const lbl = document.createElement('span');
+        lbl.className = 'deck-legend-label';
+        lbl.textContent = entry.label || entry.layer_id || '';
+        row.appendChild(lbl);
+
+        body.appendChild(row);
+      }
+
+      container.appendChild(body);
+    }
+
+    /* ---- swatch factory ---- */
+
+    _toCSS(c) {
+      if (!c) return '#666';
+      if (typeof c === 'string') return c;
+      if (Array.isArray(c)) {
+        if (c.length >= 4) return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (c[3] / 255) + ')';
+        return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+      }
+      return '#666';
+    }
+
+    _createSwatch(entry) {
+      const shape = entry.shape || 'circle';
+      const el = document.createElement('span');
+      el.className = 'deck-legend-swatch deck-legend-sh-' + shape;
+
+      if (shape === 'arc' && entry.color2) {
+        el.style.background = 'linear-gradient(90deg,' + this._toCSS(entry.color) + ',' + this._toCSS(entry.color2) + ')';
+      } else if (shape === 'gradient' && Array.isArray(entry.colors)) {
+        el.style.background = 'linear-gradient(90deg,' + entry.colors.map(c => this._toCSS(c)).join(',') + ')';
+      } else {
+        el.style.backgroundColor = this._toCSS(entry.color);
+      }
+
+      return el;
+    }
+
+    /* ---- visibility helpers ---- */
+
+    _isLayerVisible(layerId) {
+      if (!this._mapId) return true;
+      const inst = mapInstances[this._mapId];
+      if (!inst) return true;
+      const lp = inst.lastLayers.find(l => l.id === layerId);
+      return lp ? lp.visible !== false : true;
+    }
+
+    _toggleLayer(layerId, visible) {
+      if (!this._mapId) return;
+      const inst = mapInstances[this._mapId];
+      if (!inst) return;
+
+      inst.lastLayers = inst.lastLayers.map(lp => {
+        if (lp.id !== layerId) return lp;
+        return Object.assign({}, lp, { visible: visible });
+      });
+
+      const deckLayers = buildDeckLayers(
+        inst.lastLayers.map(lp => Object.assign({}, lp)),
+        this._mapId,
+        inst.tooltipConfig
+      );
+      inst.overlay.setProps({ layers: deckLayers });
+      inst.map.triggerRepaint();
+    }
+
+    /* ---- utility ---- */
+    _esc(s) {
+      const d = document.createElement('span');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Helper: create MapLibre control by type name
   // -----------------------------------------------------------------------
   function createControl(type, opts) {
@@ -79,6 +251,8 @@
         }
         console.warn('[shiny_deckgl] OpacityControl not loaded. Include the maplibre-gl-opacity CDN script.');
         return null;
+      case 'deck_legend':
+        return new DeckLegendControl(opts);
       default:
         console.warn('[shiny_deckgl] Unknown control type: ' + type);
         return null;

@@ -124,6 +124,7 @@ MapWidget(
     style: str = CARTO_POSITRON,
     tooltip: dict | None = None,
     mapbox_api_key: str | None = None,
+    controls: list[dict] | None = None,
 )
 ```
 
@@ -134,6 +135,7 @@ MapWidget(
 | `style` | `str` | `CARTO_POSITRON` | MapLibre style URL. Use a `CARTO_*` / `OSM_*` constant or any MapLibre-compatible style URL. |
 | `tooltip` | `dict \| None` | `None` | Tooltip configuration (see [Tooltip Configuration](#tooltip-configuration)). |
 | `mapbox_api_key` | `str \| None` | `None` | If provided, enables `mapbox://` style URLs by injecting an access token. |
+| `controls` | `list[dict] \| None` | `[{"type": "navigation", "position": "top-right"}]` | Initial controls to add on map load. Each dict has `type` (see `CONTROL_TYPES`), optional `position` (see `CONTROL_POSITIONS`), and optional `options`. |
 
 **Example:**
 
@@ -145,6 +147,10 @@ map_widget = MapWidget(
     view_state={"longitude": -122.4, "latitude": 37.8, "zoom": 11, "pitch": 45},
     style=CARTO_DARK,
     tooltip={"html": "<b>{name}</b><br/>depth: {depth} m"},
+    controls=[
+        {"type": "navigation", "position": "top-left"},
+        {"type": "scale", "position": "bottom-left", "options": {"unit": "metric"}},
+    ],
 )
 ```
 
@@ -438,10 +444,10 @@ Remove a native MapLibre source. All layers using this source must be removed fi
 ### `set_source_data()`
 
 ```python
-await widget.set_source_data(session, source_id: str, data: dict) -> None
+await widget.set_source_data(session, source_id: str, data: dict | str) -> None
 ```
 
-Update the data of an existing GeoJSON source without removing/re-adding it.
+Update the data of an existing GeoJSON source without removing/re-adding it.  `data` can be a GeoJSON dict or a URL string.
 
 ```python
 await widget.set_source_data(session, "cities", updated_geojson)
@@ -838,7 +844,7 @@ Add a GeoPandas GeoDataFrame as a native MapLibre source + layer.  Convenience m
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `source_id` | `str` | *(required)* | Unique identifier (used for both source and layer). |
+| `source_id` | `str` | *(required)* | Unique source identifier. The layer is created with id `"{source_id}-layer"`. |
 | `gdf` | `GeoDataFrame` | *(required)* | A `geopandas.GeoDataFrame`. |
 | `layer_type` | `str` | `"fill"` | MapLibre layer type. |
 | `paint` | `dict \| None` | `None` | Paint properties.  Defaults by type: `"fill"` → `{"fill-color": "#088", "fill-opacity": 0.5}`, `"line"` → `{"line-color": "#333", "line-width": 2}`, `"circle"` → `{"circle-radius": 5, "circle-color": "#088"}`. |
@@ -1071,7 +1077,9 @@ bitmap_layer("overlay", "https://example.com/chart.png",
 
 ---
 
-## Basemap Constants
+## Basemap & Control Constants
+
+### Basemap Styles
 
 Pre-defined MapLibre style URLs:
 
@@ -1083,6 +1091,16 @@ Pre-defined MapLibre style URLs:
 | `OSM_LIBERTY` | `tiles.openfreemap.org/styles/liberty` | OpenStreetMap Liberty style |
 
 Pass any MapLibre-compatible style URL to `MapWidget(style=...)`.
+
+### Control Constants
+
+**`CONTROL_TYPES`** — Valid control type strings for `add_control()` and the constructor's `controls` parameter:
+
+`{"navigation", "scale", "fullscreen", "geolocate", "globe", "terrain", "attribution"}`
+
+**`CONTROL_POSITIONS`** — Valid position strings for controls:
+
+`{"top-left", "top-right", "bottom-left", "bottom-right"}`
 
 ---
 

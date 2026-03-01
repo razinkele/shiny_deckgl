@@ -6,6 +6,33 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.1] — 2026-03-01
+
+### Fixed
+
+- **cli.py** — `run_app(app(default_provider))` crash replaced with
+  `run_app(app)` (the `app` object is a Shiny `App` instance, not a factory).
+- **conda.recipe/meta.yaml** — version bumped to 1.0.0 (was stuck at
+  0.6.0); `htmltools` added to run requirements.
+
+### Changed
+
+- **`__init__.py`** — `__all__` now includes 7 missing v0.9.0 layer helpers
+  (`trips_layer`, `great_circle_layer`, `contour_layer`, `grid_layer`,
+  `screen_grid_layer`, `mvt_layer`, `wms_layer`).
+- **`__all__`** added to all 8 split modules for explicit public API control.
+- **`_demo_data.py`** — GeoJSON loading moved from import-time I/O to lazy
+  `__getattr__` with module-level cache.
+- **`pyproject.toml`** — classifier updated to
+  `Development Status :: 5 - Production/Stable`.
+- **CHANGELOG.md** — corrected dates and added comparison link references.
+- **README.md** — codebase structure table updated for the 8-module split.
+- **docs/api_reference.md** — bumped to v1.0.0; added Extension Helpers,
+  Cluster Layers, Cooperative Gestures, Controller, and Style-Diff sections;
+  updated `MapWidget` constructor docs with all v0.7–1.0 parameters.
+
+---
+
 ## [1.0.0] — 2025-06-14
 
 ### Added
@@ -304,6 +331,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
+[1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...HEAD
 [1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
 [0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1
 [0.8.0]: https://github.com/razinkele/shiny_deckgl/compare/d8a3b2e...f3c7340

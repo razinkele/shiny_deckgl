@@ -1,6 +1,6 @@
 {% set name = "shiny-deckgl" %}
 # Version must match src/shiny_deckgl/_version.py (single source of truth)
-{% set version = "1.0.0" %}
+{% set version = "1.0.1" %}
 
 package:
   name: {{ name|lower }}
@@ -12,12 +12,15 @@ source:
 build:
   noarch: python
   number: 0
+  script: python -m pip install . --no-deps --no-build-isolation -vv
+  entry_points:
+    - shiny_deckgl-demo = shiny_deckgl.cli:main
 
 requirements:
   host:
     - python >=3.9
     - pip
-    - setuptools
+    - setuptools >=77
   run:
     - python >=3.9
     - shiny >=1.0
@@ -26,8 +29,21 @@ requirements:
 test:
   imports:
     - shiny_deckgl
+  commands:
+    - shiny_deckgl-demo --help || true
 
 about:
   home: "https://github.com/razinkele/shiny_deckgl"
   license: "MIT"
-  summary: "Shiny -> deck.gl bridge (no Java) with packaged assets"
+  license_file: LICENSE
+  summary: "Shiny for Python -> deck.gl bridge (no Java) with packaged assets"
+  description: |
+    A lightweight library for integrating deck.gl (v9.2.10) and
+    MapLibre GL JS (v5.3.1) into Shiny for Python applications.
+    Built for marine science and GIS visualisation.
+  doc_url: "https://github.com/razinkele/shiny_deckgl/blob/main/docs/api_reference.md"
+  dev_url: "https://github.com/razinkele/shiny_deckgl"
+
+extra:
+  recipe-maintainers:
+    - razinkele

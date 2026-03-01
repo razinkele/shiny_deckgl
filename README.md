@@ -287,7 +287,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | File | Purpose |
 | --- | --- |
 | `src/shiny_deckgl/map_widget.py` | `MapWidget` class — core widget with session methods, HTML export, JSON serialisation. |
-| `src/shiny_deckgl/layers.py` | Generic `layer()` + 23 typed layer helpers (scatter, arc, trips, grid, …). |
+| `src/shiny_deckgl/layers.py` | Generic `layer()` + 21 typed layer helpers (scatter, arc, trips, grid, …). |
 | `src/shiny_deckgl/colors.py` | Color scales (`color_range`, `color_bins`, `color_quantiles`), palettes, basemap constants. |
 | `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`). |
 | `src/shiny_deckgl/widgets.py` | 17 deck.gl widget helpers (zoom, compass, fullscreen, timeline, …). |
@@ -301,6 +301,8 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/_cdn.py` | CDN URL constants — single source of truth for all external asset URLs. |
 | `src/shiny_deckgl/_version.py` | Package version — single source of truth. |
 | `src/shiny_deckgl/cli.py` | `shiny_deckgl-demo` CLI entry point. |
+| `src/shiny_deckgl/_demo_data.py` | Sample Baltic Sea data (ports, routes, MPA GeoJSON) for the demo app. |
+| `src/shiny_deckgl/_demo_css.py` | Marine-themed CSS and UI helpers for the demo app. |
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |

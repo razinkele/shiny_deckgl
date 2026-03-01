@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 0.9.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.0.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -101,6 +101,22 @@ import shiny_deckgl as sdgl
   - [wms\_layer() (deck.gl)](#wms_layer-deckgl)
 - [Interleaved Rendering (v0.9)](#interleaved-rendering-v09)
 - [TripsLayer Animation (v0.9)](#tripslayer-animation-v09)
+- [Extension Helpers (v1.0)](#extension-helpers-v10)
+  - [brushing\_extension()](#brushing_extension)
+  - [collision\_filter\_extension()](#collision_filter_extension)
+  - [data\_filter\_extension()](#data_filter_extension)
+  - [mask\_extension()](#mask_extension)
+  - [clip\_extension()](#clip_extension)
+  - [terrain\_extension()](#terrain_extension)
+  - [fill\_style\_extension()](#fill_style_extension)
+  - [path\_style\_extension()](#path_style_extension)
+- [Cluster Layers (v1.0)](#cluster-layers-v10)
+  - [add\_cluster\_layer()](#add_cluster_layer)
+  - [remove\_cluster\_layer()](#remove_cluster_layer)
+- [Cooperative Gestures (v1.0)](#cooperative-gestures-v10)
+  - [set\_cooperative\_gestures()](#set_cooperative_gestures)
+- [Controller (v1.0)](#controller-v10)
+  - [set\_controller()](#set_controller)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
@@ -164,6 +180,13 @@ MapWidget(
     tooltip: dict | None = None,
     mapbox_api_key: str | None = None,
     controls: list[dict] | None = None,
+    picking_radius: int = 0,
+    use_device_pixels: bool | int = True,
+    animate: bool = False,
+    parameters: dict | None = None,
+    controller: bool | dict = True,
+    interleaved: bool = False,
+    cooperative_gestures: bool = False,
 )
 ```
 
@@ -175,6 +198,13 @@ MapWidget(
 | `tooltip` | `dict \| None` | `None` | Tooltip configuration (see [Tooltip Configuration](#tooltip-configuration)). |
 | `mapbox_api_key` | `str \| None` | `None` | If provided, enables `mapbox://` style URLs by injecting an access token. |
 | `controls` | `list[dict] \| None` | `[{"type": "navigation", "position": "top-right"}]` | Initial controls to add on map load. Each dict has `type` (see `CONTROL_TYPES`), optional `position` (see `CONTROL_POSITIONS`), and optional `options`. |
+| `picking_radius` | `int` | `0` | Extra pixels around the pointer for pick detection. |
+| `use_device_pixels` | `bool \| int` | `True` | Whether to use retina resolution; set `False` for performance. |
+| `animate` | `bool` | `False` | Enable continuous rendering (needed for TripsLayer animation). |
+| `parameters` | `dict \| None` | `None` | WebGL parameters passed to the deck.gl `Deck` instance. |
+| `controller` | `bool \| dict` | `True` | Map controller config. `True` for default, `False` to disable, dict for fine-tuning. |
+| `interleaved` | `bool` | `False` | Enable deck.gl interleaved rendering (layers interspersed with basemap labels). |
+| `cooperative_gestures` | `bool` | `False` | Require Ctrl+scroll to zoom and two-finger drag on touch. |
 
 **Example:**
 
@@ -637,15 +667,28 @@ await widget.set_filter(session, "cities-circles",
 ### `set_style()`
 
 ```python
-await widget.set_style(session, style: str) -> None
+await widget.set_style(
+    session,
+    style: str,
+    *,
+    diff: bool = False,
+) -> None
 ```
 
 Change the entire basemap style dynamically.
 
-> **Warning:** This destroys all native sources and layers.  Re-add them after the style loads.
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `style` | `str` | *(required)* | URL of the new map style JSON. |
+| `diff` | `bool` | `False` | When `True`, MapLibre computes a diff and only applies changes, preserving existing sources/layers. |
+
+> **Warning:** With `diff=False` (default), this destroys all native sources and layers.  Re-add them after the style loads.  Use `diff=True` to preserve them.
 
 ```python
 await widget.set_style(session, CARTO_DARK)
+
+# Preserve existing sources/layers:
+await widget.set_style(session, CARTO_VOYAGER, diff=True)
 ```
 
 ---
@@ -2303,6 +2346,242 @@ The animation starts automatically when the TripsLayer is detected after
 
 ---
 
+## Extension Helpers (v1.0)
+
+Extension helpers create specs for deck.gl layer extensions.  Pass them in the
+`extensions` list of any `layer()` call.  No-argument extensions return a plain
+string; extensions with options return a `[name, options]` pair.
+
+```python
+from shiny_deckgl import layer, brushing_extension, data_filter_extension
+
+layer(
+    "ScatterplotLayer", "pts", data=points,
+    extensions=[brushing_extension(), data_filter_extension(filter_size=1)],
+    brushingRadius=50000,
+    brushingEnabled=True,
+    getFilterValue="@@d.year",
+    filterRange=[2010, 2020],
+)
+```
+
+### `brushing_extension()`
+
+```python
+shiny_deckgl.brushing_extension() -> str
+```
+
+Highlight features near the cursor.
+
+**Layer props enabled:** `brushingRadius`, `brushingEnabled`, `brushingTarget`.
+
+### `collision_filter_extension()`
+
+```python
+shiny_deckgl.collision_filter_extension() -> str
+```
+
+Hide overlapping labels/icons.
+
+**Layer props enabled:** `collisionEnabled`, `collisionGroup`, `collisionTestProps`, `getCollisionPriority`.
+
+### `data_filter_extension()`
+
+```python
+shiny_deckgl.data_filter_extension(filter_size: int = 1) -> list
+```
+
+GPU-accelerated data filtering.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `filter_size` | `int` | `1` | Number of filter dimensions (1–4). |
+
+**Layer props enabled:** `getFilterValue`, `filterRange`, `filterSoftRange`, `filterEnabled`, `filterTransformSize`, `filterTransformColor`.
+
+### `mask_extension()`
+
+```python
+shiny_deckgl.mask_extension() -> str
+```
+
+Clip layer rendering to a GeoJSON mask.
+
+**Layer props enabled:** `maskId`, `maskByInstance`, `maskInverted`.
+
+### `clip_extension()`
+
+```python
+shiny_deckgl.clip_extension() -> str
+```
+
+Clip layer rendering to the current view bounds for performance.
+
+### `terrain_extension()`
+
+```python
+shiny_deckgl.terrain_extension() -> str
+```
+
+Drape layers onto a 3D terrain surface.
+
+**Layer props enabled:** `terrainDrawMode`.
+
+### `fill_style_extension()`
+
+```python
+shiny_deckgl.fill_style_extension(pattern: bool = True) -> list
+```
+
+Apply fill patterns to polygon layers.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `pattern` | `bool` | `True` | Enable pattern fills. |
+
+**Layer props enabled:** `fillPatternAtlas`, `fillPatternMapping`, `fillPatternMask`, `getFillPattern`, `getFillPatternScale`, `getFillPatternOffset`.
+
+### `path_style_extension()`
+
+```python
+shiny_deckgl.path_style_extension(dash: bool = False, high_precision: bool = False) -> list
+```
+
+Dashed/offset path rendering.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `dash` | `bool` | `False` | Enable dash patterns. |
+| `high_precision` | `bool` | `False` | Use pixel-perfect dash rendering (slower). |
+
+**Layer props enabled:** `getDashArray`, `dashJustified`, `getOffset`.
+
+---
+
+## Cluster Layers (v1.0)
+
+### `add_cluster_layer()`
+
+```python
+await widget.add_cluster_layer(
+    session,
+    source_id: str,
+    data: dict | str | list,
+    *,
+    cluster_radius: int = 50,
+    cluster_max_zoom: int = 14,
+    cluster_color: str = "#51bbd6",
+    cluster_stroke_color: str = "#ffffff",
+    cluster_stroke_width: int = 1,
+    cluster_text_color: str = "#ffffff",
+    cluster_text_size: int = 12,
+    point_color: str = "#11b4da",
+    point_radius: int = 5,
+    point_stroke_color: str = "#ffffff",
+    point_stroke_width: int = 1,
+    size_steps: list | None = None,
+    cluster_properties: dict | None = None,
+) -> None
+```
+
+Add clustered GeoJSON points with click-to-zoom.  Creates a GeoJSON source
+with `cluster: true` plus three MapLibre layers: cluster circles, count labels,
+and unclustered points.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `source_id` | `str` | *(required)* | Unique source identifier.  Layers created: `{source_id}-clusters`, `{source_id}-count`, `{source_id}-unclustered`. |
+| `data` | `dict \| str \| list` | *(required)* | GeoJSON FeatureCollection (dict), URL string, or list of `[lon, lat]` pairs. |
+| `cluster_radius` | `int` | `50` | Pixel radius for merging points. |
+| `cluster_max_zoom` | `int` | `14` | Max zoom at which clusters are generated. |
+| `cluster_color` | `str` | `"#51bbd6"` | Fill colour for cluster circles. |
+| `cluster_stroke_color` | `str` | `"#ffffff"` | Stroke colour for cluster circles. |
+| `cluster_stroke_width` | `int` | `1` | Stroke width for cluster circles. |
+| `cluster_text_color` | `str` | `"#ffffff"` | Colour for count labels. |
+| `cluster_text_size` | `int` | `12` | Font size for count labels. |
+| `point_color` | `str` | `"#11b4da"` | Fill colour for unclustered points. |
+| `point_radius` | `int` | `5` | Radius for unclustered points. |
+| `point_stroke_color` | `str` | `"#ffffff"` | Stroke colour for unclustered points. |
+| `point_stroke_width` | `int` | `1` | Stroke width for unclustered points. |
+| `size_steps` | `list \| None` | `[[0,18],[100,24],[750,32]]` | `[count, radius]` pairs for cluster circle size interpolation. |
+| `cluster_properties` | `dict \| None` | `None` | MapLibre `clusterProperties` for aggregate computations. |
+
+```python
+await widget.add_cluster_layer(session, "ports", port_geojson,
+                                cluster_radius=60,
+                                cluster_color="#ff6b6b",
+                                point_color="#ffd93d")
+```
+
+### `remove_cluster_layer()`
+
+```python
+await widget.remove_cluster_layer(session, source_id: str) -> None
+```
+
+Remove a cluster layer group and its underlying GeoJSON source.
+
+```python
+await widget.remove_cluster_layer(session, "ports")
+```
+
+---
+
+## Cooperative Gestures (v1.0)
+
+### `set_cooperative_gestures()`
+
+```python
+await widget.set_cooperative_gestures(
+    session,
+    enabled: bool,
+) -> None
+```
+
+Toggle cooperative gestures on the map.  When enabled, the user must hold
+**Ctrl** (or **⌘** on macOS) while scrolling to zoom, and two-finger drag is
+required on touch devices.
+
+```python
+# Enable (e.g. for maps embedded in scrollable pages)
+await widget.set_cooperative_gestures(session, True)
+
+# Also configurable at construction time:
+widget = MapWidget("map", cooperative_gestures=True)
+```
+
+---
+
+## Controller (v1.0)
+
+### `set_controller()`
+
+```python
+await widget.set_controller(
+    session,
+    options: bool | dict,
+) -> None
+```
+
+Configure map controller behaviour at runtime.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `options` | `bool \| dict` | `True` enables default controller.  `False` disables all interaction.  A dict fine-tunes specific behaviours. |
+
+```python
+# Disable double-click zoom, enable touch rotate
+await widget.set_controller(session, {
+    "touchRotate": True,
+    "doubleClickZoom": False,
+})
+
+# Disable all interaction
+await widget.set_controller(session, False)
+```
+
+---
+
 ## CLI
 
 The package installs a `shiny_deckgl-demo` console script:
@@ -2311,7 +2590,9 @@ The package installs a `shiny_deckgl-demo` console script:
 shiny_deckgl-demo
 ```
 
-This launches the built-in demo app with sample data (two points near Klaipeda, Lithuania).
+This launches the built-in demo app centred on the Baltic Sea with 9 tabs
+showcasing all features: scatter layers, WMS, controls, drawing tools,
+markers, popups, terrain, animation, extensions, and clustering.
 
 ---
 

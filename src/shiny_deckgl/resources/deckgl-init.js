@@ -222,7 +222,27 @@
 
     const overlay = new deck.MapboxOverlay({
       interleaved: false,
-      layers: []
+      layers: [],
+      // Forward widget-initiated view state changes (e.g. CompassWidget
+      // bearing reset, ZoomWidget zoom) back to the MapLibre map.
+      // Without this, the overlay silently consumes the change and MapLibre
+      // overwrites it on the next render frame.
+      onViewStateChange: function (params) {
+        var vs = params.viewState;
+        if (!vs) return;
+        var opts = {
+          center: [vs.longitude, vs.latitude],
+          zoom: vs.zoom,
+          bearing: vs.bearing || 0,
+          pitch: vs.pitch || 0,
+        };
+        if (vs.transitionDuration > 0) {
+          opts.duration = vs.transitionDuration;
+          map.easeTo(opts);
+        } else {
+          map.jumpTo(opts);
+        }
+      }
     });
 
     // Apply initial deck-level props from data attributes

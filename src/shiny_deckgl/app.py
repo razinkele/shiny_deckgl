@@ -270,22 +270,36 @@ app_ui = ui.page_navbar(
                                         "GeolocateControl", value=False),
                         ui.input_switch("ml_globe",
                                         "GlobeControl", value=False),
+                        sidebar_hint(
+                            "\u26A0\uFE0F Globe projection does not support "
+                            "deck.gl overlay layers — they will float above "
+                            "the curved surface. Use interleaved mode or "
+                            "native MapLibre layers for globe support."
+                        ),
                         ui.input_switch("ml_terrain",
                                         "TerrainControl", value=False),
+                        sidebar_hint(
+                            "Requires a terrain/DEM source in the basemap "
+                            "style (e.g. MapTiler or MapLibre demo tiles). "
+                            "Most free CARTO and Stadia styles do not "
+                            "include terrain data."
+                        ),
                     ),
                     ui.accordion_panel(
                         "\U0001F4DC Legend Plugin",
                         sidebar_hint(
                             "watergis/maplibre-gl-legend — auto-generates "
-                            "a legend panel from the MapLibre style. "
-                            "Toggle layer visibility with checkboxes."
+                            "a legend panel from the MapLibre style layers. "
+                            "Note: deck.gl overlay layers (the port dots "
+                            "and MPA polygons) are not included — only "
+                            "native basemap style layers appear."
                         ),
                         ui.input_switch("ml_legend",
                                         "Legend panel", value=True),
                         ui.input_switch("ml_legend_checkbox",
                                         "Show checkboxes", value=True),
                         ui.input_switch("ml_legend_default",
-                                        "Open by default", value=False),
+                                        "Open by default", value=True),
                     ),
                     ui.accordion_panel(
                         "\U0001F50D Opacity Plugin",

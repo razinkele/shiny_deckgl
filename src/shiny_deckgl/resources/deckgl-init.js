@@ -388,6 +388,35 @@
   }
 
   // -----------------------------------------------------------------------
+  // Helper: resolve widget specs → deck.gl Widget instances (v0.8.0)
+  // -----------------------------------------------------------------------
+  function buildWidgets(widgetSpecs) {
+    if (!widgetSpecs || !widgetSpecs.length) return undefined;
+    return widgetSpecs.map(spec => {
+      var className = spec['@@widgetClass'];
+      if (!className) return null;
+      var props = Object.assign({}, spec);
+      delete props['@@widgetClass'];
+      var Cls = deck[className];
+      if (!Cls) {
+        console.warn('[shiny_deckgl] Unknown widget: ' + className);
+        return null;
+      }
+      return new Cls(props);
+    }).filter(Boolean);
+  }
+
+  // -----------------------------------------------------------------------
+  // Built-in easing functions for layer transitions (v0.8.0)
+  // -----------------------------------------------------------------------
+  var EASINGS = {
+    'ease-in-cubic': function(t) { return t * t * t; },
+    'ease-out-cubic': function(t) { return 1 - Math.pow(1 - t, 3); },
+    'ease-in-out-cubic': function(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; },
+    'ease-in-out-sine': function(t) { return -(Math.cos(Math.PI * t) - 1) / 2; }
+  };
+
+  // -----------------------------------------------------------------------
   // Helper: lon/lat → EPSG:3857 (Web Mercator) projection
   // -----------------------------------------------------------------------
   const EARTH_HALF_CIRC = 20037508.342789244;   // π × 6378137
@@ -414,6 +443,17 @@
       resolveAccessors(layerProps);
       resolveExtensions(layerProps);
       resolveBinaryAttributes(layerProps);
+
+      // Resolve @@easing in transitions specs (v0.8.0)
+      if (layerProps.transitions) {
+        for (var prop in layerProps.transitions) {
+          var tSpec = layerProps.transitions[prop];
+          if (tSpec && tSpec['@@easing']) {
+            tSpec.easing = EASINGS[tSpec['@@easing']] || function(t) { return t; };
+            delete tSpec['@@easing'];
+          }
+        }
+      }
 
       // Set up pick handling for non-raster layers
       if (!RASTER_TYPES.has(layerProps.type) && layerProps.pickable !== false) {
@@ -595,8 +635,63 @@
     if (payload.useDevicePixels !== undefined) overlayProps.useDevicePixels = payload.useDevicePixels;
     if (payload._animate !== undefined) overlayProps._animate = payload._animate;
 
+    // Widgets (v0.8.0)
+    var widgets = buildWidgets(payload.widgets);
+    if (widgets) overlayProps.widgets = widgets;
+
     overlay.setProps(overlayProps);
     map.triggerRepaint();
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_widgets — update widgets without resending layers (v0.8.0)
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_widgets", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var widgets = buildWidgets(payload.widgets);
+    if (widgets) {
+      instance.overlay.setProps({ widgets: widgets });
+      instance.map.triggerRepaint();
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_fly_to — smooth flyTo camera transition (v0.8.0)
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_fly_to", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var vs = payload.viewState || {};
+    var opts = {
+      center: [vs.longitude || 0, vs.latitude || 0],
+      speed: payload.speed || 1.2
+    };
+    if (vs.zoom != null) opts.zoom = vs.zoom;
+    if (vs.pitch != null) opts.pitch = vs.pitch;
+    if (vs.bearing != null) opts.bearing = vs.bearing;
+    if (payload.duration !== "auto") opts.duration = payload.duration;
+    instance.map.flyTo(opts);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_ease_to — smooth easeTo camera transition (v0.8.0)
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_ease_to", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var vs = payload.viewState || {};
+    var opts = {
+      center: [vs.longitude || 0, vs.latitude || 0],
+      duration: payload.duration || 1000
+    };
+    if (vs.zoom != null) opts.zoom = vs.zoom;
+    if (vs.pitch != null) opts.pitch = vs.pitch;
+    if (vs.bearing != null) opts.bearing = vs.bearing;
+    instance.map.easeTo(opts);
   });
 
   // -----------------------------------------------------------------------

@@ -6,6 +6,29 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] — 2025-06-13
+
+### Added
+
+- **deck.gl Widgets** — 12 widget helper functions: `zoom_widget`,
+  `compass_widget`, `fullscreen_widget`, `scale_widget`, `gimbal_widget`,
+  `reset_view_widget`, `screenshot_widget`, `fps_widget`, `loading_widget`,
+  `timeline_widget`, `geocoder_widget`, `theme_widget`.  Each returns a spec
+  dict with `@@widgetClass` resolved by the JS client.
+- **`set_widgets()`** — async method to update widgets without resending layers.
+- **`update()` widgets param** — optional `widgets` list passed through to
+  `overlay.setProps({widgets})`.
+- **`transition()` helper** — build transition specs for layer property
+  animations with named easing functions (`ease-in-cubic`,
+  `ease-out-cubic`, `ease-in-out-cubic`, `ease-in-out-sine`).
+- **`fly_to()`** — smooth fly-to camera transitions via MapLibre `flyTo`.
+- **`ease_to()`** — smooth ease-to camera transitions via MapLibre `easeTo`.
+- **Widgets CDN** — `@deck.gl/widgets` JS + CSS added to CDN head fragment
+  and standalone `to_html()` exports.
+- **32 new tests** (410 total).
+
+---
+
 ## [0.7.0] — 2025-06-12
 
 ### Added

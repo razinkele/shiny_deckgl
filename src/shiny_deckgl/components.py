@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 from ._cdn import (
     DECKGL_JS,
+    DECKGL_WIDGETS_JS,
+    DECKGL_WIDGETS_CSS,
     MAPLIBRE_JS,
     MAPLIBRE_CSS,
     MAPBOX_DRAW_JS,
@@ -291,6 +293,111 @@ def globe_view(**kwargs) -> dict:
     return {"@@type": "GlobeView", **kwargs}
 
 
+# ---------------------------------------------------------------------------
+# deck.gl Widget helpers (v0.8.0)
+# ---------------------------------------------------------------------------
+
+def zoom_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``ZoomWidget`` spec (zoom-in / zoom-out buttons)."""
+    return {"@@widgetClass": "ZoomWidget", "placement": placement, **kwargs}
+
+
+def compass_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``CompassWidget`` spec (bearing indicator / reset)."""
+    return {"@@widgetClass": "CompassWidget", "placement": placement, **kwargs}
+
+
+def fullscreen_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``FullscreenWidget`` spec (toggle fullscreen)."""
+    return {"@@widgetClass": "FullscreenWidget", "placement": placement, **kwargs}
+
+
+def scale_widget(placement: str = "bottom-left", **kwargs) -> dict:
+    """Create a ``ScaleWidget`` spec (distance scale bar)."""
+    return {"@@widgetClass": "ScaleWidget", "placement": placement, **kwargs}
+
+
+def gimbal_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``GimbalWidget`` spec (3D camera gimbal control)."""
+    return {"@@widgetClass": "GimbalWidget", "placement": placement, **kwargs}
+
+
+def reset_view_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``ResetViewWidget`` spec (reset camera to initial state)."""
+    return {"@@widgetClass": "ResetViewWidget", "placement": placement, **kwargs}
+
+
+def screenshot_widget(placement: str = "top-right", **kwargs) -> dict:
+    """Create a ``ScreenshotWidget`` spec (take a screenshot button)."""
+    return {"@@widgetClass": "ScreenshotWidget", "placement": placement, **kwargs}
+
+
+def fps_widget(placement: str = "top-left", **kwargs) -> dict:
+    """Create an ``FpsWidget`` spec (frames-per-second counter)."""
+    return {"@@widgetClass": "FpsWidget", "placement": placement, **kwargs}
+
+
+def loading_widget(**kwargs) -> dict:
+    """Create a ``LoadingWidget`` spec (spinner during layer loading)."""
+    return {"@@widgetClass": "LoadingWidget", **kwargs}
+
+
+def timeline_widget(placement: str = "bottom-left", **kwargs) -> dict:
+    """Create a ``TimelineWidget`` spec (time scrubber for animated layers)."""
+    return {"@@widgetClass": "TimelineWidget", "placement": placement, **kwargs}
+
+
+def geocoder_widget(placement: str = "top-left", **kwargs) -> dict:
+    """Create a ``GeocoderWidget`` spec (address search)."""
+    return {"@@widgetClass": "GeocoderWidget", "placement": placement, **kwargs}
+
+
+def theme_widget(**kwargs) -> dict:
+    """Create a ``ThemeWidget`` spec (light/dark theme toggle)."""
+    return {"@@widgetClass": "ThemeWidget", **kwargs}
+
+
+# ---------------------------------------------------------------------------
+# Transition helper (v0.8.0)
+# ---------------------------------------------------------------------------
+
+def transition(duration: int = 1000, easing: str | None = None,
+               type: str = "interpolation", **kwargs) -> dict:
+    """Build a transition spec for a layer property.
+
+    Parameters
+    ----------
+    duration
+        Transition duration in milliseconds (used for ``"interpolation"``
+        type only).
+    easing
+        Named easing function.  Supported values:
+        ``"ease-in-cubic"``, ``"ease-out-cubic"``,
+        ``"ease-in-out-cubic"``, ``"ease-in-out-sine"``.
+        The JS client resolves these into real easing functions.
+    type
+        ``"interpolation"`` (default) or ``"spring"``.
+    **kwargs
+        Additional transition properties, e.g. ``stiffness``, ``damping``
+        for spring type.
+
+    Examples
+    --------
+    ::
+
+        transitions={
+            "getRadius": transition(800, easing="ease-in-out-cubic"),
+            "getFillColor": transition(500),
+        }
+    """
+    spec: dict = {"type": type, **kwargs}
+    if type == "interpolation":
+        spec["duration"] = duration
+        if easing:
+            spec["@@easing"] = easing
+    return spec
+
+
 CONTROL_TYPES = {
     "navigation", "scale", "fullscreen", "geolocate",
     "globe", "terrain", "attribution",
@@ -473,6 +580,8 @@ class MapWidget:
         picking_radius: int | None = None,
         use_device_pixels: bool | int | None = None,
         animate: bool | None = None,
+        # Widgets (v0.8.0)
+        widgets: list[dict] | None = None,
     ) -> None:
         """Push a new set of deck.gl layers to this map.
 
@@ -500,6 +609,10 @@ class MapWidget:
             Override device pixel setting for this update.
         animate
             Override animation loop setting for this update.
+        widgets
+            Optional list of deck.gl widget dicts (e.g. from
+            ``zoom_widget()``, ``compass_widget()``).  When provided the
+            JS client passes them to ``overlay.setProps({widgets})``.
         """
         payload: dict = {
             "id": self.id,
@@ -520,6 +633,9 @@ class MapWidget:
             payload["useDevicePixels"] = use_device_pixels
         if animate is not None:
             payload["_animate"] = animate
+        # Widgets
+        if widgets is not None:
+            payload["widgets"] = widgets
         await session.send_custom_message("deck_update", payload)
 
     async def set_layer_visibility(
@@ -560,6 +676,113 @@ class MapWidget:
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
             "controller": options,
+        })
+
+    async def set_widgets(
+        self,
+        session: Session,
+        widgets: list[dict],
+    ) -> None:
+        """Update the deck.gl widget set without resending layers.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        widgets
+            List of widget dicts (use the ``*_widget()`` helpers).
+        """
+        await session.send_custom_message("deck_set_widgets", {
+            "id": self.id,
+            "widgets": widgets,
+        })
+
+    async def fly_to(
+        self,
+        session: Session,
+        longitude: float,
+        latitude: float,
+        zoom: float | None = None,
+        pitch: float | None = None,
+        bearing: float | None = None,
+        speed: float = 1.2,
+        duration: int | str = "auto",
+    ) -> None:
+        """Smooth fly-to camera transition using MapLibre ``flyTo``.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        longitude
+            Target longitude.
+        latitude
+            Target latitude.
+        zoom
+            Target zoom level (optional).
+        pitch
+            Target pitch in degrees (optional).
+        bearing
+            Target bearing in degrees (optional).
+        speed
+            Fly speed multiplier (default ``1.2``).
+        duration
+            Duration in ms, or ``"auto"`` for MapLibre-calculated duration.
+        """
+        view_state: dict = {"longitude": longitude, "latitude": latitude}
+        if zoom is not None:
+            view_state["zoom"] = zoom
+        if pitch is not None:
+            view_state["pitch"] = pitch
+        if bearing is not None:
+            view_state["bearing"] = bearing
+        await session.send_custom_message("deck_fly_to", {
+            "id": self.id,
+            "viewState": view_state,
+            "speed": speed,
+            "duration": duration,
+        })
+
+    async def ease_to(
+        self,
+        session: Session,
+        longitude: float,
+        latitude: float,
+        zoom: float | None = None,
+        pitch: float | None = None,
+        bearing: float | None = None,
+        duration: int = 1000,
+    ) -> None:
+        """Smooth ease-to camera transition using MapLibre ``easeTo``.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        longitude
+            Target longitude.
+        latitude
+            Target latitude.
+        zoom
+            Target zoom level (optional).
+        pitch
+            Target pitch in degrees (optional).
+        bearing
+            Target bearing in degrees (optional).
+        duration
+            Duration in milliseconds (default ``1000``).
+        """
+        view_state: dict = {"longitude": longitude, "latitude": latitude}
+        if zoom is not None:
+            view_state["zoom"] = zoom
+        if pitch is not None:
+            view_state["pitch"] = pitch
+        if bearing is not None:
+            view_state["bearing"] = bearing
+        await session.send_custom_message("deck_ease_to", {
+            "id": self.id,
+            "viewState": view_state,
+            "duration": duration,
         })
 
     async def add_drag_marker(
@@ -1779,6 +2002,8 @@ class MapWidget:
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{title}</title>
 <script src="{DECKGL_JS}"></script>
+<script src="{DECKGL_WIDGETS_JS}"></script>
+<link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
 <script src="{MAPLIBRE_JS}"></script>
 <link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>

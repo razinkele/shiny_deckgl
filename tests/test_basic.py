@@ -46,6 +46,21 @@ from shiny_deckgl.components import (
     globe_view,
     CONTROL_TYPES,
     CONTROL_POSITIONS,
+    # v0.8.0 widgets
+    zoom_widget,
+    compass_widget,
+    fullscreen_widget,
+    scale_widget,
+    gimbal_widget,
+    reset_view_widget,
+    screenshot_widget,
+    fps_widget,
+    loading_widget,
+    timeline_widget,
+    geocoder_widget,
+    theme_widget,
+    # v0.8.0 transition
+    transition,
 )
 
 
@@ -72,6 +87,12 @@ def test_public_api_exports():
         "encode_binary_attribute",
         "map_view", "orthographic_view", "first_person_view", "globe_view",
         "CONTROL_TYPES", "CONTROL_POSITIONS",
+        # v0.8.0
+        "zoom_widget", "compass_widget", "fullscreen_widget",
+        "scale_widget", "gimbal_widget", "reset_view_widget",
+        "screenshot_widget", "fps_widget", "loading_widget",
+        "timeline_widget", "geocoder_widget", "theme_widget",
+        "transition",
         "__version__",
     }
     assert expected.issubset(set(dir(m)))
@@ -3353,8 +3374,290 @@ class TestLayerHelpersDataSerialization:
         assert spec["data"][0]["hex"] == "891f1d48177ffff"
 
 
-class TestV070Version:
+class TestV080Version:
     """Version bump verification."""
 
-    def test_version_is_070(self):
-        assert m.__version__ == "0.7.0"
+    def test_version_is_080(self):
+        assert m.__version__ == "0.8.0"
+
+
+# ===========================================================================
+# v0.8.0 â€" Widgets, Transitions, Camera Methods
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Widget helpers
+# ---------------------------------------------------------------------------
+
+class TestZoomWidget:
+    def test_class_and_placement(self):
+        w = zoom_widget()
+        assert w["@@widgetClass"] == "ZoomWidget"
+        assert w["placement"] == "top-right"
+
+    def test_custom_placement(self):
+        w = zoom_widget(placement="bottom-left")
+        assert w["placement"] == "bottom-left"
+
+    def test_extra_kwargs(self):
+        w = zoom_widget(transitionDuration=300)
+        assert w["transitionDuration"] == 300
+
+
+class TestCompassWidget:
+    def test_class_and_placement(self):
+        w = compass_widget()
+        assert w["@@widgetClass"] == "CompassWidget"
+        assert w["placement"] == "top-right"
+
+    def test_custom_placement(self):
+        w = compass_widget(placement="top-left")
+        assert w["placement"] == "top-left"
+
+
+class TestFullscreenWidget:
+    def test_class_and_placement(self):
+        w = fullscreen_widget()
+        assert w["@@widgetClass"] == "FullscreenWidget"
+        assert w["placement"] == "top-right"
+
+
+class TestScaleWidget:
+    def test_class_and_placement(self):
+        w = scale_widget()
+        assert w["@@widgetClass"] == "ScaleWidget"
+        assert w["placement"] == "bottom-left"
+
+
+class TestGimbalWidget:
+    def test_class_and_placement(self):
+        w = gimbal_widget()
+        assert w["@@widgetClass"] == "GimbalWidget"
+        assert w["placement"] == "top-right"
+
+
+class TestResetViewWidget:
+    def test_class_and_placement(self):
+        w = reset_view_widget()
+        assert w["@@widgetClass"] == "ResetViewWidget"
+        assert w["placement"] == "top-right"
+
+
+class TestScreenshotWidget:
+    def test_class_and_placement(self):
+        w = screenshot_widget()
+        assert w["@@widgetClass"] == "ScreenshotWidget"
+        assert w["placement"] == "top-right"
+
+
+class TestFpsWidget:
+    def test_class_and_placement(self):
+        w = fps_widget()
+        assert w["@@widgetClass"] == "FpsWidget"
+        assert w["placement"] == "top-left"
+
+
+class TestLoadingWidget:
+    def test_class_no_placement(self):
+        w = loading_widget()
+        assert w["@@widgetClass"] == "LoadingWidget"
+        assert "placement" not in w
+
+    def test_extra_kwargs(self):
+        w = loading_widget(label="Loading data…")
+        assert w["label"] == "Loading data…"
+
+
+class TestTimelineWidget:
+    def test_class_and_placement(self):
+        w = timeline_widget()
+        assert w["@@widgetClass"] == "TimelineWidget"
+        assert w["placement"] == "bottom-left"
+
+
+class TestGeocoderWidget:
+    def test_class_and_placement(self):
+        w = geocoder_widget()
+        assert w["@@widgetClass"] == "GeocoderWidget"
+        assert w["placement"] == "top-left"
+
+
+class TestThemeWidget:
+    def test_class_no_placement(self):
+        w = theme_widget()
+        assert w["@@widgetClass"] == "ThemeWidget"
+        assert "placement" not in w
+
+
+# ---------------------------------------------------------------------------
+# Transition helper
+# ---------------------------------------------------------------------------
+
+class TestTransition:
+    def test_default(self):
+        t = transition()
+        assert t["type"] == "interpolation"
+        assert t["duration"] == 1000
+        assert "@@easing" not in t
+
+    def test_with_easing(self):
+        t = transition(800, easing="ease-in-out-cubic")
+        assert t["duration"] == 800
+        assert t["@@easing"] == "ease-in-out-cubic"
+
+    def test_spring_type(self):
+        t = transition(type="spring", stiffness=120, damping=20)
+        assert t["type"] == "spring"
+        assert "duration" not in t  # spring ignores duration
+        assert t["stiffness"] == 120
+        assert t["damping"] == 20
+
+    def test_extra_kwargs(self):
+        t = transition(500, enter=True)
+        assert t["enter"] is True
+        assert t["duration"] == 500
+
+
+# ---------------------------------------------------------------------------
+# set_widgets() async method
+# ---------------------------------------------------------------------------
+
+class TestSetWidgets:
+    def test_message_format(self):
+        w = MapWidget("wdg1")
+        fake = _FakeSession()
+        widgets = [zoom_widget(), compass_widget()]
+        asyncio.run(w.set_widgets(fake, widgets))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_widgets"
+        assert payload["id"] == "wdg1"
+        assert len(payload["widgets"]) == 2
+        assert payload["widgets"][0]["@@widgetClass"] == "ZoomWidget"
+
+
+# ---------------------------------------------------------------------------
+# update() with widgets
+# ---------------------------------------------------------------------------
+
+class TestUpdateWithWidgets:
+    def test_widgets_in_payload(self):
+        w = MapWidget("wdg2")
+        fake = _FakeSession()
+        widgets = [scale_widget(), fullscreen_widget()]
+        asyncio.run(w.update(fake, [], widgets=widgets))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_update"
+        assert payload["widgets"][0]["@@widgetClass"] == "ScaleWidget"
+        assert payload["widgets"][1]["@@widgetClass"] == "FullscreenWidget"
+
+    def test_no_widgets_key_when_none(self):
+        w = MapWidget("wdg3")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, []))
+        handler, payload = fake.messages[0]
+        assert "widgets" not in payload
+
+
+# ---------------------------------------------------------------------------
+# fly_to() async method
+# ---------------------------------------------------------------------------
+
+class TestFlyTo:
+    def test_default_message(self):
+        w = MapWidget("fly1")
+        fake = _FakeSession()
+        asyncio.run(w.fly_to(fake, 24.0, 56.0))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_fly_to"
+        assert payload["id"] == "fly1"
+        assert payload["viewState"]["longitude"] == 24.0
+        assert payload["viewState"]["latitude"] == 56.0
+        assert payload["speed"] == 1.2
+        assert payload["duration"] == "auto"
+
+    def test_custom_params(self):
+        w = MapWidget("fly2")
+        fake = _FakeSession()
+        asyncio.run(w.fly_to(
+            fake, 10.0, 20.0,
+            zoom=8, pitch=45, bearing=90,
+            speed=2.0, duration=5000,
+        ))
+        handler, payload = fake.messages[0]
+        vs = payload["viewState"]
+        assert vs["zoom"] == 8
+        assert vs["pitch"] == 45
+        assert vs["bearing"] == 90
+        assert payload["speed"] == 2.0
+        assert payload["duration"] == 5000
+
+    def test_optional_view_state_fields(self):
+        w = MapWidget("fly3")
+        fake = _FakeSession()
+        asyncio.run(w.fly_to(fake, 0.0, 0.0, zoom=5))
+        vs = fake.messages[0][1]["viewState"]
+        assert "zoom" in vs
+        assert "pitch" not in vs
+        assert "bearing" not in vs
+
+
+# ---------------------------------------------------------------------------
+# ease_to() async method
+# ---------------------------------------------------------------------------
+
+class TestEaseTo:
+    def test_default_message(self):
+        w = MapWidget("ease1")
+        fake = _FakeSession()
+        asyncio.run(w.ease_to(fake, 24.0, 56.0))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_ease_to"
+        assert payload["id"] == "ease1"
+        assert payload["viewState"]["longitude"] == 24.0
+        assert payload["viewState"]["latitude"] == 56.0
+        assert payload["duration"] == 1000
+
+    def test_custom_params(self):
+        w = MapWidget("ease2")
+        fake = _FakeSession()
+        asyncio.run(w.ease_to(
+            fake, 10.0, 20.0,
+            zoom=12, pitch=60, bearing=180,
+            duration=3000,
+        ))
+        handler, payload = fake.messages[0]
+        vs = payload["viewState"]
+        assert vs["zoom"] == 12
+        assert vs["pitch"] == 60
+        assert vs["bearing"] == 180
+        assert payload["duration"] == 3000
+
+    def test_no_speed_key(self):
+        """ease_to should not include speed (unlike fly_to)."""
+        w = MapWidget("ease3")
+        fake = _FakeSession()
+        asyncio.run(w.ease_to(fake, 0.0, 0.0))
+        payload = fake.messages[0][1]
+        assert "speed" not in payload
+
+
+# ---------------------------------------------------------------------------
+# CDN includes widgets JS/CSS
+# ---------------------------------------------------------------------------
+
+class TestCdnWidgets:
+    def test_head_includes_widgets_js(self):
+        dep = head_includes()
+        html = str(dep)
+        assert "@deck.gl/widgets" in html
+        assert "dist.min.js" in html
+
+    def test_head_includes_widgets_css(self):
+        dep = head_includes()
+        html = str(dep)
+        assert "stylesheet.css" in html
+
+    def test_to_html_includes_widgets(self):
+        w = MapWidget("cdn1")
+        html = w.to_html([])
+        assert "@deck.gl/widgets" in html

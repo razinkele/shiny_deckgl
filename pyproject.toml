@@ -50,4 +50,4 @@ version = {attr = "shiny_deckgl._version.__version__"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-shiny_deckgl = ["resources/*.js", "resources/*.css", "py.typed"]
+shiny_deckgl = ["resources/*.js", "resources/*.css", "data/*.geojson", "py.typed"]

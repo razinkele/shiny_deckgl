@@ -22,6 +22,7 @@ import json
 import os
 import random
 import tempfile
+from pathlib import Path
 
 from shiny import App, reactive, render, Session, ui
 
@@ -159,36 +160,10 @@ ROUTES = [
     },
 ]
 
-# Marine Protected Area polygons (simplified)
-MPA_GEOJSON = {
-    "type": "FeatureCollection",
-    "features": [
-        {
-            "type": "Feature",
-            "properties": {"name": "Curonian Lagoon MPA", "area_km2": 1584},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [20.85, 55.25], [21.25, 55.25], [21.30, 55.50],
-                    [21.25, 55.75], [21.10, 55.90], [20.95, 55.90],
-                    [20.85, 55.70], [20.80, 55.45], [20.85, 55.25],
-                ]],
-            },
-        },
-        {
-            "type": "Feature",
-            "properties": {"name": "Gotland Basin", "area_km2": 3200},
-            "geometry": {
-                "type": "Polygon",
-                "coordinates": [[
-                    [18.00, 57.00], [20.00, 57.00], [20.50, 57.80],
-                    [20.00, 58.50], [18.50, 58.50], [17.50, 57.80],
-                    [18.00, 57.00],
-                ]],
-            },
-        },
-    ],
-}
+# Marine Protected Areas — real HELCOM data (188 polygons, simplified)
+_MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
+with open(_MPA_PATH) as _f:
+    MPA_GEOJSON = json.load(_f)
 
 # EMODnet WMS layers (hardcoded — no owslib dependency needed)
 EMODNET_WMS_URL = "https://ows.emodnet-bathymetry.eu/wms"
@@ -1012,13 +987,14 @@ def server(input, output, session: Session):
             safe_id = wms_layer_name.replace(":", "_")
             layers.append(tile_layer(f"wms-{safe_id}", wms_url))
 
-        # GeoJSON — Marine Protected Areas
+        # GeoJSON — Marine Protected Areas (HELCOM)
         if input.show_mpa():
             layers.append(geojson_layer(
                 "mpa-zones", MPA_GEOJSON,
                 getFillColor=[0, 180, 120, 60],
                 getLineColor=[0, 180, 120, 200],
                 lineWidthMinPixels=2,
+                pickable=True,
             ))
 
         # Heatmap — random observation density (v0.7.0 helper)
@@ -1167,6 +1143,7 @@ def server(input, output, session: Session):
                 getFillColor=[0, 180, 120, 60],
                 getLineColor=[0, 180, 120, 200],
                 lineWidthMinPixels=2,
+                pickable=True,
             ),
             layer(
                 "ArcLayer", "ev-arcs",

@@ -1688,3 +1688,1079 @@ class TestExportImage:
         """head_includes() should include the MapboxDraw CDN."""
         html = str(head_includes())
         assert "mapbox-gl-draw" in html
+
+
+# ---------------------------------------------------------------------------
+# 5 – Extended coverage for new features
+# ---------------------------------------------------------------------------
+
+class TestUpdateWithViews:
+    """Test MapWidget.update() with the ``views`` parameter."""
+
+    def test_update_with_views(self):
+        w = MapWidget("uv1")
+        fake = _FakeSession()
+        views = [map_view(controller=True)]
+        asyncio.run(w.update(fake, [], views=views))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_update"
+        assert msg[1]["views"] == views
+
+    def test_update_no_views_key_when_none(self):
+        w = MapWidget("uv2")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, []))
+        assert "views" not in fake.messages[0][1]
+
+    def test_update_multiple_views(self):
+        w = MapWidget("uv3")
+        fake = _FakeSession()
+        views = [map_view(), orthographic_view(controller=False)]
+        asyncio.run(w.update(fake, [], views=views))
+        assert fake.messages[0][1]["views"] == views
+        assert fake.messages[0][1]["views"][0]["@@type"] == "MapView"
+        assert fake.messages[0][1]["views"][1]["@@type"] == "OrthographicView"
+
+
+class TestUpdateTransitionDuration:
+    """Test MapWidget.update() transition animation."""
+
+    def test_transition_duration_included(self):
+        w = MapWidget("td1")
+        fake = _FakeSession()
+        vs = {"longitude": 10, "latitude": 50, "zoom": 5}
+        asyncio.run(w.update(fake, [], view_state=vs, transition_duration=2000))
+        msg = fake.messages[0][1]
+        assert msg["transitionDuration"] == 2000
+        assert msg["viewState"] == vs
+
+    def test_transition_duration_zero_omitted(self):
+        w = MapWidget("td2")
+        fake = _FakeSession()
+        vs = {"longitude": 10, "latitude": 50, "zoom": 5}
+        asyncio.run(w.update(fake, [], view_state=vs, transition_duration=0))
+        msg = fake.messages[0][1]
+        assert "transitionDuration" not in msg
+
+    def test_no_view_state_no_transition(self):
+        w = MapWidget("td3")
+        fake = _FakeSession()
+        asyncio.run(w.update(fake, [], transition_duration=5000))
+        msg = fake.messages[0][1]
+        assert "viewState" not in msg
+        assert "transitionDuration" not in msg
+
+
+class TestSetLayerVisibilityMessage:
+    """Test set_layer_visibility sends correct message."""
+
+    def test_single_layer_visible(self):
+        w = MapWidget("slv1")
+        fake = _FakeSession()
+        asyncio.run(w.set_layer_visibility(fake, {"layer1": True}))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_layer_visibility"
+        assert msg[1]["visibility"] == {"layer1": True}
+
+    def test_multiple_layers(self):
+        w = MapWidget("slv2")
+        fake = _FakeSession()
+        asyncio.run(w.set_layer_visibility(fake, {
+            "layer1": True, "layer2": False, "layer3": True
+        }))
+        vis = fake.messages[0][1]["visibility"]
+        assert vis["layer1"] is True
+        assert vis["layer2"] is False
+        assert vis["layer3"] is True
+
+
+class TestAddDragMarkerCoordinates:
+    """Test add_drag_marker with explicit coordinates."""
+
+    def test_with_coordinates(self):
+        w = MapWidget("dm1")
+        fake = _FakeSession()
+        asyncio.run(w.add_drag_marker(fake, longitude=21.14, latitude=55.71))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_drag_marker"
+        assert msg[1]["longitude"] == 21.14
+        assert msg[1]["latitude"] == 55.71
+
+    def test_without_coordinates(self):
+        w = MapWidget("dm2")
+        fake = _FakeSession()
+        asyncio.run(w.add_drag_marker(fake))
+        msg = fake.messages[0][1]
+        assert msg["longitude"] is None
+        assert msg["latitude"] is None
+
+
+class TestColorBinsExtended:
+    """Extended tests for color_bins()."""
+
+    def test_custom_palette(self):
+        palette = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+        result = color_bins([1, 5, 10], n_bins=3, palette=palette)
+        assert len(result) == 3
+        for c in result:
+            assert len(c) == 4
+            assert c[3] == 255
+
+    def test_single_value(self):
+        result = color_bins([42], n_bins=3)
+        assert len(result) == 1
+        assert len(result[0]) == 4
+
+    def test_two_identical_values(self):
+        result = color_bins([5, 5], n_bins=3)
+        assert len(result) == 2
+        assert result[0] == result[1]
+
+    def test_descending_values(self):
+        result = color_bins([100, 50, 10, 1], n_bins=4)
+        assert len(result) == 4
+        # Lowest value should get first bin color
+        # Highest value should get last bin color
+        assert result[3] != result[0]  # extremes differ
+
+    def test_many_values_few_bins(self):
+        vals = list(range(100))
+        result = color_bins(vals, n_bins=2)
+        assert len(result) == 100
+        # Each color should be one of 2 bins
+        unique = set(tuple(c) for c in result)
+        assert len(unique) == 2
+
+
+class TestColorQuantilesExtended:
+    """Extended tests for color_quantiles()."""
+
+    def test_custom_palette(self):
+        palette = [[0, 0, 0], [255, 255, 255]]
+        result = color_quantiles([1, 2, 3, 4], n_bins=2, palette=palette)
+        assert len(result) == 4
+        for c in result:
+            assert len(c) == 4
+
+    def test_single_value(self):
+        result = color_quantiles([7], n_bins=3)
+        assert len(result) == 1
+
+    def test_three_equal_values(self):
+        result = color_quantiles([5, 5, 5], n_bins=3)
+        assert len(result) == 3
+        assert result[0] == result[1] == result[2]
+
+    def test_quantile_vs_bins_differ(self):
+        """Quantile and equal-interval binning should produce different results
+        for moderately skewed distributions."""
+        skewed = [1, 2, 3, 4, 50, 100]
+        bins_result = color_bins(skewed, n_bins=3)
+        quant_result = color_quantiles(skewed, n_bins=3)
+        # With this distribution, the bin boundaries will differ
+        # so at least one data point should get a different colour
+        assert bins_result != quant_result
+
+
+class TestColorRangeInterpolation:
+    """Test color_range interpolation accuracy."""
+
+    def test_two_colors_interpolation(self):
+        palette = [[0, 0, 0], [255, 255, 255]]
+        result = color_range(3, palette)
+        assert len(result) == 3
+        # First should be black, last should be white
+        assert result[0][:3] == [0, 0, 0]
+        assert result[2][:3] == [255, 255, 255]
+        # Middle should be roughly grey
+        assert 100 <= result[1][0] <= 155
+
+    def test_single_color_requested(self):
+        result = color_range(1)
+        assert len(result) == 1
+        assert len(result[0]) == 4
+
+    def test_more_than_palette_stops(self):
+        palette = [[0, 0, 0], [255, 0, 0]]
+        result = color_range(10, palette)
+        assert len(result) == 10
+        # All should be RGBA
+        for c in result:
+            assert len(c) == 4
+            assert all(0 <= v <= 255 for v in c)
+
+
+class TestComputeBoundsExtended:
+    """Extended geometry types for compute_bounds."""
+
+    def test_linestring(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[10, 20], [30, 40], [50, 60]],
+            },
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[10, 20], [50, 60]]
+
+    def test_multilinestring(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "MultiLineString",
+                "coordinates": [
+                    [[0, 0], [10, 10]],
+                    [[20, 20], [30, 30]],
+                ],
+            },
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[0, 0], [30, 30]]
+
+    def test_multipoint(self):
+        geojson = {
+            "type": "Feature",
+            "geometry": {
+                "type": "MultiPoint",
+                "coordinates": [[5, 10], [15, 20], [25, 30]],
+            },
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[5, 10], [25, 30]]
+
+    def test_bare_point_geometry(self):
+        geojson = {"type": "Point", "coordinates": [21.14, 55.71]}
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[21.14, 55.71], [21.14, 55.71]]
+
+    def test_feature_with_3d_coordinates(self):
+        """Coordinates with altitude should still compute 2D bounds."""
+        geojson = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [10, 20, 100],
+                },
+            }],
+        }
+        bounds = MapWidget.compute_bounds(geojson)
+        assert bounds == [[10, 20], [10, 20]]
+
+
+class TestToJsonFromJsonExtended:
+    """Extended roundtrip tests for to_json/from_json."""
+
+    def test_tooltip_preserved(self):
+        w = MapWidget("rj1", tooltip={"html": "<b>{name}</b>"})
+        layers = [scatterplot_layer("L1", [[0, 0]])]
+        spec = w.to_json(layers)
+        w2, layers2 = MapWidget.from_json(spec)
+        assert w2.tooltip == {"html": "<b>{name}</b>"}
+        assert len(layers2) == 1
+
+    def test_style_preserved(self):
+        w = MapWidget("rj2", style=CARTO_DARK)
+        spec = w.to_json([])
+        w2, _ = MapWidget.from_json(spec)
+        assert w2.style == CARTO_DARK
+
+    def test_view_state_preserved(self):
+        vs = {"longitude": 10, "latitude": 50, "zoom": 5, "pitch": 45, "bearing": 90}
+        w = MapWidget("rj3", view_state=vs)
+        spec = w.to_json([])
+        w2, _ = MapWidget.from_json(spec)
+        assert w2.view_state == vs
+
+    def test_no_tooltip_in_spec_when_none(self):
+        w = MapWidget("rj4")
+        spec = w.to_json([])
+        data = json.loads(spec)
+        assert "tooltip" not in data
+
+    def test_multiple_layers_roundtrip(self):
+        w = MapWidget("rj5")
+        layers = [
+            scatterplot_layer("sp", [[1, 2]]),
+            geojson_layer("gj", {"type": "FeatureCollection", "features": []}),
+            tile_layer("tl", "https://example.com/{z}/{x}/{y}.png"),
+        ]
+        spec = w.to_json(layers)
+        w2, layers2 = MapWidget.from_json(spec)
+        assert len(layers2) == 3
+        assert layers2[0]["type"] == "ScatterplotLayer"
+        assert layers2[1]["type"] == "GeoJsonLayer"
+        assert layers2[2]["type"] == "TileLayer"
+
+    def test_effects_roundtrip(self):
+        w = MapWidget("rj6")
+        effects = [{"type": "LightingEffect", "ambientLight": {"intensity": 1}}]
+        spec = w.to_json([], effects=effects)
+        data = json.loads(spec)
+        assert data["effects"] == effects
+
+
+class TestToHtmlExtended:
+    """Extended to_html tests."""
+
+    def test_custom_style_in_html(self):
+        w = MapWidget("th1", style=CARTO_DARK)
+        html = w.to_html([])
+        assert CARTO_DARK in html
+
+    def test_view_state_values_in_html(self):
+        vs = {"longitude": 25.5, "latitude": 60.1, "zoom": 10, "pitch": 30, "bearing": 45}
+        w = MapWidget("th2", view_state=vs)
+        html = w.to_html([])
+        assert "25.5" in html
+        assert "60.1" in html
+        assert 'data-initial-pitch="30"' in html
+        assert 'data-initial-bearing="45"' in html
+
+    def test_layer_data_embedded(self):
+        w = MapWidget("th3")
+        layers = [scatterplot_layer("pts", [[21, 55]])]
+        html = w.to_html(layers)
+        assert "ScatterplotLayer" in html
+        assert "21" in html
+
+    def test_writes_to_file_and_returns_html(self):
+        w = MapWidget("th4")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = os.path.join(tmpdir, "sub", "map.html")
+            html = w.to_html([], path=path)
+            assert os.path.isfile(path)
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+            assert content == html
+
+    def test_effects_in_html(self):
+        w = MapWidget("th5")
+        effects = [{"type": "LightingEffect", "ambientLight": {"intensity": 0.8}}]
+        html = w.to_html([], effects=effects)
+        assert "LightingEffect" in html
+
+
+class TestBitmapLayerExtended:
+    """Extended bitmap_layer tests."""
+
+    def test_opacity_kwarg(self):
+        lyr = bitmap_layer("bm1", "https://example.com/img.png",
+                           [0, 0, 10, 10], opacity=0.5)
+        assert lyr["opacity"] == 0.5
+        assert lyr["image"] == "https://example.com/img.png"
+        assert lyr["bounds"] == [0, 0, 10, 10]
+
+    def test_data_uri_image(self):
+        uri = "data:image/png;base64,iVBOR..."
+        lyr = bitmap_layer("bm2", uri, [20, 55, 21, 56])
+        assert lyr["image"] == uri
+        assert lyr["type"] == "BitmapLayer"
+
+    def test_no_data_key(self):
+        """bitmap_layer should not have a top-level 'data' key."""
+        lyr = bitmap_layer("bm3", "https://x.com/img.png", [0, 0, 1, 1])
+        assert "data" not in lyr
+
+
+class TestLayerUrlData:
+    """Test layer() with URL string as data."""
+
+    def test_url_data(self):
+        lyr = layer("HeatmapLayer", "hm1",
+                     "https://example.com/data.json",
+                     radiusPixels=30)
+        assert lyr["data"] == "https://example.com/data.json"
+        assert lyr["radiusPixels"] == 30
+        assert lyr["type"] == "HeatmapLayer"
+
+    def test_data_none_excluded(self):
+        lyr = layer("IconLayer", "ic1")
+        assert "data" not in lyr
+
+
+class TestAddMarkerDefaults:
+    """Test add_marker default values."""
+
+    def test_default_color(self):
+        w = MapWidget("mk1")
+        fake = _FakeSession()
+        asyncio.run(w.add_marker(fake, "m1", 0, 0))
+        msg = fake.messages[0][1]
+        assert msg["color"] == "#3FB1CE"
+        assert msg["draggable"] is False
+        assert msg["popupHtml"] is None
+
+    def test_with_popup(self):
+        w = MapWidget("mk2")
+        fake = _FakeSession()
+        asyncio.run(w.add_marker(fake, "m1", 10, 20,
+                                  popup_html="<b>Hello</b>"))
+        msg = fake.messages[0][1]
+        assert msg["popupHtml"] == "<b>Hello</b>"
+        assert msg["longitude"] == 10
+        assert msg["latitude"] == 20
+
+
+class TestRemoveMarkerPayload:
+    """Verify remove_marker sends the exact expected payload."""
+
+    def test_payload_structure(self):
+        w = MapWidget("rm1")
+        fake = _FakeSession()
+        asyncio.run(w.remove_marker(fake, "klaipeda"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_remove_marker"
+        assert msg[1] == {"id": "rm1", "markerId": "klaipeda"}
+
+    def test_clear_markers_payload(self):
+        w = MapWidget("rm2")
+        fake = _FakeSession()
+        asyncio.run(w.clear_markers(fake))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_clear_markers"
+        assert msg[1] == {"id": "rm2"}
+
+
+class TestQueryRenderedFeaturesExtended:
+    """Extended query tests."""
+
+    def test_point_with_layers(self):
+        w = MapWidget("qf1")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, point=[100, 200], layers=["cities"],
+            request_id="q1"))
+        msg = fake.messages[0][1]
+        assert msg["point"] == [100, 200]
+        assert msg["layers"] == ["cities"]
+        assert msg["requestId"] == "q1"
+        assert "bounds" not in msg
+
+    def test_bounds_only(self):
+        w = MapWidget("qf2")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, bounds=[[0, 0], [100, 100]]))
+        msg = fake.messages[0][1]
+        assert msg["bounds"] == [[0, 0], [100, 100]]
+        assert "point" not in msg
+
+    def test_no_geometry_gives_no_point_or_bounds(self):
+        w = MapWidget("qf3")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(fake))
+        msg = fake.messages[0][1]
+        assert "point" not in msg
+        assert "bounds" not in msg
+
+    def test_point_with_filter(self):
+        w = MapWidget("qf4")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, point=[50, 50],
+            filter_expr=["==", "type", "city"]))
+        msg = fake.messages[0][1]
+        assert msg["filter"] == ["==", "type", "city"]
+        assert msg["point"] == [50, 50]
+
+
+class TestDeleteDrawnFeaturesExtended:
+    """Test delete_drawn_features with specific IDs."""
+
+    def test_specific_ids(self):
+        w = MapWidget("dd1")
+        fake = _FakeSession()
+        asyncio.run(w.delete_drawn_features(fake, feature_ids=["abc", "def"]))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_delete_drawn"
+        assert msg[1]["featureIds"] == ["abc", "def"]
+
+    def test_none_deletes_all(self):
+        w = MapWidget("dd2")
+        fake = _FakeSession()
+        asyncio.run(w.delete_drawn_features(fake))
+        assert fake.messages[0][1]["featureIds"] is None
+
+
+class TestEnableDrawExtended:
+    """Test enable_draw with modes parameter."""
+
+    def test_specific_modes(self):
+        w = MapWidget("ed1")
+        fake = _FakeSession()
+        asyncio.run(w.enable_draw(
+            fake, modes=["draw_polygon"],
+            default_mode="simple_select"))
+        msg = fake.messages[0][1]
+        assert msg["modes"] == ["draw_polygon"]
+        assert msg["defaultMode"] == "simple_select"
+
+    def test_no_modes_key_when_none(self):
+        w = MapWidget("ed2")
+        fake = _FakeSession()
+        asyncio.run(w.enable_draw(fake))
+        msg = fake.messages[0][1]
+        assert "modes" not in msg
+
+    def test_controls_and_modes(self):
+        w = MapWidget("ed3")
+        fake = _FakeSession()
+        asyncio.run(w.enable_draw(
+            fake,
+            modes=["draw_point", "draw_line_string"],
+            controls={"point": True, "line_string": True, "polygon": False}))
+        msg = fake.messages[0][1]
+        assert msg["modes"] == ["draw_point", "draw_line_string"]
+        assert msg["controls"] == {"point": True, "line_string": True,
+                                    "polygon": False}
+
+
+class TestExportImageExtended:
+    """Extended export_image tests."""
+
+    def test_webp_format(self):
+        w = MapWidget("ei1")
+        fake = _FakeSession()
+        asyncio.run(w.export_image(fake, format="webp", quality=0.75))
+        msg = fake.messages[0][1]
+        assert msg["format"] == "webp"
+        assert msg["quality"] == 0.75
+
+    def test_default_request_id(self):
+        w = MapWidget("ei2")
+        fake = _FakeSession()
+        asyncio.run(w.export_image(fake))
+        assert fake.messages[0][1]["requestId"] == "default"
+
+
+class TestAddPopupExtended:
+    """Extended popup tests."""
+
+    def test_no_anchor(self):
+        w = MapWidget("ap1")
+        fake = _FakeSession()
+        asyncio.run(w.add_popup(fake, "my-layer", "<b>{name}</b>"))
+        msg = fake.messages[0][1]
+        assert "anchor" not in msg
+        assert msg["closeButton"] is True
+        assert msg["closeOnClick"] is True
+        assert msg["maxWidth"] == "300px"
+
+    def test_with_anchor_and_custom_options(self):
+        w = MapWidget("ap2")
+        fake = _FakeSession()
+        asyncio.run(w.add_popup(
+            fake, "my-layer", "{name}",
+            close_button=False, close_on_click=False,
+            max_width="500px", anchor="bottom"))
+        msg = fake.messages[0][1]
+        assert msg["anchor"] == "bottom"
+        assert msg["closeButton"] is False
+        assert msg["closeOnClick"] is False
+        assert msg["maxWidth"] == "500px"
+
+
+class TestFeatureStateExtended:
+    """Extended feature state tests."""
+
+    def test_string_feature_id(self):
+        w = MapWidget("fse1")
+        fake = _FakeSession()
+        asyncio.run(w.set_feature_state(fake, "src", "feature-abc",
+                                          {"highlight": True}))
+        msg = fake.messages[0][1]
+        assert msg["featureId"] == "feature-abc"
+
+    def test_remove_feature_state_with_source_layer(self):
+        w = MapWidget("fse2")
+        fake = _FakeSession()
+        asyncio.run(w.remove_feature_state(
+            fake, "osm", source_layer="water"))
+        msg = fake.messages[0][1]
+        assert msg["sourceLayer"] == "water"
+        assert "featureId" not in msg
+
+    def test_remove_specific_feature_and_key(self):
+        w = MapWidget("fse3")
+        fake = _FakeSession()
+        asyncio.run(w.remove_feature_state(
+            fake, "src", feature_id=5, key="selected"))
+        msg = fake.messages[0][1]
+        assert msg["featureId"] == 5
+        assert msg["key"] == "selected"
+
+    def test_set_multiple_state_props(self):
+        w = MapWidget("fse4")
+        fake = _FakeSession()
+        state = {"hover": True, "selected": True, "opacity": 0.5}
+        asyncio.run(w.set_feature_state(fake, "src", 1, state))
+        assert fake.messages[0][1]["state"] == state
+
+
+class TestQueryAtLngLatExtended:
+    """Extended query_at_lnglat tests."""
+
+    def test_no_layers(self):
+        w = MapWidget("ql1")
+        fake = _FakeSession()
+        asyncio.run(w.query_at_lnglat(fake, 21.14, 55.71))
+        msg = fake.messages[0][1]
+        assert msg["longitude"] == 21.14
+        assert msg["latitude"] == 55.71
+        assert "layers" not in msg
+
+    def test_with_layers_and_request_id(self):
+        w = MapWidget("ql2")
+        fake = _FakeSession()
+        asyncio.run(w.query_at_lnglat(
+            fake, 10.0, 50.0,
+            layers=["a", "b"], request_id="my-query"))
+        msg = fake.messages[0][1]
+        assert msg["layers"] == ["a", "b"]
+        assert msg["requestId"] == "my-query"
+
+
+class TestSetTerrainExtended:
+    """Extended terrain tests."""
+
+    def test_custom_exaggeration(self):
+        w = MapWidget("te1")
+        fake = _FakeSession()
+        asyncio.run(w.set_terrain(fake, "dem-src", exaggeration=3.0))
+        msg = fake.messages[0][1]
+        assert msg["terrain"]["source"] == "dem-src"
+        assert msg["terrain"]["exaggeration"] == 3.0
+
+    def test_disable_terrain(self):
+        w = MapWidget("te2")
+        fake = _FakeSession()
+        asyncio.run(w.set_terrain(fake, None))
+        assert fake.messages[0][1]["terrain"] is None
+
+
+class TestSetSkyExtended:
+    """Extended sky tests."""
+
+    def test_sky_with_full_config(self):
+        w = MapWidget("sk1")
+        fake = _FakeSession()
+        sky = {
+            "sky-color": "#199EF3",
+            "horizon-color": "#ffffff",
+            "fog-color": "#ffffff",
+        }
+        asyncio.run(w.set_sky(fake, sky))
+        assert fake.messages[0][1]["sky"] == sky
+
+
+class TestMapWidgetUiExtended:
+    """Extended ui() tests."""
+
+    def test_custom_dimensions(self):
+        w = MapWidget("uid1")
+        tag = w.ui(width="50%", height="600px")
+        html = str(tag)
+        assert "50%" in html
+        assert "600px" in html
+
+    def test_no_tooltip_attr_when_none(self):
+        w = MapWidget("uid2")
+        tag = w.ui()
+        html = str(tag)
+        assert "data-tooltip" not in html
+
+    def test_tooltip_attr_when_set(self):
+        w = MapWidget("uid3", tooltip={"html": "{name}"})
+        tag = w.ui()
+        html = str(tag)
+        assert "data-tooltip" in html
+
+    def test_no_mapbox_key_attr_when_none(self):
+        w = MapWidget("uid4")
+        tag = w.ui()
+        html = str(tag)
+        assert "data-mapbox-api-key" not in html
+
+    def test_no_controls_attr_when_empty(self):
+        w = MapWidget("uid5", controls=[])
+        tag = w.ui()
+        html = str(tag)
+        assert "data-controls" not in html
+
+
+class TestSetSourceDataExtended:
+    """Extended set_source_data tests."""
+
+    def test_geojson_dict(self):
+        w = MapWidget("ssd1")
+        fake = _FakeSession()
+        geojson = {"type": "FeatureCollection", "features": []}
+        asyncio.run(w.set_source_data(fake, "my-source", geojson))
+        msg = fake.messages[0][1]
+        assert msg["sourceId"] == "my-source"
+        assert msg["data"] == geojson
+
+    def test_url_string(self):
+        w = MapWidget("ssd2")
+        fake = _FakeSession()
+        url = "https://example.com/data.geojson"
+        asyncio.run(w.set_source_data(fake, "src", url))
+        msg = fake.messages[0][1]
+        assert msg["data"] == url
+
+
+class TestGeoPandasExtended:
+    """Extended GeoPandas tests (using mock GeoDataFrame)."""
+
+    def test_add_geodataframe_line_type(self):
+        """When layer_type='line', default paint should have line properties."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            def __init__(self):
+                pass
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd1")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            asyncio.run(w.add_geodataframe(fake, "lines", gdf,
+                                            layer_type="line"))
+            # Should have 2 messages: add_source + add_maplibre_layer
+            assert len(fake.messages) == 2
+            layer_msg = fake.messages[1][1]
+            assert layer_msg["layerSpec"]["type"] == "line"
+            assert "line-color" in layer_msg["layerSpec"]["paint"]
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_circle_type(self):
+        """When layer_type='circle', default paint should have circle props."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd2")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            asyncio.run(w.add_geodataframe(fake, "pts", gdf,
+                                            layer_type="circle"))
+            layer_msg = fake.messages[1][1]
+            assert layer_msg["layerSpec"]["type"] == "circle"
+            assert "circle-radius" in layer_msg["layerSpec"]["paint"]
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_custom_paint_overrides(self):
+        """Custom paint should override defaults."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd3")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            custom_paint = {"fill-color": "#ff0000", "fill-opacity": 0.8}
+            asyncio.run(w.add_geodataframe(fake, "custom", gdf,
+                                            paint=custom_paint))
+            layer_msg = fake.messages[1][1]
+            assert layer_msg["layerSpec"]["paint"] == custom_paint
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_with_layout(self):
+        """Layout property should be included when provided."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd4")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            asyncio.run(w.add_geodataframe(
+                fake, "src", gdf,
+                layout={"visibility": "none"}))
+            layer_msg = fake.messages[1][1]
+            assert layer_msg["layerSpec"]["layout"] == {"visibility": "none"}
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_with_popup_generates_three_messages(self):
+        """When popup_template is given, a third message should be popup."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd5")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            asyncio.run(w.add_geodataframe(
+                fake, "src", gdf,
+                popup_template="<b>{name}</b>"))
+            assert len(fake.messages) == 3  # source + layer + popup
+            assert fake.messages[2][0] == "deck_add_popup"
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_before_id(self):
+        """before_id should be passed through to add_maplibre_layer."""
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+
+        class FakeGDF:
+            @property
+            def __geo_interface__(self):
+                return {"type": "FeatureCollection", "features": []}
+
+        comp._serialise_data = lambda d: d.__geo_interface__
+
+        try:
+            w = MapWidget("gpd6")
+            fake = _FakeSession()
+            gdf = FakeGDF()
+            asyncio.run(w.add_geodataframe(
+                fake, "mydata", gdf, before_id="existing-layer"))
+            layer_msg = fake.messages[1][1]
+            assert layer_msg["beforeId"] == "existing-layer"
+        finally:
+            comp._serialise_data = original
+
+
+class TestPaletteConstants:
+    """Verify all palette constants are well-formed."""
+
+    def test_all_palettes_have_6_stops(self):
+        for pal in (PALETTE_VIRIDIS, PALETTE_PLASMA, PALETTE_OCEAN,
+                    PALETTE_THERMAL, PALETTE_CHLOROPHYLL):
+            assert len(pal) == 6
+
+    def test_palette_values_in_range(self):
+        for pal in (PALETTE_VIRIDIS, PALETTE_PLASMA, PALETTE_OCEAN,
+                    PALETTE_THERMAL, PALETTE_CHLOROPHYLL):
+            for stop in pal:
+                assert len(stop) == 3
+                assert all(0 <= v <= 255 for v in stop)
+
+    def test_palettes_are_distinct(self):
+        palettes = [PALETTE_VIRIDIS, PALETTE_PLASMA, PALETTE_OCEAN,
+                    PALETTE_THERMAL, PALETTE_CHLOROPHYLL]
+        for i, p1 in enumerate(palettes):
+            for j, p2 in enumerate(palettes):
+                if i != j:
+                    assert p1 != p2
+
+
+class TestUpdateTooltipExtended:
+    """Extended update_tooltip tests."""
+
+    def test_update_with_style(self):
+        w = MapWidget("ute1")
+        fake = _FakeSession()
+        tooltip = {
+            "html": "<b>{name}</b>",
+            "style": {"backgroundColor": "#222", "color": "#fff"},
+        }
+        asyncio.run(w.update_tooltip(fake, tooltip))
+        assert w.tooltip == tooltip
+        msg = fake.messages[0][1]
+        assert msg["tooltip"] == tooltip
+
+    def test_update_tooltip_multiple_times(self):
+        w = MapWidget("ute2")
+        fake = _FakeSession()
+        asyncio.run(w.update_tooltip(fake, {"html": "First"}))
+        assert w.tooltip == {"html": "First"}
+        asyncio.run(w.update_tooltip(fake, {"html": "Second"}))
+        assert w.tooltip == {"html": "Second"}
+        asyncio.run(w.update_tooltip(fake, None))
+        assert w.tooltip is None
+        assert len(fake.messages) == 3
+
+
+class TestSetProjectionExtended:
+    """Extended projection tests."""
+
+    def test_globe_message(self):
+        w = MapWidget("spe1")
+        fake = _FakeSession()
+        asyncio.run(w.set_projection(fake, "globe"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_projection"
+        assert msg[1]["projection"] == "globe"
+
+    def test_mercator_message(self):
+        w = MapWidget("spe2")
+        fake = _FakeSession()
+        asyncio.run(w.set_projection(fake, "mercator"))
+        assert fake.messages[0][1]["projection"] == "mercator"
+
+    def test_invalid_projection_raises(self):
+        w = MapWidget("spe3")
+        fake = _FakeSession()
+        with pytest.raises(ValueError, match="Unknown projection"):
+            asyncio.run(w.set_projection(fake, "equirectangular"))
+
+
+class TestMapWidgetConstructorDefaults:
+    """Test MapWidget constructor defaults thoroughly."""
+
+    def test_default_view_state_values(self):
+        w = MapWidget("cd1")
+        assert w.view_state["longitude"] == 21.1
+        assert w.view_state["latitude"] == 55.7
+        assert w.view_state["zoom"] == 8
+
+    def test_default_style(self):
+        w = MapWidget("cd2")
+        assert w.style == CARTO_POSITRON
+
+    def test_default_tooltip_none(self):
+        w = MapWidget("cd3")
+        assert w.tooltip is None
+
+    def test_default_mapbox_key_none(self):
+        w = MapWidget("cd4")
+        assert w.mapbox_api_key is None
+
+    def test_default_controls(self):
+        w = MapWidget("cd5")
+        assert len(w.controls) == 1
+        assert w.controls[0]["type"] == "navigation"
+
+    def test_custom_controls_override(self):
+        w = MapWidget("cd6", controls=[
+            {"type": "scale", "position": "bottom-left"},
+        ])
+        assert len(w.controls) == 1
+        assert w.controls[0]["type"] == "scale"
+
+    def test_empty_controls(self):
+        w = MapWidget("cd7", controls=[])
+        assert w.controls == []
+
+
+class TestAddSourceExtended:
+    """Extended add_source tests."""
+
+    def test_raster_dem_source(self):
+        w = MapWidget("as1")
+        fake = _FakeSession()
+        asyncio.run(w.add_source(fake, "terrain-dem", {
+            "type": "raster-dem",
+            "url": "https://demotiles.maplibre.org/terrain-tiles/tiles.json",
+            "tileSize": 256,
+        }))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_source"
+        assert msg[1]["sourceId"] == "terrain-dem"
+        assert msg[1]["spec"]["type"] == "raster-dem"
+
+    def test_vector_source(self):
+        w = MapWidget("as2")
+        fake = _FakeSession()
+        asyncio.run(w.add_source(fake, "osm", {
+            "type": "vector",
+            "url": "https://example.com/tiles",
+        }))
+        msg = fake.messages[0][1]
+        assert msg["spec"]["type"] == "vector"
+
+
+class TestAddMaplibreLayerExtended:
+    """Extended add_maplibre_layer tests."""
+
+    def test_layer_with_layout(self):
+        w = MapWidget("ml1")
+        fake = _FakeSession()
+        asyncio.run(w.add_maplibre_layer(fake, {
+            "id": "my-fill",
+            "type": "fill",
+            "source": "polygons",
+            "paint": {"fill-color": "#088"},
+            "layout": {"visibility": "visible"},
+        }))
+        msg = fake.messages[0][1]
+        assert msg["layerSpec"]["layout"] == {"visibility": "visible"}
+
+    def test_fill_extrusion_layer(self):
+        w = MapWidget("ml2")
+        fake = _FakeSession()
+        asyncio.run(w.add_maplibre_layer(fake, {
+            "id": "buildings",
+            "type": "fill-extrusion",
+            "source": "osm",
+            "paint": {
+                "fill-extrusion-height": 10,
+                "fill-extrusion-color": "#aaa",
+            },
+        }))
+        msg = fake.messages[0][1]
+        assert msg["layerSpec"]["type"] == "fill-extrusion"
+
+
+class TestAppFactory:
+    """Additional app factory tests."""
+
+    def test_app_with_geojson_provider(self):
+        """App should accept GeoJSON data provider."""
+        geojson_data = {
+            "data": {
+                "type": "FeatureCollection",
+                "features": [],
+            }
+        }
+        result = app(data_provider=lambda: geojson_data)
+        assert isinstance(result, App)
+
+    def test_app_with_dict_data_provider(self):
+        """App should accept dict-based data provider."""
+        result = app(data_provider=lambda: {
+            "data": [
+                {"coordinates": [0, 0], "depth": 10},
+            ]
+        })
+        assert isinstance(result, App)
+
+    def test_app_with_array_data_provider(self):
+        """App should accept plain array data provider."""
+        result = app(data_provider=lambda: {
+            "data": [[21, 55], [22, 56]]
+        })
+        assert isinstance(result, App)

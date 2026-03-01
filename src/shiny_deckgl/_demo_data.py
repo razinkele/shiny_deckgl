@@ -276,3 +276,52 @@ def make_port_geojson() -> dict:
             },
         })
     return {"type": "FeatureCollection", "features": features}
+
+
+def make_trips_data(loop_length: int = 1800) -> list[dict]:
+    """Build TripsLayer data from Baltic shipping routes.
+
+    Each route generates a "trip" with a ``path`` array of
+    ``[lon, lat, timestamp]`` triplets and a ``timestamps`` array.
+    Timestamps are evenly spaced over the segment from ``0`` to
+    ``loop_length``.
+    """
+    trips: list[dict] = []
+    for r in ROUTES:
+        wps = r["waypoints"]
+        n = len(wps)
+        if n < 2:
+            continue
+        timestamps = [int(i * loop_length / (n - 1)) for i in range(n)]
+        path = [[wp[0], wp[1], ts] for wp, ts in zip(wps, timestamps)]
+        trips.append({
+            "path": path,
+            "timestamps": timestamps,
+            "name": f"{r['from']} → {r['to']}",
+            "operator": r.get("operator", ""),
+            "type": r.get("type", ""),
+            "color": r.get("color", [253, 128, 93]),
+        })
+    return trips
+
+
+# ---------------------------------------------------------------------------
+# Drawing tools sample data — polygon for area of interest demo
+# ---------------------------------------------------------------------------
+
+SAMPLE_STUDY_AREA = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {"name": "Sample Study Area"},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [20.0, 55.0], [22.0, 55.0], [22.0, 56.5],
+                    [20.0, 56.5], [20.0, 55.0],
+                ]],
+            },
+        }
+    ],
+}

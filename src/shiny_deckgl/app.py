@@ -15,6 +15,10 @@ Tabs:
   5. Advanced          – 3-D column map with lighting, binary transport,
                          DataFilterExtension, widget toggles, transitions
   6. Export            – standalone HTML export, JSON round-trip
+  7. Drawing           – MapboxDraw tools (point/line/polygon), markers
+                         with popups, spatial query, interaction logging
+  8. Animation         – TripsLayer animated vessel tracks, GreatCircleLayer,
+                         GridLayer, combined overlays with speed/trail controls
 """
 
 from __future__ import annotations
@@ -38,6 +42,10 @@ from .components import (
     column_layer,
     heatmap_layer,
     path_layer,
+    # v0.9.0 layer helpers
+    trips_layer,
+    great_circle_layer,
+    grid_layer,
     # Color utilities
     color_range,
     color_bins,
@@ -78,6 +86,8 @@ from ._demo_data import (
     make_path_data,
     make_port_data_simple,
     make_port_geojson,
+    make_trips_data,
+    SAMPLE_STUDY_AREA,
 )
 from ._demo_css import MARINE_CSS, sidebar_hint
 
@@ -165,6 +175,24 @@ adv_widget = MapWidget(
         "style": {**TOOLTIP_STYLE, "borderLeft": "3px solid #14919b"},
     },
     view_state={**BALTIC_VIEW, "pitch": 45},
+)
+
+# Tab 7 — Drawing Tools
+draw_widget = MapWidget(
+    "draw_map",
+    tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
+    view_state=BALTIC_VIEW,
+)
+
+# Tab 8 — Animation (TripsLayer)
+anim_widget = MapWidget(
+    "anim_map",
+    tooltip={
+        "html": "<b>{name}</b><br/>Operator: {operator}<br/>Type: {type}",
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW,
+    animate=True,
 )
 
 
@@ -534,6 +562,135 @@ app_ui = ui.page_navbar(
             ui.card(
                 ui.card_header("\U0001F4C4 Output"),
                 ui.output_text_verbatim("export_output"),
+            ),
+        ),
+    ),
+
+    # -- Tab 7: Drawing Tools ---------------------------------------------
+    ui.nav_panel(
+        "\u270F\uFE0F Drawing",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\u270F\uFE0F Drawing Controls",
+                        sidebar_hint(
+                            "Use MapboxDraw to draw polygons, lines, and "
+                            "points on the map. Drawn features are reported "
+                            "back to Python in real time."
+                        ),
+                        ui.input_action_button(
+                            "draw_enable", "\u2705 Enable Drawing",
+                        ),
+                        ui.input_action_button(
+                            "draw_disable", "\u274C Disable Drawing",
+                        ),
+                        ui.input_action_button(
+                            "draw_get", "\U0001F4CB Get Drawn Features",
+                        ),
+                        ui.input_action_button(
+                            "draw_clear", "\U0001F5D1\uFE0F Clear All Drawn",
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Markers & Popups",
+                        sidebar_hint(
+                            "Programmatically add named markers with "
+                            "optional popups and drag support."
+                        ),
+                        ui.input_action_button(
+                            "add_port_markers",
+                            "\U0001F4CD Add Port Markers",
+                        ),
+                        ui.input_action_button(
+                            "clear_all_markers",
+                            "\U0001F5D1\uFE0F Clear All Markers",
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F50D Spatial Query",
+                        sidebar_hint(
+                            "Query visible features at a point or by "
+                            "geographic coordinates."
+                        ),
+                        ui.input_action_button(
+                            "query_center",
+                            "\U0001F50D Query at Map Center",
+                        ),
+                    ),
+                    id="tab7_accordion",
+                    open=False,
+                    multiple=True,
+                ),
+                width=280,
+            ),
+            ui.card(
+                ui.card_header("\U0001F5FA\uFE0F Drawing & Interaction Map"),
+                draw_widget.ui(height="65vh"),
+            ),
+            ui.card(
+                ui.card_header("\U0001F4CB Interaction Log"),
+                ui.output_text_verbatim("draw_log"),
+            ),
+        ),
+    ),
+
+    # -- Tab 8: Animation (TripsLayer) ------------------------------------
+    ui.nav_panel(
+        "\U0001F6A2 Animation",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F6A2 TripsLayer Animation",
+                        sidebar_hint(
+                            "Animated vessel tracks using deck.gl TripsLayer. "
+                            "Routes are rendered as trails that advance over "
+                            "time, simulating real-time vessel movement."
+                        ),
+                        ui.input_switch(
+                            "anim_show_trips", "Show animated tracks",
+                            value=True,
+                        ),
+                        ui.input_slider(
+                            "anim_trail_length", "Trail length",
+                            min=50, max=500, value=200, step=25,
+                        ),
+                        ui.input_slider(
+                            "anim_speed", "Animation speed",
+                            min=0.5, max=5.0, value=1.0, step=0.25,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CA Additional Layers",
+                        sidebar_hint(
+                            "Toggle background layers shown alongside "
+                            "the animated tracks."
+                        ),
+                        ui.input_switch(
+                            "anim_show_ports", "Show ports",
+                            value=True,
+                        ),
+                        ui.input_switch(
+                            "anim_show_routes", "Show static routes",
+                            value=False,
+                        ),
+                        ui.input_switch(
+                            "anim_show_grid", "Show observation grid",
+                            value=False,
+                        ),
+                    ),
+                    id="tab8_accordion",
+                    open=False,
+                    multiple=True,
+                ),
+                width=280,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\U0001F30A Baltic Sea — Animated Shipping Tracks"
+                ),
+                anim_widget.ui(height="75vh"),
             ),
         ),
     ),
@@ -1503,6 +1660,243 @@ def server(input, output, session: Session):
     @render.text
     def export_output():
         return _export_log.get() or "Click an export button\u2026"
+
+    # =================================================================
+    # Tab 7 — Drawing Tools & Interaction
+    # =================================================================
+
+    _draw_log = reactive.Value("")
+
+    @reactive.Effect
+    @reactive.event(input.draw_enable)
+    async def _draw_enable():
+        await draw_widget.enable_draw(session)
+        _draw_log.set(
+            _draw_log.get()
+            + "\n✏️  Drawing enabled — use the toolbar on the map."
+        )
+
+    @reactive.Effect
+    @reactive.event(input.draw_disable)
+    async def _draw_disable():
+        await draw_widget.disable_draw(session)
+        _draw_log.set(_draw_log.get() + "\n❌  Drawing disabled.")
+
+    @reactive.Effect
+    @reactive.event(input.draw_get)
+    async def _draw_get():
+        await draw_widget.get_drawn_features(session)
+        _draw_log.set(
+            _draw_log.get() + "\n📋  Requesting drawn features…"
+        )
+
+    @reactive.Effect
+    @reactive.event(input.draw_clear)
+    async def _draw_clear():
+        await draw_widget.delete_drawn_features(session)
+        _draw_log.set(
+            _draw_log.get() + "\n🗑️  All drawn features deleted."
+        )
+
+    # Show drawn features when they arrive
+    @reactive.Effect
+    @reactive.event(
+        input[draw_widget.drawn_features_input_id],
+    )
+    def _draw_feat_arrived():
+        data = input[draw_widget.drawn_features_input_id]()
+        n = len(data.get("features", [])) if isinstance(data, dict) else 0
+        pretty = json.dumps(data, indent=2)
+        _draw_log.set(
+            _draw_log.get()
+            + f"\n📋  Drawn features updated — {n} feature(s):"
+            + f"\n{pretty}"
+        )
+
+    # Draw mode change
+    @reactive.Effect
+    @reactive.event(input[draw_widget.draw_mode_input_id])
+    def _draw_mode_changed():
+        mode = input[draw_widget.draw_mode_input_id]()
+        _draw_log.set(
+            _draw_log.get()
+            + f"\n🔧  Draw mode changed → {mode}"
+        )
+
+    # -- Markers & Popups -------------------------------------------------
+
+    @reactive.Effect
+    @reactive.event(input.add_port_markers)
+    async def _add_port_markers():
+        for p in PORTS[:5]:
+            await draw_widget.add_marker(
+                session,
+                marker_id=p["name"],
+                longitude=p["lon"],
+                latitude=p["lat"],
+                color="#14919b",
+                draggable=True,
+                popup_html=(
+                    f"<b>{p['name']}</b> ({p['country']})"
+                    f"<br/>Cargo: {p['cargo_mt']} Mt"
+                ),
+            )
+        _draw_log.set(
+            _draw_log.get()
+            + "\n📍  Added 5 port markers (draggable, with popups)."
+        )
+
+    @reactive.Effect
+    @reactive.event(input.clear_all_markers)
+    async def _clear_markers():
+        await draw_widget.clear_markers(session)
+        _draw_log.set(_draw_log.get() + "\n🗑️  All markers cleared.")
+
+    @reactive.Effect
+    @reactive.event(input[draw_widget.marker_click_input_id])
+    def _marker_clicked():
+        data = input[draw_widget.marker_click_input_id]()
+        _draw_log.set(
+            _draw_log.get()
+            + f"\n🖱️  Marker click: {data.get('markerId')} "
+            + f"({data.get('longitude'):.4f}, {data.get('latitude'):.4f})"
+        )
+
+    @reactive.Effect
+    @reactive.event(input[draw_widget.marker_drag_input_id])
+    def _marker_dragged():
+        data = input[draw_widget.marker_drag_input_id]()
+        _draw_log.set(
+            _draw_log.get()
+            + f"\n🔄  Marker drag: {data.get('markerId')} → "
+            + f"({data.get('longitude'):.4f}, {data.get('latitude'):.4f})"
+        )
+
+    # -- Spatial Query ----------------------------------------------------
+
+    @reactive.Effect
+    @reactive.event(input.query_center)
+    async def _query_center():
+        await draw_widget.query_rendered_features(
+            session,
+            point=[400, 300],
+        )
+        _draw_log.set(
+            _draw_log.get()
+            + "\n🔍  Querying features at map center…"
+        )
+
+    @reactive.Effect
+    @reactive.event(input[draw_widget.query_result_input_id])
+    def _query_result():
+        data = input[draw_widget.query_result_input_id]()
+        n = len(data) if isinstance(data, list) else 0
+        _draw_log.set(
+            _draw_log.get()
+            + f"\n🔍  Query returned {n} feature(s)."
+        )
+
+    @render.text
+    def draw_log():
+        return _draw_log.get() or "Interaction log will appear here…"
+
+    # =================================================================
+    # Tab 8 — Animation (TripsLayer)
+    # =================================================================
+
+    _trips_data = make_trips_data(loop_length=1800)
+
+    @reactive.Effect
+    @reactive.event(
+        input.anim_show_trips,
+        input.anim_trail_length,
+        input.anim_speed,
+        input.anim_show_ports,
+        input.anim_show_routes,
+        input.anim_show_grid,
+    )
+    async def _anim_layers():
+        layers: list[dict] = []
+
+        # TripsLayer (animated)
+        if input.anim_show_trips():
+            layers.append(
+                trips_layer(
+                    "animated_trips",
+                    _trips_data,
+                    trailLength=input.anim_trail_length(),
+                    getColor="@@d.color",
+                    widthMinPixels=3,
+                    _tripsAnimation={
+                        "loopLength": 1800,
+                        "speed": input.anim_speed(),
+                    },
+                )
+            )
+
+        # GreatCircleLayer (static route arcs)
+        if input.anim_show_routes():
+            gc_data = []
+            for t in _trips_data:
+                wps = [p[:2] for p in t["path"]]
+                if len(wps) >= 2:
+                    gc_data.append({
+                        "sourcePosition": wps[0],
+                        "targetPosition": wps[-1],
+                        "name": t["name"],
+                    })
+            layers.append(
+                great_circle_layer(
+                    "gc_routes",
+                    gc_data,
+                    getSourceColor=[100, 100, 200, 120],
+                    getTargetColor=[100, 100, 200, 120],
+                    getWidth=1,
+                )
+            )
+
+        # Ports ScatterplotLayer
+        if input.anim_show_ports():
+            port_data = [
+                {
+                    "position": [p["lon"], p["lat"]],
+                    "name": p["name"],
+                    "cargo_mt": p["cargo_mt"],
+                }
+                for p in PORTS
+            ]
+            layers.append(
+                scatterplot_layer(
+                    "anim_ports",
+                    port_data,
+                    getRadius=6000,
+                    getFillColor=[20, 145, 155, 200],
+                    getLineColor=[255, 255, 255, 200],
+                    lineWidthMinPixels=1,
+                    stroked=True,
+                )
+            )
+
+        # Observation grid (GridLayer)
+        if input.anim_show_grid():
+            grid_points = [
+                [p["lon"], p["lat"]]
+                for p in PORTS
+                for _ in range(int(p["cargo_mt"]))
+            ]
+            layers.append(
+                grid_layer(
+                    "anim_grid",
+                    grid_points,
+                    cellSize=30000,
+                    elevationScale=200,
+                    extruded=True,
+                    pickable=False,
+                    opacity=0.4,
+                )
+            )
+
+        await anim_widget.update(session, layers)
 
 
 app = App(app_ui, server)

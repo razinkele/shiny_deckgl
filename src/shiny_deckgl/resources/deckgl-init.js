@@ -394,8 +394,9 @@
       }, { priority: "event" });
     });
 
+    var interleavedMode = el.dataset.interleaved === 'true';
     const overlay = new deck.MapboxOverlay({
-      interleaved: false,
+      interleaved: interleavedMode,
       layers: [],
       // Forward widget-initiated view state changes (e.g. CompassWidget
       // bearing reset, ZoomWidget zoom) back to the MapLibre map.
@@ -446,7 +447,9 @@
       dragMarker: null,
       lastLayers: [],          // cache for visibility toggling
       controls: initialControls,
-      nativeLayers: {}         // tracks native MapLibre layers added via add_maplibre_layer
+      nativeLayers: {},        // tracks native MapLibre layers added via add_maplibre_layer
+      // TripsLayer animation state (v0.9.0)
+      tripsAnimation: null     // {rafId, loopLength, speed, startedAt}
     };
   }
 
@@ -799,6 +802,61 @@
   }
 
   // -----------------------------------------------------------------------
+  // TripsLayer animation loop (v0.9.0)
+  // -----------------------------------------------------------------------
+  // Scans layers for any TripsLayer.  If found and the layer specifies
+  // _tripsAnimation: {loopLength, speed}, starts a requestAnimationFrame
+  // loop that increments currentTime and re-builds the layer each frame.
+  function startTripsAnimation(instance, targetId) {
+    // Stop any running animation first
+    stopTripsAnimation(instance);
+
+    var layersData = instance.lastLayers;
+    var tripsConfigs = [];     // {index, loopLength, speed}
+    for (var i = 0; i < layersData.length; i++) {
+      var lp = layersData[i];
+      if (lp.type === 'TripsLayer' && lp._tripsAnimation) {
+        tripsConfigs.push({
+          index: i,
+          loopLength: lp._tripsAnimation.loopLength || 1800,
+          speed: lp._tripsAnimation.speed || 1,
+        });
+      }
+    }
+    if (tripsConfigs.length === 0) return;
+
+    var startedAt = performance.now();
+    function tick() {
+      var elapsed = (performance.now() - startedAt) / 1000;  // seconds
+      // Update currentTime on each TripsLayer
+      for (var c = 0; c < tripsConfigs.length; c++) {
+        var cfg = tripsConfigs[c];
+        var t = (elapsed * cfg.speed) % cfg.loopLength;
+        layersData[cfg.index].currentTime = t;
+      }
+
+      // Re-build and push layers
+      var deckLayers = buildDeckLayers(
+        JSON.parse(JSON.stringify(layersData)),
+        targetId,
+        instance.tooltipConfig
+      );
+      instance.overlay.setProps({ layers: deckLayers });
+
+      instance.tripsAnimation = instance.tripsAnimation || {};
+      instance.tripsAnimation.rafId = requestAnimationFrame(tick);
+    }
+    instance.tripsAnimation = { rafId: requestAnimationFrame(tick) };
+  }
+
+  function stopTripsAnimation(instance) {
+    if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
+      cancelAnimationFrame(instance.tripsAnimation.rafId);
+      instance.tripsAnimation = null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Ensure instance helper
   // -----------------------------------------------------------------------
   function ensureInstance(targetId) {
@@ -870,6 +928,9 @@
 
     overlay.setProps(overlayProps);
     map.triggerRepaint();
+
+    // Start/stop TripsLayer animation if needed (v0.9.0)
+    startTripsAnimation(instance, targetId);
   });
 
   // -----------------------------------------------------------------------

@@ -750,6 +750,8 @@ class MapWidget:
         animate: bool = False,
         parameters: dict | None = None,
         controller: bool | dict = True,
+        # Rendering mode (v0.9.0)
+        interleaved: bool = False,
     ):
         self.id = id
         self.view_state = view_state or {
@@ -768,6 +770,7 @@ class MapWidget:
         self.animate = animate
         self.parameters = parameters
         self.controller = controller
+        self.interleaved = interleaved
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -848,6 +851,8 @@ class MapWidget:
             attrs["data_parameters"] = json.dumps(self.parameters)
         if self.controller is not True:
             attrs["data_controller"] = json.dumps(self.controller)
+        if self.interleaved:
+            attrs["data_interleaved"] = "true"
         return ui.div(**attrs)
 
     # -- Server helpers -------------------------------------------------------
@@ -2798,3 +2803,214 @@ def h3_hexagon_layer(id: str, data: list | dict, **kwargs) -> dict:
     }
     defaults.update(kwargs)
     return layer("H3HexagonLayer", id, data, **defaults)
+
+
+# ---------------------------------------------------------------------------
+# Layer helpers (v0.9.0) — geo-layers & aggregation-layers
+# ---------------------------------------------------------------------------
+
+
+def trips_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``TripsLayer`` for animated vehicle/vessel tracks.
+
+    The TripsLayer renders paths that animate over time.  Each feature
+    must have a ``path`` (array of ``[lon, lat, timestamp]`` triplets)
+    and optionally a set of timestamps.  The ``currentTime`` property
+    drives the animation — use the widget's ``_animate`` flag together
+    with a Shiny ``reactive.poll`` or `setInterval` to increment it.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``path`` key (array of [lon, lat, time]),
+        a remote data URL, or a DataFrame.
+    **kwargs
+        Extra deck.gl properties (e.g. ``currentTime``, ``trailLength``,
+        ``getColor``, ``widthMinPixels``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPath": "@@d.path",
+        "getTimestamps": "@@d.timestamps",
+        "getColor": [253, 128, 93],
+        "widthMinPixels": 2,
+        "trailLength": 200,
+        "currentTime": 0,
+    }
+    defaults.update(kwargs)
+    return layer("TripsLayer", id, data, **defaults)
+
+
+def great_circle_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``GreatCircleLayer`` for geodesic arcs.
+
+    Unlike ``ArcLayer`` which draws parabolic arcs, ``GreatCircleLayer``
+    follows the shortest path on the sphere (geodesic), which is more
+    accurate for long-distance routes.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``sourcePosition`` and ``targetPosition`` keys.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getSourceColor``, ``getWidth``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getSourcePosition": "@@d.sourcePosition",
+        "getTargetPosition": "@@d.targetPosition",
+        "getSourceColor": [64, 255, 0],
+        "getTargetColor": [0, 128, 200],
+        "getWidth": 2,
+    }
+    defaults.update(kwargs)
+    return layer("GreatCircleLayer", id, data, **defaults)
+
+
+def contour_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``ContourLayer`` for isoline/isoband generation.
+
+    Generates isolines or isobands from point data using GPU-accelerated
+    aggregation.  Great for density contours, bathymetric contours, etc.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts with position data.
+    **kwargs
+        Extra deck.gl properties (e.g. ``contours``, ``cellSize``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "getWeight": 1,
+        "cellSize": 200,
+        "contours": [
+            {"threshold": 1, "color": [255, 0, 0], "strokeWidth": 2},
+            {"threshold": 5, "color": [0, 255, 0], "strokeWidth": 3},
+            {"threshold": [6, 1000], "color": [0, 0, 255, 128]},
+        ],
+    }
+    defaults.update(kwargs)
+    return layer("ContourLayer", id, data, **defaults)
+
+
+def grid_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``GridLayer`` for rectangular grid binning.
+
+    Points are aggregated into a grid of rectangular cells, similar to
+    ``HexagonLayer`` but with square cells.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts.
+    **kwargs
+        Extra deck.gl properties (e.g. ``cellSize``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@d",
+        "cellSize": 200,
+        "elevationScale": 4,
+        "extruded": True,
+    }
+    defaults.update(kwargs)
+    return layer("GridLayer", id, data, **defaults)
+
+
+def screen_grid_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``ScreenGridLayer`` for screen-space grid binning.
+
+    Unlike ``GridLayer`` which bins in world coordinates, this layer bins
+    in screen pixels — the grid stays the same size regardless of zoom.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of ``[lon, lat]`` points or dicts.
+    **kwargs
+        Extra deck.gl properties (e.g. ``cellSizePixels``, ``colorRange``).
+    """
+    defaults: dict[str, Any] = {
+        "getPosition": "@@d",
+        "getWeight": 1,
+        "cellSizePixels": 20,
+        "colorRange": [
+            [255, 255, 178, 25],
+            [254, 217, 118, 85],
+            [254, 178, 76, 127],
+            [253, 141, 60, 170],
+            [240, 59, 32, 212],
+            [189, 0, 38, 255],
+        ],
+    }
+    defaults.update(kwargs)
+    return layer("ScreenGridLayer", id, data, **defaults)
+
+
+def mvt_layer(id: str, data: str, **kwargs) -> dict:
+    """Create a deck.gl ``MVTLayer`` (Mapbox Vector Tiles).
+
+    Reads vector tile data from a Mapbox/MapTiler/PMTiles URL template.
+    Faster than loading large GeoJSON for big datasets.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Tile URL template with ``{x}/{y}/{z}`` placeholders, e.g.
+        ``"https://tiles.example.com/{z}/{x}/{y}.pbf"``.
+    **kwargs
+        Extra deck.gl properties (e.g. ``getFillColor``, ``getLineColor``,
+        ``minZoom``, ``maxZoom``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "minZoom": 0,
+        "maxZoom": 14,
+        "getFillColor": [140, 170, 180],
+        "getLineColor": [0, 0, 0, 60],
+        "getLineWidth": 1,
+        "lineWidthMinPixels": 1,
+    }
+    defaults.update(kwargs)
+    return layer("MVTLayer", id, data, **defaults)
+
+
+def wms_layer(id: str, data: str, **kwargs) -> dict:
+    """Create a deck.gl ``WMSLayer`` for WMS/WMTS services.
+
+    This is deck.gl's first-class WMS layer (added in 9.x), as an
+    alternative to the ``tile_layer()`` workaround with bbox placeholders.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        WMS service base URL (without query parameters), e.g.
+        ``"https://ows.emodnet-bathymetry.eu/wms"``.
+    **kwargs
+        Extra properties: ``layers`` (required WMS LAYERS parameter),
+        ``srs``, ``format``, ``transparent``, etc.
+    """
+    defaults: dict[str, Any] = {
+        "layers": [],
+        "srs": "EPSG:4326",
+        "format": "image/png",
+        "transparent": True,
+    }
+    defaults.update(kwargs)
+    return layer("WMSLayer", id, data, **defaults)

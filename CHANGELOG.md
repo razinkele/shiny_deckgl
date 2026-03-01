@@ -6,6 +6,43 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.0] — 2025-06-13
+
+### Added
+
+- **TripsLayer** — `trips_layer()` helper for animated vehicle/vessel tracks
+  with `path`, `timestamps`, `trailLength`, and `currentTime` properties.
+  Includes a client-side `_tripsAnimation` config (`loopLength`, `speed`) that
+  drives a `requestAnimationFrame` loop in JavaScript for smooth animation
+  without server-side polling.
+- **GreatCircleLayer** — `great_circle_layer()` helper for geodesic arcs
+  (shortest path on sphere), unlike `ArcLayer` parabolic arcs.
+- **ContourLayer** — `contour_layer()` helper for isoline/isoband
+  visualisations from point data with configurable thresholds.
+- **GridLayer** — `grid_layer()` helper for rectangular spatial binning with
+  elevation extrusion support.
+- **ScreenGridLayer** — `screen_grid_layer()` helper for screen-space binning
+  with configurable pixel cell size and colour range.
+- **MVTLayer** — `mvt_layer()` helper for Mapbox Vector Tiles.
+- **WMSLayer** — `wms_layer()` helper for deck.gl 9.x native WMS layer.
+- **Interleaved rendering** — `MapWidget(interleaved=True)` to enable deck.gl
+  interleaved rendering with MapLibre GL (layers interspersed with basemap
+  labels).  JS reads `data-interleaved` attribute.
+- **TripsLayer animation engine** — `startTripsAnimation()` /
+  `stopTripsAnimation()` JavaScript functions with `requestAnimationFrame`
+  loop.  Automatically started after `deck_update` when a TripsLayer with
+  `_tripsAnimation` config is detected.
+- **Demo Tab 7: Drawing** — showcases MapboxDraw tools (point/line/polygon),
+  named markers with popups and drag, spatial query, live interaction log.
+- **Demo Tab 8: Animation** — animated Baltic shipping tracks (TripsLayer),
+  GreatCircleLayer route arcs, port scatterplot, GridLayer observation grid,
+  with speed/trail-length controls.
+- **Demo data** — `make_trips_data()` generator converts Baltic shipping
+  routes into TripsLayer format; `SAMPLE_STUDY_AREA` GeoJSON polygon constant.
+- **30 new tests** (491 total).
+
+---
+
 ## [0.8.0] — 2025-06-13
 
 ### Added

@@ -76,6 +76,14 @@ from shiny_deckgl.components import (
     deck_legend_control,
     # v0.8.0 transition
     transition,
+    # v0.9.0 layer helpers
+    trips_layer,
+    great_circle_layer,
+    contour_layer,
+    grid_layer,
+    screen_grid_layer,
+    mvt_layer,
+    wms_layer,
 )
 
 
@@ -112,6 +120,9 @@ def test_public_api_exports():
         "geolocate_control", "globe_control", "terrain_control",
         "legend_control", "opacity_control", "deck_legend_control",
         "transition",
+        # v0.9.0
+        "trips_layer", "great_circle_layer", "contour_layer",
+        "grid_layer", "screen_grid_layer", "mvt_layer", "wms_layer",
         "__version__",
     }
     assert expected.issubset(set(dir(m)))
@@ -3543,8 +3554,8 @@ class TestLayerHelpersDataSerialization:
 class TestV080Version:
     """Version bump verification."""
 
-    def test_version_is_080(self):
-        assert m.__version__ == "0.8.0"
+    def test_version_is_090(self):
+        assert m.__version__ == "0.9.0"
 
 
 # ===========================================================================
@@ -4059,3 +4070,281 @@ class TestSetControls:
         assert ctrls[0]["type"] == "geolocate"
         assert ctrls[0]["position"] == "top-left"
         assert ctrls[1]["type"] == "globe"
+
+
+# ===========================================================================
+# v0.9.0 — New Layer Helpers
+# ===========================================================================
+
+class TestTripsLayer:
+    """Tests for the trips_layer() helper."""
+
+    def test_defaults(self):
+        spec = trips_layer("t1", data=[])
+        assert spec["type"] == "TripsLayer"
+        assert spec["id"] == "t1"
+        assert spec["pickable"] is True
+        assert spec["getPath"] == "@@d.path"
+        assert spec["getTimestamps"] == "@@d.timestamps"
+        assert spec["getColor"] == [253, 128, 93]
+        assert spec["widthMinPixels"] == 2
+        assert spec["trailLength"] == 200
+        assert spec["currentTime"] == 0
+
+    def test_kwargs_override(self):
+        spec = trips_layer(
+            "t2", data=[],
+            trailLength=500, currentTime=42, getColor=[0, 0, 255],
+        )
+        assert spec["trailLength"] == 500
+        assert spec["currentTime"] == 42
+        assert spec["getColor"] == [0, 0, 255]
+
+    def test_animation_config(self):
+        """_tripsAnimation config is passed through."""
+        spec = trips_layer(
+            "t3", data=[],
+            _tripsAnimation={"loopLength": 1800, "speed": 2},
+        )
+        assert spec["_tripsAnimation"] == {"loopLength": 1800, "speed": 2}
+
+    def test_with_sample_data(self):
+        from shiny_deckgl._demo_data import make_trips_data
+        data = make_trips_data(loop_length=1800)
+        spec = trips_layer("t4", data=data)
+        assert len(spec["data"]) > 0
+        first = spec["data"][0]
+        assert "path" in first
+        assert "timestamps" in first
+        assert len(first["path"]) == len(first["timestamps"])
+
+    def test_url_data(self):
+        spec = trips_layer("t5", data="https://example.com/trips.json")
+        assert spec["data"] == "https://example.com/trips.json"
+
+
+class TestGreatCircleLayer:
+    """Tests for the great_circle_layer() helper."""
+
+    def test_defaults(self):
+        spec = great_circle_layer("gc1", data=[])
+        assert spec["type"] == "GreatCircleLayer"
+        assert spec["id"] == "gc1"
+        assert spec["pickable"] is True
+        assert spec["getSourcePosition"] == "@@d.sourcePosition"
+        assert spec["getTargetPosition"] == "@@d.targetPosition"
+        assert spec["getSourceColor"] == [64, 255, 0]
+        assert spec["getTargetColor"] == [0, 128, 200]
+        assert spec["getWidth"] == 2
+
+    def test_kwargs_override(self):
+        spec = great_circle_layer(
+            "gc2", data=[],
+            getWidth=5, getSourceColor=[255, 0, 0],
+        )
+        assert spec["getWidth"] == 5
+        assert spec["getSourceColor"] == [255, 0, 0]
+
+    def test_with_data(self):
+        data = [
+            {
+                "sourcePosition": [21.13, 55.71],
+                "targetPosition": [18.65, 54.35],
+                "name": "Test route",
+            }
+        ]
+        spec = great_circle_layer("gc3", data=data)
+        assert len(spec["data"]) == 1
+        assert spec["data"][0]["name"] == "Test route"
+
+
+class TestContourLayer:
+    """Tests for the contour_layer() helper."""
+
+    def test_defaults(self):
+        spec = contour_layer("c1", data=[])
+        assert spec["type"] == "ContourLayer"
+        assert spec["id"] == "c1"
+        assert spec["getPosition"] == "@@d"
+        assert spec["cellSize"] == 200
+        assert "contours" in spec
+
+    def test_kwargs_override(self):
+        custom_contours = [
+            {"threshold": 10, "color": [255, 0, 0], "strokeWidth": 3},
+        ]
+        spec = contour_layer(
+            "c2", data=[], cellSize=500, contours=custom_contours,
+        )
+        assert spec["cellSize"] == 500
+        assert spec["contours"] == custom_contours
+
+
+class TestGridLayer:
+    """Tests for the grid_layer() helper."""
+
+    def test_defaults(self):
+        spec = grid_layer("g1", data=[])
+        assert spec["type"] == "GridLayer"
+        assert spec["id"] == "g1"
+        assert spec["cellSize"] == 200
+        assert spec["elevationScale"] == 4
+        assert spec["extruded"] is True
+
+    def test_kwargs_override(self):
+        spec = grid_layer("g2", data=[], cellSize=1000, extruded=False)
+        assert spec["cellSize"] == 1000
+        assert spec["extruded"] is False
+
+    def test_with_point_data(self):
+        points = [[21.0, 55.0], [22.0, 56.0], [23.0, 57.0]]
+        spec = grid_layer("g3", data=points)
+        assert len(spec["data"]) == 3
+
+
+class TestScreenGridLayer:
+    """Tests for the screen_grid_layer() helper."""
+
+    def test_defaults(self):
+        spec = screen_grid_layer("sg1", data=[])
+        assert spec["type"] == "ScreenGridLayer"
+        assert spec["id"] == "sg1"
+        assert spec["cellSizePixels"] == 20
+        assert "colorRange" in spec
+
+    def test_kwargs_override(self):
+        spec = screen_grid_layer("sg2", data=[], cellSizePixels=40)
+        assert spec["cellSizePixels"] == 40
+
+
+class TestMVTLayer:
+    """Tests for the mvt_layer() helper."""
+
+    def test_defaults(self):
+        url = "https://example.com/tiles/{z}/{x}/{y}.pbf"
+        spec = mvt_layer("m1", data=url)
+        assert spec["type"] == "MVTLayer"
+        assert spec["id"] == "m1"
+        assert spec["data"] == url
+        assert spec["minZoom"] == 0
+        assert spec["maxZoom"] == 14
+        assert "getFillColor" in spec
+        assert "getLineColor" in spec
+
+    def test_kwargs_override(self):
+        spec = mvt_layer(
+            "m2", data="https://example.com/{z}/{x}/{y}.pbf",
+            maxZoom=18, getFillColor=[0, 0, 255],
+        )
+        assert spec["maxZoom"] == 18
+        assert spec["getFillColor"] == [0, 0, 255]
+
+
+class TestWMSLayer:
+    """Tests for the wms_layer() helper."""
+
+    def test_defaults(self):
+        url = "https://example.com/wms"
+        spec = wms_layer("w1", data=url)
+        assert spec["type"] == "WMSLayer"
+        assert spec["id"] == "w1"
+        assert spec["data"] == url
+        assert spec["srs"] == "EPSG:4326"
+        assert spec["format"] == "image/png"
+
+    def test_kwargs_override(self):
+        spec = wms_layer(
+            "w2", data="https://example.com/wms",
+            srs="EPSG:3857", layers="bathymetry",
+        )
+        assert spec["srs"] == "EPSG:3857"
+        assert spec["layers"] == "bathymetry"
+
+
+# ===========================================================================
+# v0.9.0 — Interleaved Rendering
+# ===========================================================================
+
+class TestInterleavedRendering:
+    """Tests for the interleaved parameter on MapWidget."""
+
+    def test_default_not_interleaved(self):
+        w = MapWidget("il1")
+        assert w.interleaved is False
+
+    def test_interleaved_true(self):
+        w = MapWidget("il2", interleaved=True)
+        assert w.interleaved is True
+
+    def test_interleaved_in_ui(self):
+        w = MapWidget("il3", interleaved=True)
+        html = str(w.ui())
+        assert 'data-interleaved="true"' in html
+
+    def test_not_interleaved_in_ui(self):
+        w = MapWidget("il4", interleaved=False)
+        html = str(w.ui())
+        assert 'data-interleaved="true"' not in html
+
+    def test_interleaved_json_roundtrip(self):
+        w = MapWidget("il5", interleaved=True)
+        spec_json = w.to_json([])
+        w2, layers2 = MapWidget.from_json(spec_json)
+        # interleaved is a display concern, not serialised to deck spec
+        assert w2.id == "il5"
+
+
+# ===========================================================================
+# v0.9.0 — Demo Data Generators
+# ===========================================================================
+
+class TestMakeTripsData:
+    """Tests for the make_trips_data() demo data generator."""
+
+    def test_generates_data(self):
+        from shiny_deckgl._demo_data import make_trips_data
+        data = make_trips_data()
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_trip_structure(self):
+        from shiny_deckgl._demo_data import make_trips_data
+        data = make_trips_data(loop_length=900)
+        trip = data[0]
+        assert "path" in trip
+        assert "timestamps" in trip
+        assert "name" in trip
+        assert len(trip["path"]) == len(trip["timestamps"])
+        # Each path point is [lon, lat, timestamp]
+        assert len(trip["path"][0]) == 3
+
+    def test_timestamps_range(self):
+        from shiny_deckgl._demo_data import make_trips_data
+        data = make_trips_data(loop_length=1800)
+        for trip in data:
+            assert trip["timestamps"][0] == 0
+            assert trip["timestamps"][-1] == 1800
+
+    def test_loop_length_param(self):
+        from shiny_deckgl._demo_data import make_trips_data
+        for ll in [100, 500, 2000]:
+            data = make_trips_data(loop_length=ll)
+            for trip in data:
+                assert trip["timestamps"][-1] == ll
+
+
+class TestSampleStudyArea:
+    """Tests for the SAMPLE_STUDY_AREA constant."""
+
+    def test_is_geojson(self):
+        from shiny_deckgl._demo_data import SAMPLE_STUDY_AREA
+        assert SAMPLE_STUDY_AREA["type"] == "FeatureCollection"
+        assert len(SAMPLE_STUDY_AREA["features"]) == 1
+
+    def test_polygon_geometry(self):
+        from shiny_deckgl._demo_data import SAMPLE_STUDY_AREA
+        feat = SAMPLE_STUDY_AREA["features"][0]
+        assert feat["geometry"]["type"] == "Polygon"
+        coords = feat["geometry"]["coordinates"][0]
+        assert len(coords) == 5  # closed ring
+        assert coords[0] == coords[-1]  # ring is closed

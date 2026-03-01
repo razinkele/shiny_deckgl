@@ -111,6 +111,22 @@ browser, all without Java dependencies.
 | **Globe view** | `globe_view()` — render the earth as a 3D globe with `GlobeView`. |
 | **deck.gl 9.2.10** | CDN upgraded from 9.1.4 to 9.2.10 with widget support. |
 
+### Phase 8 — Animation, Geo-Layers & Drawing Demo (v0.9)
+
+| Capability | Details |
+| --- | --- |
+| **TripsLayer** | `trips_layer()` for animated vessel/vehicle tracks with `_tripsAnimation` config. |
+| **GreatCircleLayer** | `great_circle_layer()` for geodesic arcs. |
+| **ContourLayer** | `contour_layer()` for isoline/isoband visualisations. |
+| **GridLayer** | `grid_layer()` for rectangular spatial binning with 3-D extrusion. |
+| **ScreenGridLayer** | `screen_grid_layer()` for screen-space density grids. |
+| **MVTLayer** | `mvt_layer()` for Mapbox Vector Tiles. |
+| **WMSLayer** | `wms_layer()` for deck.gl 9.x native WMS layers. |
+| **Interleaved rendering** | `MapWidget(interleaved=True)` for deck/MapLibre layer interleaving. |
+| **Client-side animation** | `requestAnimationFrame`-based TripsLayer animation loop — no server polling. |
+| **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
+| **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
+
 ## Environment & Prerequisites
 
 - **Python ≥ 3.9** and **Shiny ≥ 1.0** are required.

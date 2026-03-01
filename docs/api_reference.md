@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 0.8.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 0.9.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -91,6 +91,16 @@ import shiny_deckgl as sdgl
   - [fly\_to()](#fly_to)
   - [ease\_to()](#ease_to)
 - [Transition Helper (v0.8)](#transition-helper-v08)
+- [Layer Helpers (v0.9)](#layer-helpers-v09)
+  - [trips\_layer()](#trips_layer)
+  - [great\_circle\_layer()](#great_circle_layer)
+  - [contour\_layer()](#contour_layer)
+  - [grid\_layer()](#grid_layer)
+  - [screen\_grid\_layer()](#screen_grid_layer)
+  - [mvt\_layer()](#mvt_layer)
+  - [wms\_layer() (deck.gl)](#wms_layer-deckgl)
+- [Interleaved Rendering (v0.9)](#interleaved-rendering-v09)
+- [TripsLayer Animation (v0.9)](#tripslayer-animation-v09)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
@@ -2084,6 +2094,212 @@ await widget.update(session, layers=my_layers, effects=effects)
 ```
 
 The JS client resolves `LightingEffect` specs into `deck.LightingEffect` instances with `deck.AmbientLight` and `deck.PointLight` sub-objects.
+
+---
+
+## Layer Helpers (v0.9)
+
+New layer helpers for geo-spatial analysis, animation, and tiled data sources.
+All return plain `dict` objects for use with `widget.update()`.
+
+### `trips_layer()`
+
+Animated vehicle/vessel tracks using deck.gl's `TripsLayer`.
+
+```python
+shiny_deckgl.trips_layer(
+    id: str,
+    data: list | dict,
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `pickable` | `True` | Enable hover/click |
+| `getPath` | `"@@d.path"` | Accessor for `[lon, lat, timestamp]` arrays |
+| `getTimestamps` | `"@@d.timestamps"` | Accessor for timestamp arrays |
+| `getColor` | `[253, 128, 93]` | Trail colour |
+| `widthMinPixels` | `2` | Minimum trail width |
+| `trailLength` | `200` | Trail length in time units |
+| `currentTime` | `0` | Current animation time |
+
+**Animation config:** Pass `_tripsAnimation={"loopLength": 1800, "speed": 1}` to enable
+automatic client-side animation via `requestAnimationFrame`.
+
+```python
+trips_layer("ships", trips_data,
+            trailLength=300,
+            _tripsAnimation={"loopLength": 1800, "speed": 1.5})
+```
+
+### `great_circle_layer()`
+
+Geodesic arcs (shortest path on sphere) — unlike `arc_layer()` parabolic arcs.
+
+```python
+shiny_deckgl.great_circle_layer(
+    id: str,
+    data: list | dict,
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `pickable` | `True` | Enable hover/click |
+| `getSourcePosition` | `"@@d.sourcePosition"` | Source point accessor |
+| `getTargetPosition` | `"@@d.targetPosition"` | Target point accessor |
+| `getSourceColor` | `[64, 255, 0]` | Colour at source |
+| `getTargetColor` | `[0, 128, 200]` | Colour at target |
+| `getWidth` | `2` | Arc width |
+
+### `contour_layer()`
+
+Isoline/isoband visualisation from point data.
+
+```python
+shiny_deckgl.contour_layer(
+    id: str,
+    data: list | dict,
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `getPosition` | `"@@d"` | Point position accessor |
+| `cellSize` | `200` | Grid cell size in metres |
+| `contours` | *(3 default thresholds)* | Array of `{threshold, color, strokeWidth}` |
+
+### `grid_layer()`
+
+Rectangular spatial binning with optional 3-D extrusion.
+
+```python
+shiny_deckgl.grid_layer(
+    id: str,
+    data: list | dict,
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `getPosition` | `"@@d"` | Point position accessor |
+| `cellSize` | `200` | Cell size in metres |
+| `elevationScale` | `4` | Elevation multiplier |
+| `extruded` | `True` | Enable 3-D columns |
+
+### `screen_grid_layer()`
+
+Screen-space binning — fast density grid in pixel coordinates.
+
+```python
+shiny_deckgl.screen_grid_layer(
+    id: str,
+    data: list | dict,
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `getPosition` | `"@@d"` | Point position accessor |
+| `cellSizePixels` | `20` | Cell size in pixels |
+| `colorRange` | *(6-stop warm palette)* | Colour ramp array |
+
+### `mvt_layer()`
+
+Mapbox Vector Tiles for rendering large tilesets.
+
+```python
+shiny_deckgl.mvt_layer(
+    id: str,
+    data: str,          # tile URL template
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `minZoom` | `0` | Minimum zoom level |
+| `maxZoom` | `14` | Maximum zoom level |
+| `getFillColor` | `[200, 200, 200]` | Fill colour |
+| `getLineColor` | `[100, 100, 100]` | Stroke colour |
+| `lineWidthMinPixels` | `1` | Minimum stroke width |
+
+### `wms_layer()` (deck.gl)
+
+deck.gl 9.x native WMS layer for OGC Web Map Services.
+
+```python
+shiny_deckgl.wms_layer(
+    id: str,
+    data: str,          # WMS service URL
+    **kwargs,
+) -> dict
+```
+
+**Default properties:**
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `srs` | `"EPSG:4326"` | Spatial reference system |
+| `format` | `"image/png"` | Image format |
+
+---
+
+## Interleaved Rendering (v0.9)
+
+Enable interleaved rendering to allow deck.gl layers to be interspersed with
+MapLibre basemap labels, buildings, and other layers:
+
+```python
+widget = MapWidget("map", interleaved=True)
+```
+
+When `interleaved=True`, the `MapboxOverlay` is created with
+`interleaved: true`, allowing deck.gl layers to appear between basemap
+layers rather than always on top.
+
+**Note:** Interleaved rendering may have performance implications with many
+layers.  Test with your specific layer combination.
+
+---
+
+## TripsLayer Animation (v0.9)
+
+The TripsLayer includes a built-in client-side animation engine.  Pass a
+`_tripsAnimation` config dict to any `trips_layer()` call:
+
+```python
+trips_layer("ships", data,
+            trailLength=200,
+            _tripsAnimation={"loopLength": 1800, "speed": 1.0})
+```
+
+| Config Key | Type | Description |
+| --- | --- | --- |
+| `loopLength` | `int` | Total animation duration (time units) |
+| `speed` | `float` | Animation speed multiplier |
+
+The JavaScript engine uses `requestAnimationFrame` to increment `currentTime`
+each frame.  When `currentTime` reaches `loopLength`, it wraps back to `0`.
+The animation starts automatically when the TripsLayer is detected after
+`widget.update()`.
 
 ---
 

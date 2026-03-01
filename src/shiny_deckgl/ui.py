@@ -29,13 +29,15 @@ def head_includes() -> HTMLDependency:
     res_dir = _resolve_resource_dir()
     return HTMLDependency(
         name="shiny-deckgl",
-        version="0.3.0",
+        version="0.5.0",
         source={"subdir": res_dir},
         script=[{"src": "deckgl-init.js"}],
         stylesheet=[{"href": "styles.css"}],
         head=(
             '<script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.4/dist.min.js"></script>\n'
             '<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.js"></script>\n'
-            '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.css"/>'
+            '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.css"/>\n'
+            '<script src="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>\n'
+            '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css"/>'
         ),
     )

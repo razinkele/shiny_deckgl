@@ -1508,3 +1508,252 @@ class TestMultipleMarkers:
     def test_marker_drag_input_id(self):
         w = MapWidget("mm6")
         assert w.marker_drag_input_id == "mm6_marker_drag"
+
+
+# ===========================================================================
+# Phase 4 (v0.5.0) — Drawing, Data Integration & Export
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 4.1 Drawing Tools
+# ---------------------------------------------------------------------------
+
+class TestDrawingTools:
+    def test_enable_draw_default(self):
+        import asyncio
+        w = MapWidget("dr1")
+        fake = _FakeSession()
+        asyncio.run(w.enable_draw(fake))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_enable_draw"
+        assert msg[1]["defaultMode"] == "simple_select"
+
+    def test_enable_draw_polygon_only(self):
+        import asyncio
+        w = MapWidget("dr2")
+        fake = _FakeSession()
+        asyncio.run(w.enable_draw(fake, modes=["draw_polygon"]))
+        assert fake.messages[0][1]["modes"] == ["draw_polygon"]
+
+    def test_enable_draw_with_controls(self):
+        import asyncio
+        w = MapWidget("dr2b")
+        fake = _FakeSession()
+        controls = {"point": True, "polygon": True, "trash": True}
+        asyncio.run(w.enable_draw(fake, controls=controls))
+        assert fake.messages[0][1]["controls"] == controls
+
+    def test_disable_draw(self):
+        import asyncio
+        w = MapWidget("dr3")
+        fake = _FakeSession()
+        asyncio.run(w.disable_draw(fake))
+        assert fake.messages[0][0] == "deck_disable_draw"
+
+    def test_get_drawn_features(self):
+        import asyncio
+        w = MapWidget("dr3b")
+        fake = _FakeSession()
+        asyncio.run(w.get_drawn_features(fake))
+        assert fake.messages[0][0] == "deck_get_drawn_features"
+
+    def test_delete_drawn_features(self):
+        import asyncio
+        w = MapWidget("dr4")
+        fake = _FakeSession()
+        asyncio.run(w.delete_drawn_features(fake, feature_ids=["abc", "def"]))
+        assert fake.messages[0][1]["featureIds"] == ["abc", "def"]
+
+    def test_delete_all_drawn(self):
+        import asyncio
+        w = MapWidget("dr5")
+        fake = _FakeSession()
+        asyncio.run(w.delete_drawn_features(fake))
+        assert fake.messages[0][1]["featureIds"] is None
+
+    def test_drawn_features_input_id(self):
+        w = MapWidget("dr6")
+        assert w.drawn_features_input_id == "dr6_drawn_features"
+
+    def test_draw_mode_input_id(self):
+        w = MapWidget("dr7")
+        assert w.draw_mode_input_id == "dr7_draw_mode"
+
+
+# ---------------------------------------------------------------------------
+# 4.2 GeoPandas Integration
+# ---------------------------------------------------------------------------
+
+class TestGeoPandas:
+    def test_add_geodataframe(self):
+        """add_geodataframe should call add_source + add_maplibre_layer."""
+        import asyncio
+        w = MapWidget("gp1")
+        fake = _FakeSession()
+
+        mock_geojson = {"type": "FeatureCollection", "features": []}
+
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+        comp._serialise_data = lambda x: mock_geojson
+
+        try:
+            asyncio.run(w.add_geodataframe(fake, "test-src", "fake_gdf",
+                                            layer_type="line",
+                                            paint={"line-color": "#f00"}))
+            assert len(fake.messages) == 2
+            assert fake.messages[0][0] == "deck_add_source"
+            assert fake.messages[0][1]["sourceId"] == "test-src"
+            assert fake.messages[1][0] == "deck_add_maplibre_layer"
+            assert fake.messages[1][1]["layerSpec"]["id"] == "test-src-layer"
+            assert fake.messages[1][1]["layerSpec"]["paint"]["line-color"] == "#f00"
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_default_paint(self):
+        """Default paint should be applied based on layer_type."""
+        import asyncio
+        w = MapWidget("gp1b")
+        fake = _FakeSession()
+
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
+
+        try:
+            asyncio.run(w.add_geodataframe(fake, "src", "gdf"))
+            layer_spec = fake.messages[1][1]["layerSpec"]
+            assert layer_spec["type"] == "fill"
+            assert "fill-color" in layer_spec["paint"]
+        finally:
+            comp._serialise_data = original
+
+    def test_add_geodataframe_with_popup(self):
+        """add_geodataframe with popup_template should send 3 messages."""
+        import asyncio
+        w = MapWidget("gp2")
+        fake = _FakeSession()
+
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
+
+        try:
+            asyncio.run(w.add_geodataframe(fake, "eez", "fake_gdf",
+                                            popup_template="<b>{name}</b>"))
+            assert len(fake.messages) == 3
+            assert fake.messages[2][0] == "deck_add_popup"
+            assert fake.messages[2][1]["template"] == "<b>{name}</b>"
+        finally:
+            comp._serialise_data = original
+
+    def test_update_geodataframe(self):
+        import asyncio
+        w = MapWidget("gp3")
+        fake = _FakeSession()
+
+        import shiny_deckgl.components as comp
+        original = comp._serialise_data
+        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
+
+        try:
+            asyncio.run(w.update_geodataframe(fake, "eez", "fake_gdf"))
+            assert fake.messages[0][0] == "deck_set_source_data"
+            assert fake.messages[0][1]["sourceId"] == "eez"
+        finally:
+            comp._serialise_data = original
+
+
+# ---------------------------------------------------------------------------
+# 4.3 Feature State Management
+# ---------------------------------------------------------------------------
+
+class TestFeatureState:
+    def test_set_feature_state(self):
+        import asyncio
+        w = MapWidget("fs1")
+        fake = _FakeSession()
+        asyncio.run(w.set_feature_state(fake, "stations", 42,
+                                          {"hover": True, "selected": False}))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_feature_state"
+        assert msg[1]["sourceId"] == "stations"
+        assert msg[1]["featureId"] == 42
+        assert msg[1]["state"] == {"hover": True, "selected": False}
+
+    def test_set_feature_state_vector_source(self):
+        import asyncio
+        w = MapWidget("fs2")
+        fake = _FakeSession()
+        asyncio.run(w.set_feature_state(fake, "osm", "abc",
+                                          {"hover": True},
+                                          source_layer="buildings"))
+        assert fake.messages[0][1]["sourceLayer"] == "buildings"
+
+    def test_set_feature_state_no_source_layer(self):
+        import asyncio
+        w = MapWidget("fs2b")
+        fake = _FakeSession()
+        asyncio.run(w.set_feature_state(fake, "src", 1, {"a": True}))
+        assert "sourceLayer" not in fake.messages[0][1]
+
+    def test_remove_feature_state_specific(self):
+        import asyncio
+        w = MapWidget("fs3")
+        fake = _FakeSession()
+        asyncio.run(w.remove_feature_state(fake, "stations", 42, key="hover"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_remove_feature_state"
+        assert msg[1]["featureId"] == 42
+        assert msg[1]["key"] == "hover"
+
+    def test_remove_feature_state_all(self):
+        import asyncio
+        w = MapWidget("fs4")
+        fake = _FakeSession()
+        asyncio.run(w.remove_feature_state(fake, "stations"))
+        msg = fake.messages[0][1]
+        assert "featureId" not in msg
+        assert "key" not in msg
+
+
+# ---------------------------------------------------------------------------
+# 4.4 Map Export / Screenshot
+# ---------------------------------------------------------------------------
+
+class TestExportImage:
+    def test_export_image_png(self):
+        import asyncio
+        w = MapWidget("exp1")
+        fake = _FakeSession()
+        asyncio.run(w.export_image(fake, format="png"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_export_image"
+        assert msg[1]["format"] == "png"
+        assert msg[1]["quality"] == 0.92
+
+    def test_export_image_jpeg(self):
+        import asyncio
+        w = MapWidget("exp2")
+        fake = _FakeSession()
+        asyncio.run(w.export_image(fake, format="jpeg", quality=0.8,
+                                    request_id="report"))
+        msg = fake.messages[0][1]
+        assert msg["format"] == "jpeg"
+        assert msg["quality"] == 0.8
+        assert msg["requestId"] == "report"
+
+    def test_export_result_input_id(self):
+        w = MapWidget("exp3")
+        assert w.export_result_input_id == "exp3_export_result"
+
+    def test_to_html_includes_draw_cdn(self):
+        """to_html() should include the MapboxDraw CDN."""
+        w = MapWidget("exp4")
+        html = w.to_html([])
+        assert "mapbox-gl-draw" in html
+
+    def test_head_includes_draw_cdn(self):
+        """head_includes() should include the MapboxDraw CDN."""
+        html = str(head_includes())
+        assert "mapbox-gl-draw" in html

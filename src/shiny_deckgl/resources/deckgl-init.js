@@ -105,7 +105,8 @@
       pitch: initPitch,
       bearing: initBearing,
       minZoom: initMinZoom,
-      maxZoom: initMaxZoom
+      maxZoom: initMaxZoom,
+      preserveDrawingBuffer: true
     };
     // Mapbox API key: inject into tile requests if a mapbox:// style is used
     if (mapboxApiKey) {
@@ -1085,6 +1086,164 @@
       instance.markers[mid].remove();
     });
     instance.markers = {};
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_enable_draw — add MapboxDraw to the map
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_enable_draw", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (typeof MapboxDraw === 'undefined') {
+      console.warn('[shiny_deckgl] MapboxDraw not loaded. '
+        + 'Include mapbox-gl-draw CDN in head_includes().');
+      return;
+    }
+
+    // Remove existing draw control
+    if (instance.draw) {
+      instance.map.removeControl(instance.draw);
+    }
+
+    var drawOpts = {
+      displayControlsDefault: false,
+    };
+
+    if (payload.controls) {
+      drawOpts.controls = payload.controls;
+    } else {
+      var modes = payload.modes || ['draw_point', 'draw_line_string', 'draw_polygon'];
+      drawOpts.controls = {
+        point: modes.indexOf('draw_point') !== -1,
+        line_string: modes.indexOf('draw_line_string') !== -1,
+        polygon: modes.indexOf('draw_polygon') !== -1,
+        trash: true
+      };
+    }
+
+    var draw = new MapboxDraw(drawOpts);
+    instance.map.addControl(draw, 'top-left');
+    instance.draw = draw;
+
+    if (payload.defaultMode && payload.defaultMode !== 'simple_select') {
+      draw.changeMode(payload.defaultMode);
+    }
+
+    var mapId = payload.id;
+    function sendFeatures() {
+      var fc = draw.getAll();
+      Shiny.setInputValue(mapId + '_drawn_features', fc, { priority: "event" });
+    }
+
+    instance.map.on('draw.create', sendFeatures);
+    instance.map.on('draw.update', sendFeatures);
+    instance.map.on('draw.delete', sendFeatures);
+    instance.map.on('draw.modechange', function (e) {
+      Shiny.setInputValue(mapId + '_draw_mode', e.mode);
+    });
+
+    instance._drawSendFeatures = sendFeatures;
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_disable_draw — remove draw control
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_disable_draw", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.draw) return;
+
+    instance.map.removeControl(instance.draw);
+    delete instance.draw;
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_get_drawn_features — request current features
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_get_drawn_features", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.draw) return;
+
+    var fc = instance.draw.getAll();
+    Shiny.setInputValue(payload.id + '_drawn_features', fc, { priority: "event" });
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_delete_drawn — delete specific or all drawn features
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_delete_drawn", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.draw) return;
+
+    if (payload.featureIds) {
+      instance.draw.delete(payload.featureIds);
+    } else {
+      instance.draw.deleteAll();
+    }
+    if (instance._drawSendFeatures) instance._drawSendFeatures();
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_feature_state
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_feature_state", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var target = { source: payload.sourceId, id: payload.featureId };
+    if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
+
+    instance.map.setFeatureState(target, payload.state);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_feature_state
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_feature_state", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var target = { source: payload.sourceId };
+    if (payload.featureId != null) target.id = payload.featureId;
+    if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
+
+    if (payload.key) {
+      instance.map.removeFeatureState(target, payload.key);
+    } else {
+      instance.map.removeFeatureState(target);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_export_image — screenshot the map canvas
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_export_image", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var canvas = map.getCanvas();
+    var format = payload.format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    var quality = payload.quality || 0.92;
+
+    map.triggerRepaint();
+
+    requestAnimationFrame(function () {
+      var dataUrl = canvas.toDataURL(format, quality);
+      Shiny.setInputValue(payload.id + '_export_result', {
+        requestId: payload.requestId || 'default',
+        dataUrl: dataUrl,
+        width: canvas.width,
+        height: canvas.height
+      }, { priority: "event" });
+    });
   });
 
   // -----------------------------------------------------------------------

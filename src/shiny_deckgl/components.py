@@ -1198,6 +1198,290 @@ class MapWidget:
         """
         return f"{self.id}_marker_drag"
 
+    # -- Drawing Tools (v0.5.0) -----------------------------------------------
+
+    async def enable_draw(
+        self,
+        session,
+        *,
+        modes: list[str] | None = None,
+        controls: dict[str, bool] | None = None,
+        default_mode: str = "simple_select",
+    ) -> None:
+        """Enable drawing tools on the map.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        modes
+            Which drawing modes to enable. Defaults to all:
+            ``["draw_point", "draw_line_string", "draw_polygon"]``.
+        controls
+            Override individual control visibility.
+        default_mode
+            Initial mode: ``"simple_select"`` or ``"direct_select"``.
+        """
+        payload: dict = {
+            "id": self.id,
+            "defaultMode": default_mode,
+        }
+        if modes is not None:
+            payload["modes"] = modes
+        if controls is not None:
+            payload["controls"] = controls
+        await session.send_custom_message("deck_enable_draw", payload)
+
+    async def disable_draw(
+        self,
+        session,
+    ) -> None:
+        """Remove drawing tools from the map."""
+        await session.send_custom_message("deck_disable_draw", {
+            "id": self.id,
+        })
+
+    async def get_drawn_features(
+        self,
+        session,
+    ) -> None:
+        """Request the current set of drawn features.
+
+        Result is delivered as ``input.{id}_drawn_features()``.
+        """
+        await session.send_custom_message("deck_get_drawn_features", {
+            "id": self.id,
+        })
+
+    async def delete_drawn_features(
+        self,
+        session,
+        feature_ids: list[str] | None = None,
+    ) -> None:
+        """Delete drawn features.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        feature_ids
+            List of feature IDs to delete. If ``None``, deletes all.
+        """
+        await session.send_custom_message("deck_delete_drawn", {
+            "id": self.id,
+            "featureIds": feature_ids,
+        })
+
+    @property
+    def drawn_features_input_id(self) -> str:
+        """Shiny input for drawn GeoJSON features."""
+        return f"{self.id}_drawn_features"
+
+    @property
+    def draw_mode_input_id(self) -> str:
+        """Shiny input for the current drawing mode."""
+        return f"{self.id}_draw_mode"
+
+    # -- GeoPandas Integration (v0.5.0) ---------------------------------------
+
+    async def add_geodataframe(
+        self,
+        session,
+        source_id: str,
+        gdf,
+        *,
+        layer_type: str = "fill",
+        paint: dict | None = None,
+        layout: dict | None = None,
+        before_id: str | None = None,
+        popup_template: str | None = None,
+    ) -> None:
+        """Add a GeoPandas GeoDataFrame as a native MapLibre layer.
+
+        Convenience method that serialises, adds source + layer, and
+        optionally attaches a popup.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            Unique source/layer identifier.
+        gdf
+            A ``geopandas.GeoDataFrame``.
+        layer_type
+            MapLibre layer type (default ``"fill"``).
+        paint
+            Paint properties dict.
+        layout
+            Layout properties dict.
+        before_id
+            Insert layer before this layer id.
+        popup_template
+            If provided, attach a popup with this HTML template.
+        """
+        geojson = _serialise_data(gdf)
+
+        await self.add_source(session, source_id, {
+            "type": "geojson",
+            "data": geojson,
+        })
+
+        default_paint = {
+            "fill": {"fill-color": "#088", "fill-opacity": 0.5},
+            "line": {"line-color": "#333", "line-width": 2},
+            "circle": {"circle-radius": 5, "circle-color": "#088"},
+        }
+        final_paint = paint or default_paint.get(layer_type, {})
+
+        layer_id = f"{source_id}-layer"
+        layer_spec: dict = {
+            "id": layer_id,
+            "type": layer_type,
+            "source": source_id,
+            "paint": final_paint,
+        }
+        if layout:
+            layer_spec["layout"] = layout
+
+        await self.add_maplibre_layer(session, layer_spec, before_id=before_id)
+
+        if popup_template:
+            await self.add_popup(session, layer_id, popup_template)
+
+    async def update_geodataframe(
+        self,
+        session,
+        source_id: str,
+        gdf,
+    ) -> None:
+        """Update the data of an existing GeoDataFrame source.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            The source identifier.
+        gdf
+            New ``geopandas.GeoDataFrame``.
+        """
+        geojson = _serialise_data(gdf)
+        await self.set_source_data(session, source_id, geojson)
+
+    # -- Feature State Management (v0.5.0) ------------------------------------
+
+    async def set_feature_state(
+        self,
+        session,
+        source_id: str,
+        feature_id: str | int,
+        state: dict,
+        *,
+        source_layer: str | None = None,
+    ) -> None:
+        """Set the state of a feature in a source.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            The source containing the feature.
+        feature_id
+            The feature's unique identifier.
+        state
+            State properties to set, e.g. ``{"hover": True}``.
+        source_layer
+            Required for vector tile sources.
+        """
+        payload: dict = {
+            "id": self.id,
+            "sourceId": source_id,
+            "featureId": feature_id,
+            "state": state,
+        }
+        if source_layer is not None:
+            payload["sourceLayer"] = source_layer
+        await session.send_custom_message("deck_set_feature_state", payload)
+
+    async def remove_feature_state(
+        self,
+        session,
+        source_id: str,
+        feature_id: str | int | None = None,
+        *,
+        key: str | None = None,
+        source_layer: str | None = None,
+    ) -> None:
+        """Remove feature state.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source_id
+            The source containing the feature(s).
+        feature_id
+            Feature to clear state for. ``None`` clears all features.
+        key
+            Specific state key to remove. ``None`` removes all.
+        source_layer
+            Required for vector tile sources.
+        """
+        payload: dict = {
+            "id": self.id,
+            "sourceId": source_id,
+        }
+        if feature_id is not None:
+            payload["featureId"] = feature_id
+        if key is not None:
+            payload["key"] = key
+        if source_layer is not None:
+            payload["sourceLayer"] = source_layer
+        await session.send_custom_message("deck_remove_feature_state", payload)
+
+    # -- Map Export / Screenshot (v0.5.0) -------------------------------------
+
+    async def export_image(
+        self,
+        session,
+        *,
+        format: str = "png",
+        quality: float = 0.92,
+        request_id: str = "default",
+    ) -> None:
+        """Request a screenshot of the map.
+
+        The base64-encoded image is returned asynchronously as
+        ``input.{id}_export_result()``.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        format
+            Image format: ``"png"`` (default) or ``"jpeg"``.
+        quality
+            JPEG quality (0.0–1.0). Ignored for PNG.
+        request_id
+            Identifier included in the result for request matching.
+        """
+        await session.send_custom_message("deck_export_image", {
+            "id": self.id,
+            "format": format,
+            "quality": quality,
+            "requestId": request_id,
+        })
+
+    @property
+    def export_result_input_id(self) -> str:
+        """Shiny input for map export results.
+
+        Returns ``{requestId: str, dataUrl: str, width: int, height: int}``.
+        """
+        return f"{self.id}_export_result"
+
     # -- Serialisation --------------------------------------------------------
 
     def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:
@@ -1309,6 +1593,8 @@ class MapWidget:
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.1.4/dist.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.1/dist/maplibre-gl.css"/>
+<script src="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css"/>
 <style>{css_src}</style>
 </head>
 <body>

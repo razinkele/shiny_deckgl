@@ -71,6 +71,17 @@
   }
 
   // -----------------------------------------------------------------------
+  // Style-readiness guard — defers callback until map style is loaded
+  // -----------------------------------------------------------------------
+  function whenStyleReady(map, fn) {
+    if (map.isStyleLoaded()) {
+      fn();
+    } else {
+      map.once('style.load', fn);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Map initialisation
   // -----------------------------------------------------------------------
   function initMap(el) {
@@ -864,24 +875,26 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
-    var sourceId = payload.sourceId;
-    var spec = payload.spec;
+    whenStyleReady(instance.map, function() {
+      var map = instance.map;
+      var sourceId = payload.sourceId;
+      var spec = payload.spec;
 
-    // Remove existing source if present (along with its layers)
-    if (map.getSource(sourceId)) {
-      var style = map.getStyle();
-      if (style && style.layers) {
-        style.layers.forEach(function (l) {
-          if (l.source === sourceId) {
-            map.removeLayer(l.id);
-          }
-        });
+      // Remove existing source if present (along with its layers)
+      if (map.getSource(sourceId)) {
+        var style = map.getStyle();
+        if (style && style.layers) {
+          style.layers.forEach(function (l) {
+            if (l.source === sourceId) {
+              map.removeLayer(l.id);
+            }
+          });
+        }
+        map.removeSource(sourceId);
       }
-      map.removeSource(sourceId);
-    }
 
-    map.addSource(sourceId, spec);
+      map.addSource(sourceId, spec);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -892,17 +905,19 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
-    var layerSpec = payload.layerSpec;
-    var beforeId = payload.beforeId || undefined;
+    whenStyleReady(instance.map, function() {
+      var map = instance.map;
+      var layerSpec = payload.layerSpec;
+      var beforeId = payload.beforeId || undefined;
 
-    // Remove existing layer with same id
-    if (map.getLayer(layerSpec.id)) {
-      map.removeLayer(layerSpec.id);
-    }
+      // Remove existing layer with same id
+      if (map.getLayer(layerSpec.id)) {
+        map.removeLayer(layerSpec.id);
+      }
 
-    map.addLayer(layerSpec, beforeId);
-    instance.nativeLayers[layerSpec.id] = true;
+      map.addLayer(layerSpec, beforeId);
+      instance.nativeLayers[layerSpec.id] = true;
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -913,10 +928,12 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    if (instance.map.getLayer(payload.layerId)) {
-      instance.map.removeLayer(payload.layerId);
-      delete instance.nativeLayers[payload.layerId];
-    }
+    whenStyleReady(instance.map, function() {
+      if (instance.map.getLayer(payload.layerId)) {
+        instance.map.removeLayer(payload.layerId);
+        delete instance.nativeLayers[payload.layerId];
+      }
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -927,9 +944,11 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    if (instance.map.getSource(payload.sourceId)) {
-      instance.map.removeSource(payload.sourceId);
-    }
+    whenStyleReady(instance.map, function() {
+      if (instance.map.getSource(payload.sourceId)) {
+        instance.map.removeSource(payload.sourceId);
+      }
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -940,10 +959,12 @@
     var instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var source = instance.map.getSource(payload.sourceId);
-    if (source && typeof source.setData === 'function') {
-      source.setData(payload.data);
-    }
+    whenStyleReady(instance.map, function() {
+      var source = instance.map.getSource(payload.sourceId);
+      if (source && typeof source.setData === 'function') {
+        source.setData(payload.data);
+      }
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -953,30 +974,32 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    var map = instance.map;
-    var imageId = payload.imageId;
-    var url = payload.url;
-    var options = {};
-    if (payload.pixelRatio && payload.pixelRatio !== 1) {
-      options.pixelRatio = payload.pixelRatio;
-    }
-    if (payload.sdf) {
-      options.sdf = true;
-    }
-
-    // Remove existing image with same id to allow replacement
-    if (map.hasImage(imageId)) {
-      map.removeImage(imageId);
-    }
-
-    map.loadImage(url).then(function (result) {
-      // MapLibre v5 loadImage returns { data: ImageBitmap | HTMLImageElement }
-      var imgData = result && result.data ? result.data : result;
-      if (!map.hasImage(imageId)) {
-        map.addImage(imageId, imgData, options);
+    whenStyleReady(instance.map, function() {
+      var map = instance.map;
+      var imageId = payload.imageId;
+      var url = payload.url;
+      var options = {};
+      if (payload.pixelRatio && payload.pixelRatio !== 1) {
+        options.pixelRatio = payload.pixelRatio;
       }
-    }).catch(function (err) {
-      console.warn('[shiny_deckgl] Failed to load image "' + imageId + '":', err);
+      if (payload.sdf) {
+        options.sdf = true;
+      }
+
+      // Remove existing image with same id to allow replacement
+      if (map.hasImage(imageId)) {
+        map.removeImage(imageId);
+      }
+
+      map.loadImage(url).then(function (result) {
+        // MapLibre v5 loadImage returns { data: ImageBitmap | HTMLImageElement }
+        var imgData = result && result.data ? result.data : result;
+        if (!map.hasImage(imageId)) {
+          map.addImage(imageId, imgData, options);
+        }
+      }).catch(function (err) {
+        console.warn('[shiny_deckgl] Failed to load image "' + imageId + '":', err);
+      });
     });
   });
 
@@ -987,9 +1010,11 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    if (instance.map.hasImage(payload.imageId)) {
-      instance.map.removeImage(payload.imageId);
-    }
+    whenStyleReady(instance.map, function() {
+      if (instance.map.hasImage(payload.imageId)) {
+        instance.map.removeImage(payload.imageId);
+      }
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -999,10 +1024,12 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    var exists = instance.map.hasImage(payload.imageId);
-    Shiny.setInputValue(payload.id + '_has_image', {
-      imageId: payload.imageId,
-      exists: exists
+    whenStyleReady(instance.map, function() {
+      var exists = instance.map.hasImage(payload.imageId);
+      Shiny.setInputValue(payload.id + '_has_image', {
+        imageId: payload.imageId,
+        exists: exists
+      });
     });
   });
 
@@ -1013,7 +1040,9 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    instance.map.setPaintProperty(payload.layerId, payload.name, payload.value);
+    whenStyleReady(instance.map, function() {
+      instance.map.setPaintProperty(payload.layerId, payload.name, payload.value);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1023,7 +1052,9 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    instance.map.setLayoutProperty(payload.layerId, payload.name, payload.value);
+    whenStyleReady(instance.map, function() {
+      instance.map.setLayoutProperty(payload.layerId, payload.name, payload.value);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1033,7 +1064,9 @@
     if (!payload || !payload.id) return;
     var instance = ensureInstance(payload.id);
     if (!instance) return;
-    instance.map.setFilter(payload.layerId, payload.filter || null);
+    whenStyleReady(instance.map, function() {
+      instance.map.setFilter(payload.layerId, payload.filter || null);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1045,7 +1078,9 @@
     if (!instance) return;
 
     if (typeof instance.map.setProjection === 'function') {
-      instance.map.setProjection({ type: payload.projection || 'mercator' });
+      whenStyleReady(instance.map, function() {
+        instance.map.setProjection({ type: payload.projection || 'mercator' });
+      });
     } else {
       console.warn('[shiny_deckgl] setProjection requires MapLibre v4+');
     }
@@ -1060,7 +1095,9 @@
     if (!instance) return;
 
     if (typeof instance.map.setTerrain === 'function') {
-      instance.map.setTerrain(payload.terrain);
+      whenStyleReady(instance.map, function() {
+        instance.map.setTerrain(payload.terrain);
+      });
     } else {
       console.warn('[shiny_deckgl] setTerrain requires MapLibre v4+');
     }
@@ -1075,7 +1112,9 @@
     if (!instance) return;
 
     if (typeof instance.map.setSky === 'function') {
-      instance.map.setSky(payload.sky || {});
+      whenStyleReady(instance.map, function() {
+        instance.map.setSky(payload.sky || {});
+      });
     }
   });
 
@@ -1102,48 +1141,50 @@
       delete instance.popupHandlers[layerId];
     }
 
-    var clickHandler = function (e) {
-      if (!e.features || !e.features.length) return;
-      var props = e.features[0].properties || {};
-      var html = interpolateTemplate(template, props);
+    whenStyleReady(map, function() {
+      var clickHandler = function (e) {
+        if (!e.features || !e.features.length) return;
+        var props = e.features[0].properties || {};
+        var html = interpolateTemplate(template, props);
 
-      var popupOpts = {
-        closeButton: payload.closeButton !== false,
-        closeOnClick: payload.closeOnClick !== false,
-        maxWidth: payload.maxWidth || '300px'
+        var popupOpts = {
+          closeButton: payload.closeButton !== false,
+          closeOnClick: payload.closeOnClick !== false,
+          maxWidth: payload.maxWidth || '300px'
+        };
+        if (payload.anchor) popupOpts.anchor = payload.anchor;
+
+        new maplibregl.Popup(popupOpts)
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(map);
+
+        // Also send click info to Shiny
+        Shiny.setInputValue(payload.id + '_feature_click', {
+          layerId: layerId,
+          properties: props,
+          longitude: e.lngLat.lng,
+          latitude: e.lngLat.lat
+        }, { priority: "event" });
       };
-      if (payload.anchor) popupOpts.anchor = payload.anchor;
 
-      new maplibregl.Popup(popupOpts)
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(map);
+      var enterHandler = function () {
+        map.getCanvas().style.cursor = 'pointer';
+      };
+      var leaveHandler = function () {
+        map.getCanvas().style.cursor = '';
+      };
 
-      // Also send click info to Shiny
-      Shiny.setInputValue(payload.id + '_feature_click', {
-        layerId: layerId,
-        properties: props,
-        longitude: e.lngLat.lng,
-        latitude: e.lngLat.lat
-      }, { priority: "event" });
-    };
+      map.on('click', layerId, clickHandler);
+      map.on('mouseenter', layerId, enterHandler);
+      map.on('mouseleave', layerId, leaveHandler);
 
-    var enterHandler = function () {
-      map.getCanvas().style.cursor = 'pointer';
-    };
-    var leaveHandler = function () {
-      map.getCanvas().style.cursor = '';
-    };
-
-    map.on('click', layerId, clickHandler);
-    map.on('mouseenter', layerId, enterHandler);
-    map.on('mouseleave', layerId, leaveHandler);
-
-    instance.popupHandlers[layerId] = {
-      click: clickHandler,
-      enter: enterHandler,
-      leave: leaveHandler
-    };
+      instance.popupHandlers[layerId] = {
+        click: clickHandler,
+        enter: enterHandler,
+        leave: leaveHandler
+      };
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1155,12 +1196,14 @@
     if (!instance || !instance.popupHandlers) return;
 
     var layerId = payload.layerId;
-    if (instance.popupHandlers[layerId]) {
-      instance.map.off('click', layerId, instance.popupHandlers[layerId].click);
-      instance.map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
-      instance.map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
-      delete instance.popupHandlers[layerId];
-    }
+    whenStyleReady(instance.map, function() {
+      if (instance.popupHandlers[layerId]) {
+        instance.map.off('click', layerId, instance.popupHandlers[layerId].click);
+        instance.map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
+        instance.map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
+        delete instance.popupHandlers[layerId];
+      }
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1172,34 +1215,36 @@
     if (!instance) return;
 
     var map = instance.map;
-    var queryOpts = {};
+    whenStyleReady(map, function() {
+      var queryOpts = {};
 
-    if (payload.layers) queryOpts.layers = payload.layers;
-    if (payload.filter) queryOpts.filter = payload.filter;
+      if (payload.layers) queryOpts.layers = payload.layers;
+      if (payload.filter) queryOpts.filter = payload.filter;
 
-    var features;
-    if (payload.point) {
-      features = map.queryRenderedFeatures(payload.point, queryOpts);
-    } else if (payload.bounds) {
-      features = map.queryRenderedFeatures(payload.bounds, queryOpts);
-    } else {
-      features = map.queryRenderedFeatures(queryOpts);
-    }
+      var features;
+      if (payload.point) {
+        features = map.queryRenderedFeatures(payload.point, queryOpts);
+      } else if (payload.bounds) {
+        features = map.queryRenderedFeatures(payload.bounds, queryOpts);
+      } else {
+        features = map.queryRenderedFeatures(queryOpts);
+      }
 
-    var simplified = features.map(function (f) {
-      return {
-        type: "Feature",
-        geometry: f.geometry,
-        properties: f.properties,
-        layer: { id: f.layer ? f.layer.id : null },
-        source: f.source || null
-      };
+      var simplified = features.map(function (f) {
+        return {
+          type: "Feature",
+          geometry: f.geometry,
+          properties: f.properties,
+          layer: { id: f.layer ? f.layer.id : null },
+          source: f.source || null
+        };
+      });
+
+      Shiny.setInputValue(payload.id + '_query_result', {
+        requestId: payload.requestId || 'default',
+        features: simplified
+      }, { priority: "event" });
     });
-
-    Shiny.setInputValue(payload.id + '_query_result', {
-      requestId: payload.requestId || 'default',
-      features: simplified
-    }, { priority: "event" });
   });
 
   // -----------------------------------------------------------------------
@@ -1211,29 +1256,31 @@
     if (!instance) return;
 
     var map = instance.map;
-    var point = map.project([payload.longitude, payload.latitude]);
+    whenStyleReady(map, function() {
+      var point = map.project([payload.longitude, payload.latitude]);
 
-    var queryOpts = {};
-    if (payload.layers) queryOpts.layers = payload.layers;
+      var queryOpts = {};
+      if (payload.layers) queryOpts.layers = payload.layers;
 
-    var features = map.queryRenderedFeatures(
-      [point.x, point.y], queryOpts
-    );
+      var features = map.queryRenderedFeatures(
+        [point.x, point.y], queryOpts
+      );
 
-    var simplified = features.map(function (f) {
-      return {
-        type: "Feature",
-        geometry: f.geometry,
-        properties: f.properties,
-        layer: { id: f.layer ? f.layer.id : null },
-        source: f.source || null
-      };
+      var simplified = features.map(function (f) {
+        return {
+          type: "Feature",
+          geometry: f.geometry,
+          properties: f.properties,
+          layer: { id: f.layer ? f.layer.id : null },
+          source: f.source || null
+        };
+      });
+
+      Shiny.setInputValue(payload.id + '_query_result', {
+        requestId: payload.requestId || 'default',
+        features: simplified
+      }, { priority: "event" });
     });
-
-    Shiny.setInputValue(payload.id + '_query_result', {
-      requestId: payload.requestId || 'default',
-      features: simplified
-    }, { priority: "event" });
   });
 
   // -----------------------------------------------------------------------
@@ -1331,64 +1378,66 @@
       return;
     }
 
-    // Remove existing draw control
-    if (instance.draw) {
-      instance.map.removeControl(instance.draw);
-    }
+    whenStyleReady(instance.map, function() {
+      // Remove existing draw control
+      if (instance.draw) {
+        instance.map.removeControl(instance.draw);
+      }
 
-    var drawOpts = {
-      displayControlsDefault: false,
-    };
-
-    if (payload.controls) {
-      drawOpts.controls = payload.controls;
-    } else {
-      var modes = payload.modes || ['draw_point', 'draw_line_string', 'draw_polygon'];
-      drawOpts.controls = {
-        point: modes.indexOf('draw_point') !== -1,
-        line_string: modes.indexOf('draw_line_string') !== -1,
-        polygon: modes.indexOf('draw_polygon') !== -1,
-        trash: true
+      var drawOpts = {
+        displayControlsDefault: false,
       };
-    }
 
-    var draw = new MapboxDraw(drawOpts);
-    instance.map.addControl(draw, 'top-left');
-    instance.draw = draw;
+      if (payload.controls) {
+        drawOpts.controls = payload.controls;
+      } else {
+        var modes = payload.modes || ['draw_point', 'draw_line_string', 'draw_polygon'];
+        drawOpts.controls = {
+          point: modes.indexOf('draw_point') !== -1,
+          line_string: modes.indexOf('draw_line_string') !== -1,
+          polygon: modes.indexOf('draw_polygon') !== -1,
+          trash: true
+        };
+      }
 
-    if (payload.defaultMode && payload.defaultMode !== 'simple_select') {
-      draw.changeMode(payload.defaultMode);
-    }
+      var draw = new MapboxDraw(drawOpts);
+      instance.map.addControl(draw, 'top-left');
+      instance.draw = draw;
 
-    // Remove any previously-attached draw event listeners to prevent leaks
-    if (instance._drawListeners) {
-      instance.map.off('draw.create', instance._drawListeners.create);
-      instance.map.off('draw.update', instance._drawListeners.update);
-      instance.map.off('draw.delete', instance._drawListeners.del);
-      instance.map.off('draw.modechange', instance._drawListeners.modechange);
-    }
+      if (payload.defaultMode && payload.defaultMode !== 'simple_select') {
+        draw.changeMode(payload.defaultMode);
+      }
 
-    var mapId = payload.id;
-    function sendFeatures() {
-      var fc = draw.getAll();
-      Shiny.setInputValue(mapId + '_drawn_features', fc, { priority: "event" });
-    }
-    function onModeChange(e) {
-      Shiny.setInputValue(mapId + '_draw_mode', e.mode);
-    }
+      // Remove any previously-attached draw event listeners to prevent leaks
+      if (instance._drawListeners) {
+        instance.map.off('draw.create', instance._drawListeners.create);
+        instance.map.off('draw.update', instance._drawListeners.update);
+        instance.map.off('draw.delete', instance._drawListeners.del);
+        instance.map.off('draw.modechange', instance._drawListeners.modechange);
+      }
 
-    instance.map.on('draw.create', sendFeatures);
-    instance.map.on('draw.update', sendFeatures);
-    instance.map.on('draw.delete', sendFeatures);
-    instance.map.on('draw.modechange', onModeChange);
+      var mapId = payload.id;
+      function sendFeatures() {
+        var fc = draw.getAll();
+        Shiny.setInputValue(mapId + '_drawn_features', fc, { priority: "event" });
+      }
+      function onModeChange(e) {
+        Shiny.setInputValue(mapId + '_draw_mode', e.mode);
+      }
 
-    instance._drawListeners = {
-      create: sendFeatures,
-      update: sendFeatures,
-      del: sendFeatures,
-      modechange: onModeChange,
-    };
-    instance._drawSendFeatures = sendFeatures;
+      instance.map.on('draw.create', sendFeatures);
+      instance.map.on('draw.update', sendFeatures);
+      instance.map.on('draw.delete', sendFeatures);
+      instance.map.on('draw.modechange', onModeChange);
+
+      instance._drawListeners = {
+        create: sendFeatures,
+        update: sendFeatures,
+        del: sendFeatures,
+        modechange: onModeChange,
+      };
+      instance._drawSendFeatures = sendFeatures;
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1451,7 +1500,9 @@
     var target = { source: payload.sourceId, id: payload.featureId };
     if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
 
-    instance.map.setFeatureState(target, payload.state);
+    whenStyleReady(instance.map, function() {
+      instance.map.setFeatureState(target, payload.state);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1466,11 +1517,13 @@
     if (payload.featureId != null) target.id = payload.featureId;
     if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
 
-    if (payload.key) {
-      instance.map.removeFeatureState(target, payload.key);
-    } else {
-      instance.map.removeFeatureState(target);
-    }
+    whenStyleReady(instance.map, function() {
+      if (payload.key) {
+        instance.map.removeFeatureState(target, payload.key);
+      } else {
+        instance.map.removeFeatureState(target);
+      }
+    });
   });
 
   // -----------------------------------------------------------------------

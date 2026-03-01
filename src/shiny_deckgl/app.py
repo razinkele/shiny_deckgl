@@ -855,6 +855,7 @@ def server(input, output, session: Session):
                 position="bottom-left",
                 show_default=input.ml_legend_default(),
                 show_checkbox=input.ml_legend_checkbox(),
+                only_rendered=False,
             ))
         if input.ml_opacity():
             ctrls.append(opacity_control(

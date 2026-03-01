@@ -143,7 +143,7 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[0.6.0]: https://github.com/razinkele/shiny_deckgl/compare/05bed3c...2eb4885
+[0.6.0]: https://github.com/razinkele/shiny_deckgl/compare/05bed3c...b3cc3af
 [0.5.0]: https://github.com/razinkele/shiny_deckgl/compare/a0066d0...05bed3c
 [0.4.0]: https://github.com/razinkele/shiny_deckgl/compare/9708b7a...a0066d0
 [0.3.0]: https://github.com/razinkele/shiny_deckgl/compare/49afabb...9708b7a

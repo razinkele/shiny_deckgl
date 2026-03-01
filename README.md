@@ -55,8 +55,8 @@ browser, all without Java dependencies.
 | --- | --- |
 | **`add_source()`** | Add native MapLibre sources (GeoJSON, vector, raster, raster-dem, image, video). |
 | **`remove_source()`** | Remove a previously added source by id. |
-| **`add_native_layer()`** | Add native MapLibre style layers (fill, line, circle, symbol, heatmap, fill-extrusion, raster, hillshade). |
-| **`remove_native_layer()`** | Remove a native layer by id. |
+| **`add_maplibre_layer()`** | Add native MapLibre style layers (fill, line, circle, symbol, heatmap, fill-extrusion, raster, hillshade). |
+| **`remove_maplibre_layer()`** | Remove a native layer by id. |
 | **`set_paint_property()` / `set_layout_property()`** | Mutate paint or layout properties on existing native layers. |
 | **`set_filter()`** | Set a layer filter expression. |
 | **`set_style()`** | Change the entire basemap style dynamically (warns that native layers will be lost). |
@@ -67,7 +67,7 @@ browser, all without Java dependencies.
 | --- | --- |
 | **Globe projection** | `set_projection(session, "globe")` — switch between mercator and globe. |
 | **Terrain** | `set_terrain(session, source, exaggeration)` — 3D terrain with DEM source. |
-| **Popups** | `show_popup()` / `close_popup()` — HTML popups anchored to coordinates. |
+| **Popups** | `add_popup()` / `remove_popup()` — HTML popups on native MapLibre layers. |
 | **Spatial queries** | `query_rendered_features()`, `query_at_lnglat()` — query visible features. |
 | **Multiple markers** | `add_marker()`, `remove_marker()`, `clear_markers()` — programmatic markers with optional popups and drag support. |
 
@@ -76,7 +76,7 @@ browser, all without Java dependencies.
 | Capability | Details |
 | --- | --- |
 | **Drawing tools** | `enable_draw()` / `disable_draw()` — MapboxDraw integration with point/line/polygon modes. |
-| **Get/delete drawn features** | `get_drawn_features()`, `delete_drawn()` — manage drawn geometry. |
+| **Get/delete drawn features** | `get_drawn_features()`, `delete_drawn_features()` — manage drawn geometry. |
 | **GeoPandas integration** | `add_geodataframe()` — directly add a GeoDataFrame as a GeoJSON source + native layers. |
 | **Feature state** | `set_feature_state()` / `remove_feature_state()` — interactive styling without redrawing. |
 | **Map export** | `export_image(format="png"|"jpeg"|"webp")` — screenshot the map as a base64 data URL. |
@@ -202,7 +202,7 @@ map_widget.to_html(layers, path="my_map.html", title="Exported Map")
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 195 unit tests covering all features. |
+| `tests/test_basic.py` | 299 unit tests covering all features. |
 
 ## Running Tests
 

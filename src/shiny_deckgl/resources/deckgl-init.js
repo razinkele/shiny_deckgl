@@ -807,6 +807,287 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_set_projection — switch between mercator and globe
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_projection", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (typeof instance.map.setProjection === 'function') {
+      instance.map.setProjection({ type: payload.projection || 'mercator' });
+    } else {
+      console.warn('[shiny_deckgl] setProjection requires MapLibre v4+');
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_terrain — enable/disable 3D terrain
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_terrain", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (typeof instance.map.setTerrain === 'function') {
+      instance.map.setTerrain(payload.terrain);
+    } else {
+      console.warn('[shiny_deckgl] setTerrain requires MapLibre v4+');
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_sky — atmosphere/sky properties
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_sky", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (typeof instance.map.setSky === 'function') {
+      instance.map.setSky(payload.sky || {});
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_add_popup — attach click popup to a native MapLibre layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_popup", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var layerId = payload.layerId;
+    var template = payload.template;
+
+    // Store handler references for cleanup
+    if (!instance.popupHandlers) instance.popupHandlers = {};
+
+    // Remove existing handler for this layer
+    if (instance.popupHandlers[layerId]) {
+      map.off('click', layerId, instance.popupHandlers[layerId].click);
+      map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
+      map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
+      delete instance.popupHandlers[layerId];
+    }
+
+    var clickHandler = function (e) {
+      if (!e.features || !e.features.length) return;
+      var props = e.features[0].properties || {};
+      var html = interpolateTemplate(template, props);
+
+      var popupOpts = {
+        closeButton: payload.closeButton !== false,
+        closeOnClick: payload.closeOnClick !== false,
+        maxWidth: payload.maxWidth || '300px'
+      };
+      if (payload.anchor) popupOpts.anchor = payload.anchor;
+
+      new maplibregl.Popup(popupOpts)
+        .setLngLat(e.lngLat)
+        .setHTML(html)
+        .addTo(map);
+
+      // Also send click info to Shiny
+      Shiny.setInputValue(payload.id + '_feature_click', {
+        layerId: layerId,
+        properties: props,
+        longitude: e.lngLat.lng,
+        latitude: e.lngLat.lat
+      }, { priority: "event" });
+    };
+
+    var enterHandler = function () {
+      map.getCanvas().style.cursor = 'pointer';
+    };
+    var leaveHandler = function () {
+      map.getCanvas().style.cursor = '';
+    };
+
+    map.on('click', layerId, clickHandler);
+    map.on('mouseenter', layerId, enterHandler);
+    map.on('mouseleave', layerId, leaveHandler);
+
+    instance.popupHandlers[layerId] = {
+      click: clickHandler,
+      enter: enterHandler,
+      leave: leaveHandler
+    };
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_popup — detach popup handler from a native layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_popup", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.popupHandlers) return;
+
+    var layerId = payload.layerId;
+    if (instance.popupHandlers[layerId]) {
+      instance.map.off('click', layerId, instance.popupHandlers[layerId].click);
+      instance.map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
+      instance.map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
+      delete instance.popupHandlers[layerId];
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_query_features — query rendered features and return to Shiny
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_query_features", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var queryOpts = {};
+
+    if (payload.layers) queryOpts.layers = payload.layers;
+    if (payload.filter) queryOpts.filter = payload.filter;
+
+    var features;
+    if (payload.point) {
+      features = map.queryRenderedFeatures(payload.point, queryOpts);
+    } else if (payload.bounds) {
+      features = map.queryRenderedFeatures(payload.bounds, queryOpts);
+    } else {
+      features = map.queryRenderedFeatures(queryOpts);
+    }
+
+    var simplified = features.map(function (f) {
+      return {
+        type: "Feature",
+        geometry: f.geometry,
+        properties: f.properties,
+        layer: { id: f.layer ? f.layer.id : null },
+        source: f.source || null
+      };
+    });
+
+    Shiny.setInputValue(payload.id + '_query_result', {
+      requestId: payload.requestId || 'default',
+      features: simplified
+    }, { priority: "event" });
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_query_at_lnglat — project to pixels then query
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_query_at_lnglat", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var map = instance.map;
+    var point = map.project([payload.longitude, payload.latitude]);
+
+    var queryOpts = {};
+    if (payload.layers) queryOpts.layers = payload.layers;
+
+    var features = map.queryRenderedFeatures(
+      [point.x, point.y], queryOpts
+    );
+
+    var simplified = features.map(function (f) {
+      return {
+        type: "Feature",
+        geometry: f.geometry,
+        properties: f.properties,
+        layer: { id: f.layer ? f.layer.id : null },
+        source: f.source || null
+      };
+    });
+
+    Shiny.setInputValue(payload.id + '_query_result', {
+      requestId: payload.requestId || 'default',
+      features: simplified
+    }, { priority: "event" });
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_add_marker — add or replace a named marker
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_marker", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    if (!instance.markers) instance.markers = {};
+    var mapId = payload.id;
+
+    // Remove existing marker with same id
+    if (instance.markers[payload.markerId]) {
+      instance.markers[payload.markerId].remove();
+    }
+
+    var marker = new maplibregl.Marker({
+      color: payload.color || '#3FB1CE',
+      draggable: payload.draggable || false
+    }).setLngLat([payload.longitude, payload.latitude]);
+
+    // Optional popup
+    if (payload.popupHtml) {
+      var popup = new maplibregl.Popup({ offset: 25 })
+        .setHTML(payload.popupHtml);
+      marker.setPopup(popup);
+    }
+
+    marker.addTo(instance.map);
+    instance.markers[payload.markerId] = marker;
+
+    // Click event → Shiny
+    marker.getElement().addEventListener('click', function () {
+      Shiny.setInputValue(mapId + '_marker_click', {
+        markerId: payload.markerId,
+        longitude: marker.getLngLat().lng,
+        latitude: marker.getLngLat().lat
+      }, { priority: "event" });
+    });
+
+    // Drag end event → Shiny
+    if (payload.draggable) {
+      marker.on('dragend', function () {
+        var lngLat = marker.getLngLat();
+        Shiny.setInputValue(mapId + '_marker_drag', {
+          markerId: payload.markerId,
+          longitude: lngLat.lng,
+          latitude: lngLat.lat
+        }, { priority: "event" });
+      });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_marker — remove a named marker
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_marker", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.markers) return;
+
+    if (instance.markers[payload.markerId]) {
+      instance.markers[payload.markerId].remove();
+      delete instance.markers[payload.markerId];
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_clear_markers — remove all named markers
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_clear_markers", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance || !instance.markers) return;
+
+    Object.keys(instance.markers).forEach(function (mid) {
+      instance.markers[mid].remove();
+    });
+    instance.markers = {};
+  });
+
+  // -----------------------------------------------------------------------
   // Tab visibility: resize maps when a Bootstrap tab becomes visible
   // -----------------------------------------------------------------------
   document.addEventListener('shown.bs.tab', function (event) {

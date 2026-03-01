@@ -1259,3 +1259,252 @@ class TestStyleMutation:
         expr = ["all", [">=", ["get", "depth"], 50], ["<=", ["get", "depth"], 200]]
         asyncio.run(w.set_filter(fake, "stations", expr))
         assert fake.messages[0][1]["filter"] == expr
+
+
+# ===========================================================================
+# Phase 3 (v0.4.0) — 3D, Globe & Advanced Interaction
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 3.1 Globe Projection
+# ---------------------------------------------------------------------------
+
+class TestSetProjection:
+    def test_set_projection_globe(self):
+        import asyncio
+        w = MapWidget("proj1")
+        fake = _FakeSession()
+        asyncio.run(w.set_projection(fake, "globe"))
+        assert fake.messages[0] == ("deck_set_projection", {
+            "id": "proj1", "projection": "globe",
+        })
+
+    def test_set_projection_mercator(self):
+        import asyncio
+        w = MapWidget("proj2")
+        fake = _FakeSession()
+        asyncio.run(w.set_projection(fake, "mercator"))
+        assert fake.messages[0][1]["projection"] == "mercator"
+
+    def test_set_projection_invalid_raises(self):
+        import asyncio, pytest
+        w = MapWidget("proj3")
+        fake = _FakeSession()
+        with pytest.raises(ValueError, match="Unknown projection"):
+            asyncio.run(w.set_projection(fake, "orthographic"))
+
+
+# ---------------------------------------------------------------------------
+# 3.2 3D Terrain + Sky
+# ---------------------------------------------------------------------------
+
+class TestTerrain:
+    def test_set_terrain_enable(self):
+        import asyncio
+        w = MapWidget("ter1")
+        fake = _FakeSession()
+        asyncio.run(w.set_terrain(fake, source="dem", exaggeration=1.5))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_set_terrain"
+        assert msg[1]["terrain"] == {"source": "dem", "exaggeration": 1.5}
+
+    def test_set_terrain_disable(self):
+        import asyncio
+        w = MapWidget("ter2")
+        fake = _FakeSession()
+        asyncio.run(w.set_terrain(fake, source=None))
+        assert fake.messages[0][1]["terrain"] is None
+
+    def test_set_terrain_default_exaggeration(self):
+        import asyncio
+        w = MapWidget("ter2b")
+        fake = _FakeSession()
+        asyncio.run(w.set_terrain(fake, source="dem"))
+        assert fake.messages[0][1]["terrain"]["exaggeration"] == 1.0
+
+    def test_set_sky(self):
+        import asyncio
+        w = MapWidget("ter3")
+        fake = _FakeSession()
+        sky = {"sky-color": "#199EF3", "sky-horizon-blend": 0.5}
+        asyncio.run(w.set_sky(fake, sky))
+        assert fake.messages[0] == ("deck_set_sky", {
+            "id": "ter3", "sky": sky,
+        })
+
+    def test_set_sky_none_resets(self):
+        import asyncio
+        w = MapWidget("ter4")
+        fake = _FakeSession()
+        asyncio.run(w.set_sky(fake, None))
+        assert fake.messages[0][1]["sky"] is None
+
+
+# ---------------------------------------------------------------------------
+# 3.3 Native Popups
+# ---------------------------------------------------------------------------
+
+class TestPopups:
+    def test_add_popup(self):
+        import asyncio
+        w = MapWidget("pop1")
+        fake = _FakeSession()
+        asyncio.run(w.add_popup(fake, "stations", "<b>{name}</b>"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_popup"
+        assert msg[1]["layerId"] == "stations"
+        assert msg[1]["template"] == "<b>{name}</b>"
+        assert msg[1]["closeButton"] is True
+
+    def test_add_popup_with_options(self):
+        import asyncio
+        w = MapWidget("pop2")
+        fake = _FakeSession()
+        asyncio.run(w.add_popup(fake, "eez", "{name}",
+                                 close_button=False, max_width="400px",
+                                 anchor="bottom"))
+        msg = fake.messages[0][1]
+        assert msg["closeButton"] is False
+        assert msg["maxWidth"] == "400px"
+        assert msg["anchor"] == "bottom"
+
+    def test_add_popup_no_anchor(self):
+        import asyncio
+        w = MapWidget("pop2b")
+        fake = _FakeSession()
+        asyncio.run(w.add_popup(fake, "layer", "text"))
+        assert "anchor" not in fake.messages[0][1]
+
+    def test_remove_popup(self):
+        import asyncio
+        w = MapWidget("pop3")
+        fake = _FakeSession()
+        asyncio.run(w.remove_popup(fake, "stations"))
+        assert fake.messages[0] == ("deck_remove_popup", {
+            "id": "pop3", "layerId": "stations",
+        })
+
+    def test_feature_click_input_id(self):
+        w = MapWidget("pop4")
+        assert w.feature_click_input_id == "pop4_feature_click"
+
+
+# ---------------------------------------------------------------------------
+# 3.4 Spatial Queries
+# ---------------------------------------------------------------------------
+
+class TestSpatialQueries:
+    def test_query_rendered_features_point(self):
+        import asyncio
+        w = MapWidget("sq1")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, point=[100, 200], layers=["eez-fill"],
+            request_id="test-1",
+        ))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_query_features"
+        assert msg[1]["point"] == [100, 200]
+        assert msg[1]["layers"] == ["eez-fill"]
+        assert msg[1]["requestId"] == "test-1"
+
+    def test_query_rendered_features_bounds(self):
+        import asyncio
+        w = MapWidget("sq2")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, bounds=[[50, 50], [200, 200]],
+        ))
+        msg = fake.messages[0][1]
+        assert msg["bounds"] == [[50, 50], [200, 200]]
+        assert "point" not in msg
+
+    def test_query_rendered_features_no_geometry(self):
+        import asyncio
+        w = MapWidget("sq2b")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(fake, layers=["all"]))
+        msg = fake.messages[0][1]
+        assert "point" not in msg
+        assert "bounds" not in msg
+
+    def test_query_rendered_features_with_filter(self):
+        import asyncio
+        w = MapWidget("sq2c")
+        fake = _FakeSession()
+        asyncio.run(w.query_rendered_features(
+            fake, point=[10, 20],
+            filter_expr=["==", ["get", "type"], "station"],
+        ))
+        assert fake.messages[0][1]["filter"] == ["==", ["get", "type"], "station"]
+
+    def test_query_at_lnglat(self):
+        import asyncio
+        w = MapWidget("sq3")
+        fake = _FakeSession()
+        asyncio.run(w.query_at_lnglat(fake, 21.1, 55.7,
+                                        layers=["stations"],
+                                        request_id="click"))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_query_at_lnglat"
+        assert msg[1]["longitude"] == 21.1
+        assert msg[1]["latitude"] == 55.7
+        assert msg[1]["requestId"] == "click"
+
+    def test_query_result_input_id(self):
+        w = MapWidget("sq4")
+        assert w.query_result_input_id == "sq4_query_result"
+
+
+# ---------------------------------------------------------------------------
+# 3.5 Multiple Markers
+# ---------------------------------------------------------------------------
+
+class TestMultipleMarkers:
+    def test_add_marker_basic(self):
+        import asyncio
+        w = MapWidget("mm1")
+        fake = _FakeSession()
+        asyncio.run(w.add_marker(fake, "station-1", 21.1, 55.7))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_marker"
+        assert msg[1]["markerId"] == "station-1"
+        assert msg[1]["longitude"] == 21.1
+        assert msg[1]["color"] == "#3FB1CE"
+        assert msg[1]["draggable"] is False
+
+    def test_add_marker_with_options(self):
+        import asyncio
+        w = MapWidget("mm2")
+        fake = _FakeSession()
+        asyncio.run(w.add_marker(fake, "buoy-A", 20.0, 56.0,
+                                  color="#ff6600", draggable=True,
+                                  popup_html="<b>Buoy A</b>"))
+        msg = fake.messages[0][1]
+        assert msg["color"] == "#ff6600"
+        assert msg["draggable"] is True
+        assert msg["popupHtml"] == "<b>Buoy A</b>"
+
+    def test_remove_marker(self):
+        import asyncio
+        w = MapWidget("mm3")
+        fake = _FakeSession()
+        asyncio.run(w.remove_marker(fake, "station-1"))
+        assert fake.messages[0] == ("deck_remove_marker", {
+            "id": "mm3", "markerId": "station-1",
+        })
+
+    def test_clear_markers(self):
+        import asyncio
+        w = MapWidget("mm4")
+        fake = _FakeSession()
+        asyncio.run(w.clear_markers(fake))
+        assert fake.messages[0] == ("deck_clear_markers", {"id": "mm4"})
+
+    def test_marker_click_input_id(self):
+        w = MapWidget("mm5")
+        assert w.marker_click_input_id == "mm5_marker_click"
+
+    def test_marker_drag_input_id(self):
+        w = MapWidget("mm6")
+        assert w.marker_drag_input_id == "mm6_marker_drag"

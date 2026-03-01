@@ -886,6 +886,318 @@ class MapWidget:
             "filter": filter_expr,
         })
 
+    # -- Globe Projection (v0.4.0) -------------------------------------------
+
+    async def set_projection(
+        self,
+        session,
+        projection: str = "mercator",
+    ) -> None:
+        """Set the map projection.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        projection
+            ``"mercator"`` (default flat map) or ``"globe"`` (3D sphere).
+            Requires MapLibre GL JS v4+.
+        """
+        if projection not in ("mercator", "globe"):
+            raise ValueError(
+                f"Unknown projection {projection!r}. Use 'mercator' or 'globe'."
+            )
+        await session.send_custom_message("deck_set_projection", {
+            "id": self.id,
+            "projection": projection,
+        })
+
+    # -- 3D Terrain & Sky (v0.4.0) -------------------------------------------
+
+    async def set_terrain(
+        self,
+        session,
+        source: str | None = None,
+        exaggeration: float = 1.0,
+    ) -> None:
+        """Enable or disable 3D terrain rendering.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        source
+            The id of a ``raster-dem`` source previously added via
+            ``add_source()``. Pass ``None`` to disable terrain.
+        exaggeration
+            Vertical exaggeration factor (default 1.0 = real scale).
+        """
+        terrain = None
+        if source is not None:
+            terrain = {"source": source, "exaggeration": exaggeration}
+        await session.send_custom_message("deck_set_terrain", {
+            "id": self.id,
+            "terrain": terrain,
+        })
+
+    async def set_sky(
+        self,
+        session,
+        sky: dict | None = None,
+    ) -> None:
+        """Set the sky/atmosphere properties (works best with terrain).
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        sky
+            Sky specification dict. Pass ``None`` to reset to default.
+        """
+        await session.send_custom_message("deck_set_sky", {
+            "id": self.id,
+            "sky": sky,
+        })
+
+    # -- Native Popups (v0.4.0) ----------------------------------------------
+
+    async def add_popup(
+        self,
+        session,
+        layer_id: str,
+        template: str,
+        *,
+        close_button: bool = True,
+        close_on_click: bool = True,
+        max_width: str = "300px",
+        anchor: str | None = None,
+    ) -> None:
+        """Attach a click popup to a native MapLibre layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The MapLibre layer id to attach the popup to.
+        template
+            HTML template string with ``{property}`` placeholders.
+        close_button
+            Show a close button (default True).
+        close_on_click
+            Close when clicking elsewhere on the map (default True).
+        max_width
+            CSS max-width of the popup container (default ``"300px"``).
+        anchor
+            Popup anchor position relative to the coordinate, or ``None``.
+        """
+        payload: dict = {
+            "id": self.id,
+            "layerId": layer_id,
+            "template": template,
+            "closeButton": close_button,
+            "closeOnClick": close_on_click,
+            "maxWidth": max_width,
+        }
+        if anchor is not None:
+            payload["anchor"] = anchor
+        await session.send_custom_message("deck_add_popup", payload)
+
+    async def remove_popup(
+        self,
+        session,
+        layer_id: str,
+    ) -> None:
+        """Remove a previously attached popup handler from a native layer.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The MapLibre layer id whose popup handler should be removed.
+        """
+        await session.send_custom_message("deck_remove_popup", {
+            "id": self.id,
+            "layerId": layer_id,
+        })
+
+    @property
+    def feature_click_input_id(self) -> str:
+        """Shiny input for native layer feature clicks (with popup).
+
+        Returns ``{layerId, properties, longitude, latitude}``.
+        """
+        return f"{self.id}_feature_click"
+
+    # -- Spatial Queries (v0.4.0) ---------------------------------------------
+
+    async def query_rendered_features(
+        self,
+        session,
+        *,
+        point: list[float] | None = None,
+        bounds: list[list[float]] | None = None,
+        layers: list[str] | None = None,
+        filter_expr: list | None = None,
+        request_id: str = "default",
+    ) -> None:
+        """Query visible features at a point or within a bounding box.
+
+        The result is delivered asynchronously as a Shiny input
+        ``input.{id}_query_result()``.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        point
+            ``[x, y]`` pixel coordinates on the map canvas.
+        bounds
+            ``[[x1, y1], [x2, y2]]`` pixel bounding box.
+        layers
+            Optional list of layer ids to restrict the query.
+        filter_expr
+            Optional MapLibre filter expression.
+        request_id
+            Identifier included in the result for request matching.
+        """
+        payload: dict = {
+            "id": self.id,
+            "requestId": request_id,
+        }
+        if point is not None:
+            payload["point"] = point
+        elif bounds is not None:
+            payload["bounds"] = bounds
+        if layers is not None:
+            payload["layers"] = layers
+        if filter_expr is not None:
+            payload["filter"] = filter_expr
+        await session.send_custom_message("deck_query_features", payload)
+
+    async def query_at_lnglat(
+        self,
+        session,
+        longitude: float,
+        latitude: float,
+        *,
+        layers: list[str] | None = None,
+        request_id: str = "default",
+    ) -> None:
+        """Query features at a geographic coordinate.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        longitude, latitude
+            Geographic coordinates (WGS 84).
+        layers
+            Optional list of layer ids to restrict the query.
+        request_id
+            Identifier included in the result for request matching.
+        """
+        await session.send_custom_message("deck_query_at_lnglat", {
+            "id": self.id,
+            "longitude": longitude,
+            "latitude": latitude,
+            "layers": layers,
+            "requestId": request_id,
+        })
+
+    @property
+    def query_result_input_id(self) -> str:
+        """Shiny input for spatial query results.
+
+        Returns ``{requestId: str, features: [GeoJSON features]}``.
+        """
+        return f"{self.id}_query_result"
+
+    # -- Multiple Markers (v0.4.0) --------------------------------------------
+
+    async def add_marker(
+        self,
+        session,
+        marker_id: str,
+        longitude: float,
+        latitude: float,
+        *,
+        color: str = "#3FB1CE",
+        draggable: bool = False,
+        popup_html: str | None = None,
+    ) -> None:
+        """Add a named marker to the map.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        marker_id
+            Unique identifier for this marker.
+        longitude, latitude
+            Marker position in WGS 84.
+        color
+            CSS color string for the default marker pin.
+        draggable
+            Whether the marker can be dragged by the user.
+        popup_html
+            HTML content for a popup shown when the marker is clicked.
+        """
+        await session.send_custom_message("deck_add_marker", {
+            "id": self.id,
+            "markerId": marker_id,
+            "longitude": longitude,
+            "latitude": latitude,
+            "color": color,
+            "draggable": draggable,
+            "popupHtml": popup_html,
+        })
+
+    async def remove_marker(
+        self,
+        session,
+        marker_id: str,
+    ) -> None:
+        """Remove a named marker from the map.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        marker_id
+            The marker identifier to remove.
+        """
+        await session.send_custom_message("deck_remove_marker", {
+            "id": self.id,
+            "markerId": marker_id,
+        })
+
+    async def clear_markers(
+        self,
+        session,
+    ) -> None:
+        """Remove all named markers from the map."""
+        await session.send_custom_message("deck_clear_markers", {
+            "id": self.id,
+        })
+
+    @property
+    def marker_click_input_id(self) -> str:
+        """Shiny input for named marker click events.
+
+        Returns ``{markerId, longitude, latitude}``.
+        """
+        return f"{self.id}_marker_click"
+
+    @property
+    def marker_drag_input_id(self) -> str:
+        """Shiny input for named marker drag-end events.
+
+        Returns ``{markerId, longitude, latitude}``.
+        """
+        return f"{self.id}_marker_drag"
+
     # -- Serialisation --------------------------------------------------------
 
     def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:

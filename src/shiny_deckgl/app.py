@@ -79,6 +79,45 @@ from ._demo_data import (
 from ._demo_css import MARINE_CSS, sidebar_hint
 
 from .components import CARTO_POSITRON, PALETTE_OCEAN
+from ._version import __version__ as SHINY_DECKGL_VERSION
+from ._cdn import (
+    DECKGL_VERSION,
+    MAPLIBRE_VERSION,
+    MAPBOX_DRAW_VERSION,
+    MAPLIBRE_LEGEND_VERSION,
+    MAPLIBRE_OPACITY_VERSION,
+)
+
+
+# ---------------------------------------------------------------------------
+# About-panel helpers
+# ---------------------------------------------------------------------------
+
+def _python_version() -> str:
+    import sys
+    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+
+def _shiny_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("shiny")
+    except Exception:
+        return "unknown"
+
+
+def _about_row(lib: str, ver: str) -> ui.Tag:
+    """One <tr> for the About version table."""
+    return ui.tags.tr(
+        ui.tags.td(
+            lib,
+            style="padding:3px 12px 3px 0;color:#666;white-space:nowrap;",
+        ),
+        ui.tags.td(
+            ui.tags.code(ver),
+            style="padding:3px 0;font-weight:600;",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +513,45 @@ app_ui = ui.page_navbar(
                 ui.output_text_verbatim("export_output"),
             ),
         ),
+    ),
+
+    # -- About (right-aligned) --------------------------------------------
+    ui.nav_spacer(),
+    ui.nav_menu(
+        "\u2139\uFE0F About",
+        ui.nav_control(
+            ui.div(
+                ui.tags.h5(
+                    "\U0001F30A shiny_deckgl",
+                    style="margin:0 0 8px 0;font-weight:700;",
+                ),
+                ui.tags.table(
+                    ui.tags.tbody(
+                        _about_row("shiny_deckgl", SHINY_DECKGL_VERSION),
+                        _about_row("deck.gl", DECKGL_VERSION),
+                        _about_row("MapLibre GL JS", MAPLIBRE_VERSION),
+                        _about_row("Mapbox GL Draw", MAPBOX_DRAW_VERSION),
+                        _about_row("maplibre-gl-legend", MAPLIBRE_LEGEND_VERSION),
+                        _about_row("maplibre-gl-opacity", MAPLIBRE_OPACITY_VERSION),
+                        _about_row("Python", _python_version()),
+                        _about_row("Shiny", _shiny_version()),
+                    ),
+                    style=(
+                        "width:100%;font-size:0.85rem;"
+                        "border-collapse:collapse;"
+                    ),
+                ),
+                ui.tags.hr(style="margin:10px 0;"),
+                ui.tags.a(
+                    "GitHub repository",
+                    href="https://github.com/razinkele/shiny_deckgl",
+                    target="_blank",
+                    style="font-size:0.85rem;",
+                ),
+                style="padding:12px 16px;min-width:240px;",
+            ),
+        ),
+        align="right",
     ),
 
     title="\U0001F30A shiny_deckgl",

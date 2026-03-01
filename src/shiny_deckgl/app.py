@@ -1,9 +1,10 @@
-"""Comprehensive shiny_deckgl demo — showcases all v0.1–v0.5 features."""
+"""Comprehensive shiny_deckgl demo — showcases all v0.1–v0.8 features."""
 
 from __future__ import annotations
 
 import json
 import os
+import random
 import tempfile
 
 from shiny import App, reactive, render, Session, ui
@@ -16,6 +17,13 @@ from .components import (
     geojson_layer,
     tile_layer,
     bitmap_layer,
+    # v0.7.0 layer helpers
+    arc_layer,
+    column_layer,
+    heatmap_layer,
+    path_layer,
+    text_layer,
+    # Basemap constants
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,
@@ -24,9 +32,18 @@ from .components import (
     color_bins,
     color_quantiles,
     map_view,
+    globe_view,
     PALETTE_OCEAN,
     PALETTE_VIRIDIS,
     PALETTE_PLASMA,
+    # v0.8.0 widgets
+    zoom_widget,
+    compass_widget,
+    fullscreen_widget,
+    scale_widget,
+    fps_widget,
+    # v0.8.0 transitions
+    transition,
 )
 
 
@@ -110,12 +127,14 @@ _BITMAP_BOUNDS = [20.8, 55.2, 21.5, 56.0]  # Curonian Lagoon area
 def app(data_provider=None) -> App:
     """Create the shiny_deckgl demo application.
 
-    Showcases every feature introduced in Phases 1–4:
+    Showcases every feature introduced in Phases 1–6:
 
     * **Phase 1** – MapLibre v5, controls, fit_bounds, map click events
     * **Phase 2** – Native sources/layers, style mutation (paint/layout/filter)
     * **Phase 3** – Projection, terrain, popups, spatial queries, markers
     * **Phase 4** – Drawing tools, feature state, map export
+    * **Phase 5** – Layer helpers (arc, column, heatmap, path, text), globe_view
+    * **Phase 6** – deck.gl widgets, fly_to/ease_to, transitions
 
     Parameters
     ----------
@@ -297,6 +316,35 @@ def app(data_provider=None) -> App:
                                                "Load spec (from_json)"),
                         ui.h6("Export status"),
                         ui.output_text_verbatim("export_info"),
+                    ),
+                    # ---- Widgets (v0.8.0) ---------------------------------
+                    ui.accordion_panel(
+                        "\U0001F9E9 Widgets (v0.8.0)",
+                        ui.p("Toggle deck.gl widgets on the map:"),
+                        ui.input_switch("wgt_zoom", "Zoom widget", value=False),
+                        ui.input_switch("wgt_compass", "Compass widget", value=False),
+                        ui.input_switch("wgt_fullscreen", "Fullscreen widget", value=False),
+                        ui.input_switch("wgt_scale", "Scale widget", value=False),
+                        ui.input_switch("wgt_fps", "FPS widget", value=False),
+                    ),
+                    # ---- Camera (v0.8.0) ----------------------------------
+                    ui.accordion_panel(
+                        "\u2708 Camera (v0.8.0)",
+                        ui.p(ui.em("fly_to() and ease_to() use MapLibre native transitions")),
+                        ui.input_action_button("fly_klaipeda",
+                                               "\u2708 Fly to Klaip\u0117da"),
+                        ui.input_action_button("ease_nida",
+                                               "\u27A1 Ease to Nida"),
+                        ui.input_action_button("fly_baltic_reset",
+                                               "\U0001F30D Reset Baltic view"),
+                    ),
+                    # ---- Transitions (v0.8.0) -----------------------------
+                    ui.accordion_panel(
+                        "\U0001F3AC Transitions (v0.8.0)",
+                        ui.p(ui.em("Animated property transitions on layers")),
+                        ui.input_action_button("push_animated",
+                                               "\U0001F3AC Push animated scatter"),
+                        ui.p("Click repeatedly to see radius/color animate."),
                     ),
                     open=["Basemap & View"],
                 ),
@@ -825,6 +873,93 @@ def app(data_provider=None) -> App:
             ui.notification_show(
                 f"Restored {len(restored_layers)} layers (from_json)",
                 type="message")
+
+        # ---- Widgets (v0.8.0) --------------------------------------------
+
+        @reactive.Effect
+        @reactive.event(
+            input.wgt_zoom, input.wgt_compass, input.wgt_fullscreen,
+            input.wgt_scale, input.wgt_fps,
+        )
+        async def _toggle_widgets():
+            widgets: list[dict] = []
+            if input.wgt_zoom():
+                widgets.append(zoom_widget())
+            if input.wgt_compass():
+                widgets.append(compass_widget())
+            if input.wgt_fullscreen():
+                widgets.append(fullscreen_widget())
+            if input.wgt_scale():
+                widgets.append(scale_widget())
+            if input.wgt_fps():
+                widgets.append(fps_widget())
+            await map_widget.set_widgets(session, widgets)
+
+        # ---- Camera fly_to / ease_to (v0.8.0) ---------------------------
+
+        @reactive.Effect
+        @reactive.event(input.fly_klaipeda)
+        async def _fly_klaipeda():
+            await map_widget.fly_to(
+                session, 21.14, 55.71, zoom=12, speed=1.5,
+            )
+
+        @reactive.Effect
+        @reactive.event(input.ease_nida)
+        async def _ease_nida():
+            await map_widget.ease_to(
+                session, 20.86, 55.30, zoom=12, duration=2000,
+            )
+
+        @reactive.Effect
+        @reactive.event(input.fly_baltic_reset)
+        async def _fly_baltic_reset():
+            await map_widget.fly_to(
+                session, 21.1, 55.7, zoom=8, pitch=0, bearing=0,
+            )
+
+        # ---- Transitions (v0.8.0) ----------------------------------------
+
+        @reactive.Effect
+        @reactive.event(input.push_animated)
+        async def _push_animated():
+            """Push a scatter layer with animated radius/color transitions."""
+            random.seed(None)  # new random values each click
+            anim_data = []
+            for feat in _SAMPLE_GEOJSON["features"]:
+                coords = feat["geometry"]["coordinates"]
+                props = feat["properties"]
+                anim_data.append({
+                    "coordinates": coords,
+                    "name": props["name"],
+                    "radius": random.randint(5, 20),
+                    "color": [
+                        random.randint(50, 255),
+                        random.randint(50, 255),
+                        random.randint(50, 200),
+                        200,
+                    ],
+                })
+            animated_lyr = scatterplot_layer(
+                "animated-scatter", anim_data,
+                getPosition="@@=d.coordinates",
+                getFillColor="@@=d.color",
+                getRadius="@@=d.radius",
+                radiusScale=500,
+                radiusMinPixels=8,
+                radiusMaxPixels=40,
+                pickable=True,
+                transitions={
+                    "getRadius": transition(800, easing="ease-in-out-cubic"),
+                    "getFillColor": transition(600, easing="ease-out-cubic"),
+                },
+            )
+            layers = [
+                lyr for lyr in _last_layers.get()
+                if lyr.get("id") != "animated-scatter"
+            ] + [animated_lyr]
+            _last_layers.set(layers)
+            await map_widget.update(session, layers)
 
         # ---- Build & push deck.gl layers ----------------------------------
 

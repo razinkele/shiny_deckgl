@@ -1002,6 +1002,20 @@ def server(input, output, session: Session):
             ),
         ]
         await events_widget.update(session, layers)
+        await events_widget.set_controls(session, [
+            deck_legend_control(
+                entries=[
+                    {"layer_id": "ev-mpa", "label": "Marine Protected Areas",
+                     "color": [0, 180, 120, 60], "shape": "rect"},
+                    {"layer_id": "ev-arcs", "label": "Port connections",
+                     "color": [255, 140, 0], "color2": [200, 0, 80],
+                     "shape": "arc"},
+                    {"layer_id": "ev-ports", "label": "Baltic Ports",
+                     "color": [200, 0, 80, 180], "shape": "circle"},
+                ],
+                title="Events Layers",
+            ),
+        ])
 
     # Dynamic tooltip customisation
     @reactive.Effect
@@ -1186,6 +1200,15 @@ def server(input, output, session: Session):
         layers = _adv_base_layers()
         _adv_layers.set(layers)
         await adv_widget.update(session, layers)
+        await adv_widget.set_controls(session, [
+            deck_legend_control(
+                entries=[
+                    {"layer_id": "cargo-columns", "label": "Cargo (3D columns)",
+                     "color": [0, 160, 230, 200], "shape": "rect"},
+                ],
+                title="Advanced Layers",
+            ),
+        ])
 
     # Lighting
     @reactive.Effect

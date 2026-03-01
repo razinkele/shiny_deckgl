@@ -29,7 +29,7 @@ def head_includes() -> HTMLDependency:
     res_dir = _resolve_resource_dir()
     return HTMLDependency(
         name="shiny-deckgl",
-        version="0.5.0",
+        version="0.6.0",
         source={"subdir": res_dir},
         script=[{"src": "deckgl-init.js"}],
         stylesheet=[{"href": "styles.css"}],

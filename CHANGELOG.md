@@ -6,6 +6,43 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Custom map images** — `add_image()`, `remove_image()`, `has_image()` for
+  loading icons (PNG, JPEG, WebP, SVG, data-URI) into the map style.  Supports
+  SDF (signed-distance-field) recolouring and retina `pixel_ratio`.
+- `has_image_input_id` reactive property — reports `{imageId, exists}` after
+  `has_image()` check.
+
+### Fixed
+
+- **JS: tooltip re-render** — `deck_update_tooltip` now rebuilds layers so
+  tooltip configuration changes take effect on existing layers.
+- **JS: nativeLayers tracking** — `instance.nativeLayers` initialised to `{}`
+  and tracked in add/remove handlers; `deck_set_style` warning no longer dead
+  code.
+- **JS: export\_image webp + idle** — `deck_export_image` supports webp format
+  and waits for `map.idle` event before capture to ensure tiles are loaded.
+- **Python: HTML-escape style** — `to_html()` escapes `self.style` in the
+  `data-style` attribute to prevent malformed HTML from URLs containing `"` or
+  `&`.
+- **README:** escaped pipe characters in `export_image` table row.
+
+### Changed
+
+- All 35 async `session` parameters annotated as `session: Session` with
+  `TYPE_CHECKING` guard import.
+- `_serialise_data()` annotated as `(data: Any) -> Any`.
+- `pyproject.toml` — added `htmltools` as explicit dependency, project URLs,
+  classifiers (GIS, Science, Beta), `[tool.pytest.ini_options]`, and optional
+  `[geopandas]` / `[dev]` extras.
+- README — removed hardcoded machine-specific Python path; rewritten for
+  portable installation instructions.
+
+---
+
 ## [0.6.0] — 2026-03-01
 
 ### Changed

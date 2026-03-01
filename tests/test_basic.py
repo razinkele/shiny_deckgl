@@ -2764,3 +2764,130 @@ class TestAppFactory:
             "data": [[21, 55], [22, 56]]
         })
         assert isinstance(result, App)
+
+
+# ==========================================================================
+# Image management tests (add_image / remove_image / has_image)
+# ==========================================================================
+
+class TestAddImage:
+    """Test add_image method."""
+
+    def test_basic_add_image(self):
+        w = MapWidget("img1")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "buoy-icon", "https://example.com/buoy.png"))
+        handler, msg = fake.messages[0]
+        assert handler == "deck_add_image"
+        assert msg["id"] == "img1"
+        assert msg["imageId"] == "buoy-icon"
+        assert msg["url"] == "https://example.com/buoy.png"
+        assert msg["pixelRatio"] == 1
+        assert msg["sdf"] is False
+
+    def test_add_image_with_pixel_ratio(self):
+        w = MapWidget("img2")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "station", "https://x.com/s.png", pixel_ratio=2))
+        msg = fake.messages[0][1]
+        assert msg["pixelRatio"] == 2
+
+    def test_add_image_sdf_mode(self):
+        w = MapWidget("img3")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "marker", "https://x.com/m.png", sdf=True))
+        msg = fake.messages[0][1]
+        assert msg["sdf"] is True
+
+    def test_add_image_data_uri(self):
+        data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        w = MapWidget("img4")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "dot", data_uri))
+        msg = fake.messages[0][1]
+        assert msg["url"] == data_uri
+
+    def test_add_image_all_options(self):
+        w = MapWidget("img5")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(
+            fake, "wind-arrow", "https://x.com/w.png",
+            pixel_ratio=3, sdf=True,
+        ))
+        msg = fake.messages[0][1]
+        assert msg["imageId"] == "wind-arrow"
+        assert msg["pixelRatio"] == 3
+        assert msg["sdf"] is True
+
+
+class TestRemoveImage:
+    """Test remove_image method."""
+
+    def test_basic_remove_image(self):
+        w = MapWidget("ri1")
+        fake = _FakeSession()
+        asyncio.run(w.remove_image(fake, "buoy-icon"))
+        handler, msg = fake.messages[0]
+        assert handler == "deck_remove_image"
+        assert msg["id"] == "ri1"
+        assert msg["imageId"] == "buoy-icon"
+
+
+class TestHasImage:
+    """Test has_image method."""
+
+    def test_basic_has_image(self):
+        w = MapWidget("hi1")
+        fake = _FakeSession()
+        asyncio.run(w.has_image(fake, "buoy-icon"))
+        handler, msg = fake.messages[0]
+        assert handler == "deck_has_image"
+        assert msg["id"] == "hi1"
+        assert msg["imageId"] == "buoy-icon"
+
+    def test_has_image_input_id(self):
+        w = MapWidget("hi2")
+        assert w.has_image_input_id == "hi2_has_image"
+
+
+class TestImageWorkflow:
+    """Test typical image add-then-use-in-symbol-layer pattern."""
+
+    def test_add_image_then_symbol_layer(self):
+        """Image loaded then referenced by a symbol layer."""
+        w = MapWidget("iw1")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "station-icon", "https://x.com/s.png"))
+        asyncio.run(w.add_source(fake, "stations", {
+            "type": "geojson",
+            "data": {"type": "FeatureCollection", "features": []},
+        }))
+        asyncio.run(w.add_maplibre_layer(fake, {
+            "id": "station-symbols",
+            "type": "symbol",
+            "source": "stations",
+            "layout": {"icon-image": "station-icon", "icon-size": 0.5},
+        }))
+        assert len(fake.messages) == 3
+        assert fake.messages[0][0] == "deck_add_image"
+        assert fake.messages[1][0] == "deck_add_source"
+        assert fake.messages[2][0] == "deck_add_maplibre_layer"
+
+    def test_replace_image(self):
+        """Calling add_image twice with same id should work (JS replaces)."""
+        w = MapWidget("iw2")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "icon", "https://x.com/v1.png"))
+        asyncio.run(w.add_image(fake, "icon", "https://x.com/v2.png"))
+        assert len(fake.messages) == 2
+        assert fake.messages[0][1]["url"] == "https://x.com/v1.png"
+        assert fake.messages[1][1]["url"] == "https://x.com/v2.png"
+
+    def test_add_remove_image(self):
+        """Add then remove image."""
+        w = MapWidget("iw3")
+        fake = _FakeSession()
+        asyncio.run(w.add_image(fake, "temp-icon", "https://x.com/t.png"))
+        asyncio.run(w.remove_image(fake, "temp-icon"))
+        assert fake.messages[0][0] == "deck_add_image"
+        assert fake.messages[1][0] == "deck_remove_image"

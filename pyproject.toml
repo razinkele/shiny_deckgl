@@ -12,17 +12,36 @@ license = { file = "LICENSE" }
 authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
 keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Shiny",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: JavaScript",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
     "shiny>=1.0",
+    "htmltools",
 ]
 
 [project.optional-dependencies]
 binary = ["numpy"]
+geopandas = ["geopandas"]
+dev = ["pytest", "numpy", "geopandas"]
+
+[project.urls]
+Homepage = "https://github.com/razinkele/shiny_deckgl"
+Repository = "https://github.com/razinkele/shiny_deckgl"
+Issues = "https://github.com/razinkele/shiny_deckgl/issues"
+Changelog = "https://github.com/razinkele/shiny_deckgl/blob/main/CHANGELOG.md"
 
 [project.scripts]
 shiny_deckgl-demo = "shiny_deckgl.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.setuptools.dynamic]
 version = {attr = "shiny_deckgl._version.__version__"}

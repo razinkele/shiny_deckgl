@@ -785,6 +785,66 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_add_image — load a remote image into the map style for symbol layers
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_add_image", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var map = instance.map;
+    var imageId = payload.imageId;
+    var url = payload.url;
+    var options = {};
+    if (payload.pixelRatio && payload.pixelRatio !== 1) {
+      options.pixelRatio = payload.pixelRatio;
+    }
+    if (payload.sdf) {
+      options.sdf = true;
+    }
+
+    // Remove existing image with same id to allow replacement
+    if (map.hasImage(imageId)) {
+      map.removeImage(imageId);
+    }
+
+    map.loadImage(url).then(function (result) {
+      // MapLibre v5 loadImage returns { data: ImageBitmap | HTMLImageElement }
+      var imgData = result && result.data ? result.data : result;
+      if (!map.hasImage(imageId)) {
+        map.addImage(imageId, imgData, options);
+      }
+    }).catch(function (err) {
+      console.warn('[shiny_deckgl] Failed to load image "' + imageId + '":', err);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_remove_image — remove a named image from the map style
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_remove_image", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    if (instance.map.hasImage(payload.imageId)) {
+      instance.map.removeImage(payload.imageId);
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_has_image — check if image is loaded, report back via Shiny input
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_has_image", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+    var exists = instance.map.hasImage(payload.imageId);
+    Shiny.setInputValue(payload.id + '_has_image', {
+      imageId: payload.imageId,
+      exists: exists
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // deck_set_paint_property — set paint property on a MapLibre layer
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_paint_property", function (payload) {

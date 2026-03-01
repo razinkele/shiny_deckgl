@@ -60,6 +60,7 @@ browser, all without Java dependencies.
 | **`set_paint_property()` / `set_layout_property()`** | Mutate paint or layout properties on existing native layers. |
 | **`set_filter()`** | Set a layer filter expression. |
 | **`set_style()`** | Change the entire basemap style dynamically (warns that native layers will be lost). |
+| **`add_image()` / `remove_image()`** | Load custom icons (PNG/SVG/WebP) for use with symbol layers; SDF recolouring supported. |
 
 ### Phase 3 — Globe, Terrain & Popups (v0.4)
 
@@ -83,17 +84,13 @@ browser, all without Java dependencies.
 
 ## Environment & Prerequisites
 
-This project targets the shared `shiny` micromamba environment.
-**Do not create local virtual environments.**
-
-- **Python:** `C:\Users\arturas.baziukas\micromamba\envs\shiny\python.exe`
-- **Activate:** `micromamba activate shiny`
+- **Python ≥ 3.9** and **Shiny ≥ 1.0** are required.
+- Any standard Python environment works (venv, conda, micromamba, system).
 
 ## Installation
 
 ```bash
-micromamba activate shiny
-pip install -e .          # editable install (local package, not on conda-forge)
+pip install -e .          # editable install (local package, not on PyPI yet)
 ```
 
 For binary transport support (numpy):
@@ -102,17 +99,22 @@ For binary transport support (numpy):
 pip install -e ".[binary]"
 ```
 
+For GeoPandas integration:
+
+```bash
+pip install -e ".[geopandas]"
+```
+
 Or build the conda package:
 
 ```bash
-micromamba build conda.recipe/
-micromamba install -n shiny shiny_deckgl --use-local
+conda build conda.recipe/   # or: micromamba build conda.recipe/
 ```
 
 ## Quick Start
 
 ```bash
-micromamba run -n shiny shiny_deckgl-demo
+shiny_deckgl-demo
 ```
 
 This launches a comprehensive demo app centred on the Baltic Sea with scatter
@@ -153,7 +155,7 @@ my_app = App(app_ui, server)
 ```
 
 ```bash
-micromamba run -n shiny shiny run my_app.py
+shiny run my_app.py
 ```
 
 ### Using WMS tile layers
@@ -202,12 +204,12 @@ map_widget.to_html(layers, path="my_map.html", title="Exported Map")
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 299 unit tests covering all features. |
+| `tests/test_basic.py` | 310 unit tests covering all features. |
 
 ## Running Tests
 
 ```bash
-micromamba run -n shiny pytest tests/ -v
+pytest tests/ -v
 ```
 
 ## License

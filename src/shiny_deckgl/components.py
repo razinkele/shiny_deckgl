@@ -815,6 +815,89 @@ class MapWidget:
             "data": serialised,
         })
 
+    # -- Custom Images / Icons ------------------------------------------------
+
+    async def add_image(
+        self,
+        session: Session,
+        image_id: str,
+        url: str,
+        *,
+        pixel_ratio: float = 1,
+        sdf: bool = False,
+    ) -> None:
+        """Load an image into the map for use with symbol layers.
+
+        The image is fetched by the browser from *url* and registered under
+        *image_id*.  Once loaded it can be referenced by a ``symbol`` layer's
+        ``layout["icon-image"]`` property.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        image_id
+            Unique name to register the image under.
+        url
+            HTTP(S) URL or data-URI of the image (PNG, JPEG, WebP, SVG).
+        pixel_ratio
+            Device pixel ratio for retina displays (default ``1``).
+        sdf
+            If ``True`` the image is treated as a signed-distance-field icon
+            that can be recoloured at runtime with ``icon-color`` paint
+            property.
+        """
+        await session.send_custom_message("deck_add_image", {
+            "id": self.id,
+            "imageId": image_id,
+            "url": url,
+            "pixelRatio": pixel_ratio,
+            "sdf": sdf,
+        })
+
+    async def remove_image(
+        self,
+        session: Session,
+        image_id: str,
+    ) -> None:
+        """Remove a previously loaded image from the map style.
+
+        Any symbol layer still referencing this image will lose its icon.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        image_id
+            The image name passed to :meth:`add_image`.
+        """
+        await session.send_custom_message("deck_remove_image", {
+            "id": self.id,
+            "imageId": image_id,
+        })
+
+    async def has_image(
+        self,
+        session: Session,
+        image_id: str,
+    ) -> None:
+        """Check whether *image_id* is loaded and report back via input.
+
+        The result is delivered asynchronously as a boolean through
+        ``input.<map_id>_has_image``.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        image_id
+            The image name to check.
+        """
+        await session.send_custom_message("deck_has_image", {
+            "id": self.id,
+            "imageId": image_id,
+        })
+
     # -- Runtime Style Mutation (v0.3.0) --------------------------------------
 
     async def set_paint_property(
@@ -1492,6 +1575,14 @@ class MapWidget:
         Returns ``{requestId: str, dataUrl: str, width: int, height: int}``.
         """
         return f"{self.id}_export_result"
+
+    @property
+    def has_image_input_id(self) -> str:
+        """Shiny input for :meth:`has_image` results.
+
+        Returns ``{imageId: str, exists: bool}``.
+        """
+        return f"{self.id}_has_image"
 
     # -- Serialisation --------------------------------------------------------
 

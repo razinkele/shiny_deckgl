@@ -30,6 +30,9 @@ import shiny_deckgl as sdgl
   - [add\_source()](#add_source)
   - [remove\_source()](#remove_source)
   - [set\_source\_data()](#set_source_data)
+  - [add\_image()](#add_image)
+  - [remove\_image()](#remove_image)
+  - [has\_image()](#has_image)
   - [add\_maplibre\_layer()](#add_maplibre_layer)
   - [remove\_maplibre\_layer()](#remove_maplibre_layer)
   - [set\_paint\_property()](#set_paint_property)
@@ -173,6 +176,7 @@ Each `MapWidget` exposes reactive Shiny inputs automatically:
 | `drawn_features_input_id` | `"{id}_drawn_features"` | User creates/updates/deletes drawn geometry | GeoJSON FeatureCollection |
 | `draw_mode_input_id` | `"{id}_draw_mode"` | Drawing mode changes | Mode string (e.g. `"draw_polygon"`) |
 | `export_result_input_id` | `"{id}_export_result"` | Map screenshot is ready | `{requestId, dataUrl, width, height}` |
+| `has_image_input_id` | `"{id}_has_image"` | `has_image()` check completes | `{imageId, exists}` |
 
 ### `ui()`
 
@@ -452,6 +456,58 @@ Update the data of an existing GeoJSON source without removing/re-adding it.  `d
 ```python
 await widget.set_source_data(session, "cities", updated_geojson)
 ```
+
+### `add_image()`
+
+```python
+await widget.add_image(
+    session,
+    image_id: str,
+    url: str,
+    *,
+    pixel_ratio: float = 1,
+    sdf: bool = False,
+) -> None
+```
+
+Load an image from a URL (or data-URI) into the map style so it can be
+referenced by a symbol layer's `icon-image` layout property.  If an image
+with the same *image_id* already exists it is replaced.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `image_id` | `str` | *(required)* | Unique name for the image. |
+| `url` | `str` | *(required)* | HTTP(S) URL or `data:` URI of the image. |
+| `pixel_ratio` | `float` | `1` | Device pixel ratio for retina displays. |
+| `sdf` | `bool` | `False` | Treat the image as a signed-distance-field icon (recolourable with `icon-color`). |
+
+```python
+await widget.add_image(session, "buoy", "https://example.com/buoy.png", pixel_ratio=2)
+await widget.add_maplibre_layer(session, {
+    "id": "stations",
+    "type": "symbol",
+    "source": "station-src",
+    "layout": {"icon-image": "buoy", "icon-size": 0.5},
+})
+```
+
+### `remove_image()`
+
+```python
+await widget.remove_image(session, image_id: str) -> None
+```
+
+Remove a previously loaded image from the map style.
+
+### `has_image()`
+
+```python
+await widget.has_image(session, image_id: str) -> None
+```
+
+Check whether *image_id* is loaded.  The result arrives asynchronously as
+`input.<map_id>_has_image` containing `{"imageId": str, "exists": bool}`.
 
 ### `add_maplibre_layer()`
 

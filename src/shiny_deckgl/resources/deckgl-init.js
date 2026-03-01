@@ -410,7 +410,7 @@
       if (!className) return null;
       var props = Object.assign({}, spec);
       delete props['@@widgetClass'];
-      var Cls = deck[className];
+      var Cls = deck[className] || deck['_' + className];
       if (!Cls) {
         console.warn('[shiny_deckgl] Unknown widget: ' + className);
         return null;

@@ -314,7 +314,7 @@ def fullscreen_widget(placement: str = "top-right", **kwargs) -> dict:
 
 def scale_widget(placement: str = "bottom-left", **kwargs) -> dict:
     """Create a ``ScaleWidget`` spec (distance scale bar)."""
-    return {"@@widgetClass": "ScaleWidget", "placement": placement, **kwargs}
+    return {"@@widgetClass": "_ScaleWidget", "placement": placement, **kwargs}
 
 
 def gimbal_widget(placement: str = "top-right", **kwargs) -> dict:
@@ -334,27 +334,159 @@ def screenshot_widget(placement: str = "top-right", **kwargs) -> dict:
 
 def fps_widget(placement: str = "top-left", **kwargs) -> dict:
     """Create an ``FpsWidget`` spec (frames-per-second counter)."""
-    return {"@@widgetClass": "FpsWidget", "placement": placement, **kwargs}
+    return {"@@widgetClass": "_FpsWidget", "placement": placement, **kwargs}
 
 
 def loading_widget(**kwargs) -> dict:
     """Create a ``LoadingWidget`` spec (spinner during layer loading)."""
-    return {"@@widgetClass": "LoadingWidget", **kwargs}
+    return {"@@widgetClass": "_LoadingWidget", **kwargs}
 
 
 def timeline_widget(placement: str = "bottom-left", **kwargs) -> dict:
     """Create a ``TimelineWidget`` spec (time scrubber for animated layers)."""
-    return {"@@widgetClass": "TimelineWidget", "placement": placement, **kwargs}
+    return {"@@widgetClass": "_TimelineWidget", "placement": placement, **kwargs}
 
 
 def geocoder_widget(placement: str = "top-left", **kwargs) -> dict:
     """Create a ``GeocoderWidget`` spec (address search)."""
-    return {"@@widgetClass": "GeocoderWidget", "placement": placement, **kwargs}
+    return {"@@widgetClass": "_GeocoderWidget", "placement": placement, **kwargs}
 
 
 def theme_widget(**kwargs) -> dict:
     """Create a ``ThemeWidget`` spec (light/dark theme toggle)."""
-    return {"@@widgetClass": "ThemeWidget", **kwargs}
+    return {"@@widgetClass": "_ThemeWidget", **kwargs}
+
+
+# ---------------------------------------------------------------------------
+# deck.gl Experimental Widget helpers (v9.2+)
+# ---------------------------------------------------------------------------
+
+def context_menu_widget(**kwargs) -> dict:
+    """Create a ``ContextMenuWidget`` spec (right-click context menu).
+
+    Experimental — requires deck.gl >= 9.2.
+
+    Parameters
+    ----------
+    **kwargs
+        Widget properties, e.g. ``items`` list of menu items.
+    """
+    return {"@@widgetClass": "_ContextMenuWidget", **kwargs}
+
+
+def info_widget(placement: str = "top-left", **kwargs) -> dict:
+    """Create an ``InfoWidget`` spec (displays layer hover/pick information).
+
+    Experimental — requires deck.gl >= 9.2.
+
+    Parameters
+    ----------
+    placement
+        Widget placement (default ``"top-left"``).
+    **kwargs
+        Widget properties, e.g. ``text``, ``visible``, ``mode``.
+    """
+    return {"@@widgetClass": "_InfoWidget", "placement": placement, **kwargs}
+
+
+def splitter_widget(**kwargs) -> dict:
+    """Create a ``SplitterWidget`` spec (split-screen view divider).
+
+    Experimental — requires deck.gl >= 9.2.  Allows the user to drag a
+    handle to compare two overlapping views.
+
+    Parameters
+    ----------
+    **kwargs
+        Widget properties, e.g. ``viewId1``, ``viewId2``,
+        ``orientation`` (``"horizontal"`` / ``"vertical"``),
+        ``initialSplit`` (0–1 ratio).
+    """
+    return {"@@widgetClass": "_SplitterWidget", **kwargs}
+
+
+def stats_widget(placement: str = "top-left", **kwargs) -> dict:
+    """Create a ``StatsWidget`` spec (GPU/CPU performance statistics).
+
+    Experimental — requires deck.gl >= 9.2.
+
+    Parameters
+    ----------
+    placement
+        Widget placement (default ``"top-left"``).
+    **kwargs
+        Widget properties, e.g. ``type``, ``title``,
+        ``framesPerUpdate``.
+    """
+    return {"@@widgetClass": "_StatsWidget", "placement": placement, **kwargs}
+
+
+def view_selector_widget(placement: str = "top-left", **kwargs) -> dict:
+    """Create a ``ViewSelectorWidget`` spec (switch between view modes).
+
+    Experimental — requires deck.gl >= 9.2.
+
+    Parameters
+    ----------
+    placement
+        Widget placement (default ``"top-left"``).
+    **kwargs
+        Widget properties, e.g. ``initialViewMode``.
+    """
+    return {"@@widgetClass": "_ViewSelectorWidget", "placement": placement, **kwargs}
+
+
+# ---------------------------------------------------------------------------
+# MapLibre GL control convenience helpers
+# ---------------------------------------------------------------------------
+
+def geolocate_control(position: str = "top-right", **options) -> dict:
+    """Create a MapLibre ``GeolocateControl`` spec.
+
+    Adds a button that uses the browser Geolocation API to locate the user
+    on the map.
+
+    Parameters
+    ----------
+    position
+        Control position (default ``"top-right"``).
+    **options
+        Control options, e.g. ``trackUserLocation=True``,
+        ``showAccuracyCircle=True``, ``positionOptions={"enableHighAccuracy": True}``.
+    """
+    return {"type": "geolocate", "position": position, "options": options}
+
+
+def globe_control(position: str = "top-right", **options) -> dict:
+    """Create a MapLibre ``GlobeControl`` spec (flat / globe toggle).
+
+    Requires MapLibre GL JS >= 5.0.
+
+    Parameters
+    ----------
+    position
+        Control position (default ``"top-right"``).
+    **options
+        Control options forwarded to the MapLibre ``GlobeControl``
+        constructor.
+    """
+    return {"type": "globe", "position": position, "options": options}
+
+
+def terrain_control(position: str = "top-right", **options) -> dict:
+    """Create a MapLibre ``TerrainControl`` spec (3-D terrain toggle).
+
+    Requires MapLibre GL JS >= 5.0 and a terrain source in the style.
+
+    Parameters
+    ----------
+    position
+        Control position (default ``"top-right"``).
+    **options
+        Control options, e.g. ``source`` (terrain source id),
+        ``exaggeration`` (height multiplier).
+    """
+    return {"type": "terrain", "position": position, "options": options}
 
 
 # ---------------------------------------------------------------------------

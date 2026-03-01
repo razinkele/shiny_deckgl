@@ -49,6 +49,16 @@ from .components import (
     timeline_widget,
     geocoder_widget,
     theme_widget,
+    # Experimental widget helpers (v9.2+)
+    context_menu_widget,
+    info_widget,
+    splitter_widget,
+    stats_widget,
+    view_selector_widget,
+    # MapLibre control helpers
+    geolocate_control,
+    globe_control,
+    terrain_control,
     # Transition helper (v0.8.0)
     transition,
     # Control constants (v0.2.0)
@@ -116,6 +126,14 @@ __all__ = [
     "timeline_widget",
     "geocoder_widget",
     "theme_widget",
+    "context_menu_widget",
+    "info_widget",
+    "splitter_widget",
+    "stats_widget",
+    "view_selector_widget",
+    "geolocate_control",
+    "globe_control",
+    "terrain_control",
     "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",

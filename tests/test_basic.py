@@ -59,6 +59,16 @@ from shiny_deckgl.components import (
     timeline_widget,
     geocoder_widget,
     theme_widget,
+    # v9.2 experimental widgets
+    context_menu_widget,
+    info_widget,
+    splitter_widget,
+    stats_widget,
+    view_selector_widget,
+    # MapLibre control helpers
+    geolocate_control,
+    globe_control,
+    terrain_control,
     # v0.8.0 transition
     transition,
 )
@@ -92,6 +102,9 @@ def test_public_api_exports():
         "scale_widget", "gimbal_widget", "reset_view_widget",
         "screenshot_widget", "fps_widget", "loading_widget",
         "timeline_widget", "geocoder_widget", "theme_widget",
+        "context_menu_widget", "info_widget", "splitter_widget",
+        "stats_widget", "view_selector_widget",
+        "geolocate_control", "globe_control", "terrain_control",
         "transition",
         "__version__",
     }
@@ -140,7 +153,7 @@ def test_app_returns_shiny_app():
 
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
-    assert "deck.gl@9.1.4" in html
+    assert "deck.gl@9.2.10" in html
     assert "maplibre-gl@5.3.1" in html
 
 
@@ -487,7 +500,7 @@ class TestToHtml:
         html = w.to_html(layers)
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
-        assert "deck.gl@9.1.4" in html
+        assert "deck.gl@9.2.10" in html
         assert "maplibre-gl@5.3.1" in html
 
     def test_contains_layer_data(self):
@@ -3393,7 +3406,7 @@ class TestFullscreenWidget:
 class TestScaleWidget:
     def test_class_and_placement(self):
         w = scale_widget()
-        assert w["@@widgetClass"] == "ScaleWidget"
+        assert w["@@widgetClass"] == "_ScaleWidget"
         assert w["placement"] == "bottom-left"
 
 
@@ -3421,14 +3434,14 @@ class TestScreenshotWidget:
 class TestFpsWidget:
     def test_class_and_placement(self):
         w = fps_widget()
-        assert w["@@widgetClass"] == "FpsWidget"
+        assert w["@@widgetClass"] == "_FpsWidget"
         assert w["placement"] == "top-left"
 
 
 class TestLoadingWidget:
     def test_class_no_placement(self):
         w = loading_widget()
-        assert w["@@widgetClass"] == "LoadingWidget"
+        assert w["@@widgetClass"] == "_LoadingWidget"
         assert "placement" not in w
 
     def test_extra_kwargs(self):
@@ -3439,21 +3452,21 @@ class TestLoadingWidget:
 class TestTimelineWidget:
     def test_class_and_placement(self):
         w = timeline_widget()
-        assert w["@@widgetClass"] == "TimelineWidget"
+        assert w["@@widgetClass"] == "_TimelineWidget"
         assert w["placement"] == "bottom-left"
 
 
 class TestGeocoderWidget:
     def test_class_and_placement(self):
         w = geocoder_widget()
-        assert w["@@widgetClass"] == "GeocoderWidget"
+        assert w["@@widgetClass"] == "_GeocoderWidget"
         assert w["placement"] == "top-left"
 
 
 class TestThemeWidget:
     def test_class_no_placement(self):
         w = theme_widget()
-        assert w["@@widgetClass"] == "ThemeWidget"
+        assert w["@@widgetClass"] == "_ThemeWidget"
         assert "placement" not in w
 
 
@@ -3515,7 +3528,7 @@ class TestUpdateWithWidgets:
         asyncio.run(w.update(fake, [], widgets=widgets))
         handler, payload = fake.messages[0]
         assert handler == "deck_update"
-        assert payload["widgets"][0]["@@widgetClass"] == "ScaleWidget"
+        assert payload["widgets"][0]["@@widgetClass"] == "_ScaleWidget"
         assert payload["widgets"][1]["@@widgetClass"] == "FullscreenWidget"
 
     def test_no_widgets_key_when_none(self):
@@ -3629,3 +3642,135 @@ class TestCdnWidgets:
         w = MapWidget("cdn1")
         html = w.to_html([])
         assert "@deck.gl/widgets" in html
+
+
+# ---------------------------------------------------------------------------
+# Experimental deck.gl widgets (v9.2+)
+# ---------------------------------------------------------------------------
+
+class TestContextMenuWidget:
+    def test_class_no_placement(self):
+        w = context_menu_widget()
+        assert w["@@widgetClass"] == "_ContextMenuWidget"
+        assert "placement" not in w
+
+    def test_extra_kwargs(self):
+        w = context_menu_widget(items=[{"label": "Delete"}])
+        assert w["items"] == [{"label": "Delete"}]
+
+
+class TestInfoWidget:
+    def test_class_and_placement(self):
+        w = info_widget()
+        assert w["@@widgetClass"] == "_InfoWidget"
+        assert w["placement"] == "top-left"
+
+    def test_custom_placement(self):
+        w = info_widget(placement="bottom-right")
+        assert w["placement"] == "bottom-right"
+
+    def test_extra_kwargs(self):
+        w = info_widget(text="Hello", visible=True)
+        assert w["text"] == "Hello"
+        assert w["visible"] is True
+
+
+class TestSplitterWidget:
+    def test_class_no_placement(self):
+        w = splitter_widget()
+        assert w["@@widgetClass"] == "_SplitterWidget"
+        assert "placement" not in w
+
+    def test_extra_kwargs(self):
+        w = splitter_widget(orientation="vertical", initialSplit=0.5)
+        assert w["orientation"] == "vertical"
+        assert w["initialSplit"] == 0.5
+
+
+class TestStatsWidget:
+    def test_class_and_placement(self):
+        w = stats_widget()
+        assert w["@@widgetClass"] == "_StatsWidget"
+        assert w["placement"] == "top-left"
+
+    def test_custom_placement(self):
+        w = stats_widget(placement="bottom-left")
+        assert w["placement"] == "bottom-left"
+
+    def test_extra_kwargs(self):
+        w = stats_widget(framesPerUpdate=60, title="GPU Stats")
+        assert w["framesPerUpdate"] == 60
+        assert w["title"] == "GPU Stats"
+
+
+class TestViewSelectorWidget:
+    def test_class_and_placement(self):
+        w = view_selector_widget()
+        assert w["@@widgetClass"] == "_ViewSelectorWidget"
+        assert w["placement"] == "top-left"
+
+    def test_custom_placement(self):
+        w = view_selector_widget(placement="top-right")
+        assert w["placement"] == "top-right"
+
+    def test_extra_kwargs(self):
+        w = view_selector_widget(initialViewMode="globe")
+        assert w["initialViewMode"] == "globe"
+
+
+# ---------------------------------------------------------------------------
+# MapLibre control helpers
+# ---------------------------------------------------------------------------
+
+class TestGeolocateControl:
+    def test_defaults(self):
+        c = geolocate_control()
+        assert c["type"] == "geolocate"
+        assert c["position"] == "top-right"
+        assert c["options"] == {}
+
+    def test_custom_position(self):
+        c = geolocate_control(position="bottom-left")
+        assert c["position"] == "bottom-left"
+
+    def test_options_forwarded(self):
+        c = geolocate_control(trackUserLocation=True, showAccuracyCircle=False)
+        assert c["options"]["trackUserLocation"] is True
+        assert c["options"]["showAccuracyCircle"] is False
+
+
+class TestGlobeControl:
+    def test_defaults(self):
+        c = globe_control()
+        assert c["type"] == "globe"
+        assert c["position"] == "top-right"
+        assert c["options"] == {}
+
+    def test_custom_position(self):
+        c = globe_control(position="top-left")
+        assert c["position"] == "top-left"
+
+
+class TestTerrainControl:
+    def test_defaults(self):
+        c = terrain_control()
+        assert c["type"] == "terrain"
+        assert c["position"] == "top-right"
+        assert c["options"] == {}
+
+    def test_options_forwarded(self):
+        c = terrain_control(source="terrain-dem", exaggeration=1.5)
+        assert c["options"]["source"] == "terrain-dem"
+        assert c["options"]["exaggeration"] == 1.5
+
+
+# ---------------------------------------------------------------------------
+# CDN version bump verification
+# ---------------------------------------------------------------------------
+
+class TestCdnVersion:
+    def test_deckgl_version_9_2(self):
+        from shiny_deckgl._cdn import DECKGL_VERSION
+        major, minor = DECKGL_VERSION.split(".")[:2]
+        assert int(major) >= 9
+        assert int(minor) >= 2, "deck.gl >= 9.2 required for experimental widgets"

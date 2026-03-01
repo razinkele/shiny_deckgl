@@ -1,6 +1,6 @@
 """CDN URL constants — single source of truth for all external assets."""
 
-DECKGL_VERSION = "9.1.4"
+DECKGL_VERSION = "9.2.10"
 MAPLIBRE_VERSION = "5.3.1"
 MAPBOX_DRAW_VERSION = "1.4.3"
 

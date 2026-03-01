@@ -64,6 +64,21 @@
         return null;
       case 'attribution':
         return new maplibregl.AttributionControl(opts);
+      case 'legend':
+        if (typeof MaplibreLegendControl !== 'undefined' &&
+            MaplibreLegendControl.MaplibreLegendControl) {
+          var targets = opts.targets || {};
+          delete opts.targets;
+          return new MaplibreLegendControl.MaplibreLegendControl(targets, opts);
+        }
+        console.warn('[shiny_deckgl] MaplibreLegendControl not loaded. Include the @watergis/maplibre-gl-legend CDN script.');
+        return null;
+      case 'opacity':
+        if (typeof OpacityControl !== 'undefined') {
+          return new OpacityControl(opts);
+        }
+        console.warn('[shiny_deckgl] OpacityControl not loaded. Include the maplibre-gl-opacity CDN script.');
+        return null;
       default:
         console.warn('[shiny_deckgl] Unknown control type: ' + type);
         return null;

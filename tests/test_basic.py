@@ -69,6 +69,9 @@ from shiny_deckgl.components import (
     geolocate_control,
     globe_control,
     terrain_control,
+    # Third-party plugin controls
+    legend_control,
+    opacity_control,
     # v0.8.0 transition
     transition,
 )
@@ -995,6 +998,104 @@ class TestControlsConstructor:
         tag = w.ui()
         html_str = str(tag)
         assert "data-controls" in html_str
+
+
+# ---------------------------------------------------------------------------
+# 1.2b legend_control() and opacity_control() helpers
+# ---------------------------------------------------------------------------
+
+class TestLegendControl:
+    def test_legend_control_defaults(self):
+        ctrl = legend_control()
+        assert ctrl["type"] == "legend"
+        assert ctrl["position"] == "bottom-left"
+        opts = ctrl["options"]
+        assert opts["showDefault"] is False
+        assert opts["showCheckbox"] is True
+        assert opts["onlyRendered"] is True
+        assert opts["reverseOrder"] is False
+
+    def test_legend_control_with_targets(self):
+        targets = {"water": "Water bodies", "roads": "Roads"}
+        ctrl = legend_control(targets=targets, position="top-right")
+        assert ctrl["position"] == "top-right"
+        assert ctrl["options"]["targets"] == targets
+
+    def test_legend_control_with_title(self):
+        ctrl = legend_control(title="My Legend")
+        assert ctrl["options"]["title"] == "My Legend"
+
+    def test_legend_control_no_title_by_default(self):
+        ctrl = legend_control()
+        assert "title" not in ctrl["options"]
+
+    def test_legend_control_show_default_true(self):
+        ctrl = legend_control(show_default=True)
+        assert ctrl["options"]["showDefault"] is True
+
+    def test_legend_control_in_constructor(self):
+        ctrl = legend_control(targets={"water": "Water"}, position="bottom-right")
+        w = MapWidget("lc1", controls=[ctrl])
+        assert w.controls[0]["type"] == "legend"
+
+    def test_add_legend_control_runtime(self):
+        w = MapWidget("lc2")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "legend", "bottom-left",
+                                   options={"targets": {"water": "Water"}}))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_control"
+        assert msg[1]["controlType"] == "legend"
+        assert msg[1]["options"]["targets"] == {"water": "Water"}
+
+
+class TestOpacityControl:
+    def test_opacity_control_defaults(self):
+        ctrl = opacity_control()
+        assert ctrl["type"] == "opacity"
+        assert ctrl["position"] == "top-left"
+        opts = ctrl["options"]
+        assert opts["baseLayers"] == {}
+        assert opts["overLayers"] == {}
+        assert opts["opacityControl"] is True
+
+    def test_opacity_control_with_layers(self):
+        ctrl = opacity_control(
+            base_layers={"osm": "OSM", "sat": "Satellite"},
+            over_layers={"heat": "Heatmap"},
+        )
+        assert ctrl["options"]["baseLayers"] == {"osm": "OSM", "sat": "Satellite"}
+        assert ctrl["options"]["overLayers"] == {"heat": "Heatmap"}
+
+    def test_opacity_control_disabled_slider(self):
+        ctrl = opacity_control(opacity_control_enabled=False)
+        assert ctrl["options"]["opacityControl"] is False
+
+    def test_opacity_control_custom_position(self):
+        ctrl = opacity_control(position="top-right")
+        assert ctrl["position"] == "top-right"
+
+    def test_opacity_control_in_constructor(self):
+        ctrl = opacity_control(
+            base_layers={"osm": "OSM"},
+            over_layers={"heat": "Heatmap"},
+        )
+        w = MapWidget("oc1", controls=[ctrl])
+        assert w.controls[0]["type"] == "opacity"
+
+    def test_add_opacity_control_runtime(self):
+        w = MapWidget("oc2")
+        fake = _FakeSession()
+        asyncio.run(w.add_control(fake, "opacity", "top-left",
+                                   options={"baseLayers": {"osm": "OSM"}}))
+        msg = fake.messages[0]
+        assert msg[0] == "deck_add_control"
+        assert msg[1]["controlType"] == "opacity"
+
+    def test_control_types_include_new_types(self):
+        """CONTROL_TYPES should include the new plugin-based types."""
+        assert "legend" in CONTROL_TYPES
+        assert "opacity" in CONTROL_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -3774,3 +3875,34 @@ class TestCdnVersion:
         major, minor = DECKGL_VERSION.split(".")[:2]
         assert int(major) >= 9
         assert int(minor) >= 2, "deck.gl >= 9.2 required for experimental widgets"
+
+
+# ---------------------------------------------------------------------------
+# CDN constants for third-party plugin controls
+# ---------------------------------------------------------------------------
+
+class TestCdnPlugins:
+    def test_legend_cdn_urls(self):
+        from shiny_deckgl._cdn import (
+            MAPLIBRE_LEGEND_JS, MAPLIBRE_LEGEND_CSS, MAPLIBRE_LEGEND_VERSION,
+        )
+        assert "maplibre-gl-legend" in MAPLIBRE_LEGEND_JS
+        assert MAPLIBRE_LEGEND_VERSION in MAPLIBRE_LEGEND_JS
+        assert MAPLIBRE_LEGEND_JS.endswith(".js")
+        assert "maplibre-gl-legend" in MAPLIBRE_LEGEND_CSS
+        assert MAPLIBRE_LEGEND_CSS.endswith(".css")
+
+    def test_opacity_cdn_urls(self):
+        from shiny_deckgl._cdn import (
+            MAPLIBRE_OPACITY_JS, MAPLIBRE_OPACITY_CSS, MAPLIBRE_OPACITY_VERSION,
+        )
+        assert "maplibre-gl-opacity" in MAPLIBRE_OPACITY_JS
+        assert MAPLIBRE_OPACITY_VERSION in MAPLIBRE_OPACITY_JS
+        assert MAPLIBRE_OPACITY_JS.endswith(".js")
+        assert "maplibre-gl-opacity" in MAPLIBRE_OPACITY_CSS
+        assert MAPLIBRE_OPACITY_CSS.endswith(".css")
+
+    def test_cdn_head_fragment_includes_plugins(self):
+        from shiny_deckgl._cdn import CDN_HEAD_FRAGMENT
+        assert "maplibre-gl-legend" in CDN_HEAD_FRAGMENT
+        assert "maplibre-gl-opacity" in CDN_HEAD_FRAGMENT

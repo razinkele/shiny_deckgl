@@ -59,6 +59,9 @@ from .components import (
     geolocate_control,
     globe_control,
     terrain_control,
+    # Third-party MapLibre plugin controls
+    legend_control,
+    opacity_control,
     # Transition helper (v0.8.0)
     transition,
     # Control constants (v0.2.0)
@@ -134,6 +137,8 @@ __all__ = [
     "geolocate_control",
     "globe_control",
     "terrain_control",
+    "legend_control",
+    "opacity_control",
     "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",

@@ -20,6 +20,10 @@ from ._cdn import (
     MAPLIBRE_CSS,
     MAPBOX_DRAW_JS,
     MAPBOX_DRAW_CSS,
+    MAPLIBRE_LEGEND_JS,
+    MAPLIBRE_LEGEND_CSS,
+    MAPLIBRE_OPACITY_JS,
+    MAPLIBRE_OPACITY_CSS,
 )
 
 # ---------------------------------------------------------------------------
@@ -489,6 +493,88 @@ def terrain_control(position: str = "top-right", **options) -> dict:
     return {"type": "terrain", "position": position, "options": options}
 
 
+def legend_control(
+    targets: dict[str, str] | None = None,
+    position: str = "bottom-left",
+    *,
+    show_default: bool = False,
+    show_checkbox: bool = True,
+    only_rendered: bool = True,
+    reverse_order: bool = False,
+    title: str | None = None,
+) -> dict:
+    """Create a legend control spec (``@watergis/maplibre-gl-legend``).
+
+    Displays a collapsible legend panel generated from the MapLibre style.
+    Layer visibility can optionally be toggled with checkboxes.
+
+    Parameters
+    ----------
+    targets
+        Dict mapping MapLibre layer ids to display labels, e.g.
+        ``{"water": "Water bodies", "roads": "Roads"}``.  When ``None``
+        (default), all layers are shown.
+    position
+        Control position (default ``"bottom-left"``).
+    show_default
+        Whether the legend panel is visible by default (``False``).
+    show_checkbox
+        Whether to show visibility checkboxes (``True``).
+    only_rendered
+        Show only layers that are currently rendered (``True``).
+    reverse_order
+        Reverse the layer order in the legend (``False``).
+    title
+        Legend panel title text.  ``None`` uses the plugin default.
+    """
+    opts: dict = {
+        "showDefault": show_default,
+        "showCheckbox": show_checkbox,
+        "onlyRendered": only_rendered,
+        "reverseOrder": reverse_order,
+    }
+    if targets is not None:
+        opts["targets"] = targets
+    if title is not None:
+        opts["title"] = title
+    return {"type": "legend", "position": position, "options": opts}
+
+
+def opacity_control(
+    position: str = "top-left",
+    *,
+    base_layers: dict[str, str] | None = None,
+    over_layers: dict[str, str] | None = None,
+    opacity_control_enabled: bool = True,
+) -> dict:
+    """Create an opacity / layer-switcher control (``maplibre-gl-opacity``).
+
+    Displays radio buttons for base layers and checkboxes with opacity
+    sliders for overlay layers.
+
+    Parameters
+    ----------
+    position
+        Control position (default ``"top-left"``).
+    base_layers
+        Dict mapping MapLibre layer ids to display labels for mutually
+        exclusive base layers (radio buttons), e.g.
+        ``{"osm": "OpenStreetMap", "satellite": "Satellite"}``.
+    over_layers
+        Dict mapping MapLibre layer ids to display labels for overlay
+        layers (checkboxes + opacity slider), e.g.
+        ``{"heatmap": "Heatmap", "contours": "Contours"}``.
+    opacity_control_enabled
+        Whether to show the opacity slider for overlay layers (``True``).
+    """
+    opts: dict = {
+        "baseLayers": base_layers or {},
+        "overLayers": over_layers or {},
+        "opacityControl": opacity_control_enabled,
+    }
+    return {"type": "opacity", "position": position, "options": opts}
+
+
 # ---------------------------------------------------------------------------
 # Transition helper (v0.8.0)
 # ---------------------------------------------------------------------------
@@ -533,6 +619,7 @@ def transition(duration: int = 1000, easing: str | None = None,
 CONTROL_TYPES = {
     "navigation", "scale", "fullscreen", "geolocate",
     "globe", "terrain", "attribution",
+    "legend", "opacity",
 }
 CONTROL_POSITIONS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 
@@ -1002,7 +1089,8 @@ class MapWidget:
             The active Shiny ``Session``.
         control_type
             One of: ``"navigation"``, ``"scale"``, ``"fullscreen"``,
-            ``"geolocate"``, ``"globe"``, ``"terrain"``, ``"attribution"``.
+            ``"geolocate"``, ``"globe"``, ``"terrain"``, ``"attribution"``,
+            ``"legend"``, ``"opacity"``.
         position
             Corner position: ``"top-left"``, ``"top-right"`` (default),
             ``"bottom-left"``, ``"bottom-right"``.
@@ -2140,6 +2228,10 @@ class MapWidget:
 <link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
 <link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>
+<script src="{MAPLIBRE_LEGEND_JS}"></script>
+<link rel="stylesheet" href="{MAPLIBRE_LEGEND_CSS}"/>
+<script src="{MAPLIBRE_OPACITY_JS}"></script>
+<link rel="stylesheet" href="{MAPLIBRE_OPACITY_CSS}"/>
 <style>{css_src}</style>
 </head>
 <body>

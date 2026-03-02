@@ -3333,6 +3333,16 @@ class TestExtensionConstructorOptions:
 class TestExtensionHelpers:
     """Tests for the Python extension convenience helpers (v1.0.0)."""
 
+    # --- Extension type alias ---
+
+    def test_extension_type_importable(self):
+        from shiny_deckgl.extensions import Extension
+        assert Extension is not None
+
+    def test_extension_in_extensions_all(self):
+        from shiny_deckgl.extensions import __all__ as ext_all
+        assert "Extension" in ext_all
+
     # --- return-type tests ---
 
     def test_brushing_returns_string(self):
@@ -4527,12 +4537,13 @@ class TestWMSLayer:
 
     def test_defaults(self):
         url = "https://example.com/wms"
-        spec = wms_layer("w1", data=url)
+        spec = wms_layer("w1", data=url, layers=["bathymetry"])
         assert spec["type"] == "WMSLayer"
         assert spec["id"] == "w1"
         assert spec["data"] == url
         assert spec["srs"] == "EPSG:4326"
         assert spec["format"] == "image/png"
+        assert spec["layers"] == ["bathymetry"]
 
     def test_kwargs_override(self):
         spec = wms_layer(
@@ -4541,6 +4552,12 @@ class TestWMSLayer:
         )
         assert spec["srs"] == "EPSG:3857"
         assert spec["layers"] == "bathymetry"
+
+    def test_missing_layers_raises(self):
+        """Omitting the required 'layers' kwarg must raise ValueError."""
+        import pytest
+        with pytest.raises(ValueError, match="layers"):
+            wms_layer("w3", data="https://example.com/wms")
 
 
 # ===========================================================================

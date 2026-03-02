@@ -5,6 +5,7 @@ Baltic Sea ports, shipping routes, MPA GeoJSON, and WMS layer definitions.
 
 from __future__ import annotations
 
+import functools
 import json
 import random
 from pathlib import Path
@@ -126,19 +127,20 @@ ROUTES = [
 # ---------------------------------------------------------------------------
 
 _MPA_PATH = Path(__file__).parent / "data" / "helcom_mpa.geojson"
-_MPA_GEOJSON_CACHE: dict | None = None
 
 
+@functools.lru_cache(maxsize=1)
 def _load_mpa_geojson() -> dict:
-    """Lazy-load and cache the HELCOM MPA GeoJSON (avoids import-time I/O)."""
-    global _MPA_GEOJSON_CACHE
-    if _MPA_GEOJSON_CACHE is None:
-        with open(_MPA_PATH) as f:
-            _MPA_GEOJSON_CACHE = json.load(f)
-        # Normalise property keys to lower-case for tooltip consistency
-        for feat in _MPA_GEOJSON_CACHE["features"]:
-            feat["properties"] = {k.lower(): v for k, v in feat["properties"].items()}
-    return _MPA_GEOJSON_CACHE
+    """Lazy-load and cache the HELCOM MPA GeoJSON (avoids import-time I/O).
+
+    Uses ``lru_cache`` for thread-safe, one-shot caching.
+    """
+    with open(_MPA_PATH) as f:
+        data = json.load(f)
+    # Normalise property keys to lower-case for tooltip consistency
+    for feat in data["features"]:
+        feat["properties"] = {k.lower(): v for k, v in feat["properties"].items()}
+    return data
 
 
 def __getattr__(name: str):
@@ -609,6 +611,7 @@ def make_seal_trips(
         ``color``, and ``seal_id``.
     """
     import math
+    from .ibm import format_trips
 
     rng = random.Random(seed)
     trips: list[dict] = []
@@ -666,8 +669,6 @@ def make_seal_trips(
         full_path = outbound + inbound + [[round(start_lon, 5), round(start_lat, 5)]]
 
         # Use format_trips() to assign timestamps and build the dict
-        from .ibm import format_trips
-
         formatted = format_trips(
             [full_path],
             loop_length=loop_length,

@@ -627,8 +627,13 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
         Extra properties: ``layers`` (required WMS LAYERS parameter),
         ``srs``, ``format``, ``transparent``, etc.
     """
+    if "layers" not in kwargs:
+        raise ValueError(
+            "wms_layer() requires a 'layers' keyword argument "
+            "specifying the WMS LAYERS to request, e.g. "
+            "layers=['emodnet:mean_atlas_land']"
+        )
     defaults: dict[str, Any] = {
-        "layers": [],
         "srs": "EPSG:4326",
         "format": "image/png",
         "transparent": True,

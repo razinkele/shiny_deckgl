@@ -29,7 +29,14 @@ All helpers return either a **string** (no-arg extension) or a
 
 from __future__ import annotations
 
+from typing import Union
+
+#: Type returned by all extension helpers — either a bare class-name
+#: string (no-arg extensions) or a ``[name, options]`` pair.
+Extension = Union[str, list[Union[str, dict]]]
+
 __all__ = [
+    "Extension",
     "brushing_extension",
     "collision_filter_extension",
     "data_filter_extension",
@@ -41,7 +48,7 @@ __all__ = [
 ]
 
 
-def brushing_extension() -> str:
+def brushing_extension() -> Extension:
     """``BrushingExtension`` — highlight features near the cursor.
 
     Layer props enabled:
@@ -53,7 +60,7 @@ def brushing_extension() -> str:
     return "BrushingExtension"
 
 
-def collision_filter_extension() -> str:
+def collision_filter_extension() -> Extension:
     """``CollisionFilterExtension`` — hide overlapping labels/icons.
 
     Layer props enabled:
@@ -66,7 +73,7 @@ def collision_filter_extension() -> str:
     return "CollisionFilterExtension"
 
 
-def data_filter_extension(filter_size: int = 1) -> list:
+def data_filter_extension(filter_size: int = 1) -> Extension:
     """``DataFilterExtension`` — GPU-accelerated data filtering.
 
     Parameters
@@ -86,7 +93,7 @@ def data_filter_extension(filter_size: int = 1) -> list:
     return ["DataFilterExtension", {"filterSize": filter_size}]
 
 
-def mask_extension() -> str:
+def mask_extension() -> Extension:
     """``MaskExtension`` — clip layer rendering to a GeoJSON mask.
 
     Layer props enabled:
@@ -98,7 +105,7 @@ def mask_extension() -> str:
     return "MaskExtension"
 
 
-def clip_extension() -> str:
+def clip_extension() -> Extension:
     """``ClipExtension`` — clip layer rendering to the current view bounds.
 
     Useful for layers whose data extends far beyond the viewport
@@ -107,7 +114,7 @@ def clip_extension() -> str:
     return "ClipExtension"
 
 
-def terrain_extension() -> str:
+def terrain_extension() -> Extension:
     """``TerrainExtension`` — drape layers onto a 3D terrain surface.
 
     Requires a terrain source to be active on the map.
@@ -119,7 +126,7 @@ def terrain_extension() -> str:
     return "TerrainExtension"
 
 
-def fill_style_extension(pattern: bool = True) -> list:
+def fill_style_extension(pattern: bool = True) -> Extension:
     """``FillStyleExtension`` — apply fill patterns to polygon layers.
 
     Parameters
@@ -139,7 +146,7 @@ def fill_style_extension(pattern: bool = True) -> list:
     return ["FillStyleExtension", {"pattern": pattern}]
 
 
-def path_style_extension(dash: bool = False, high_precision: bool = False) -> list:
+def path_style_extension(dash: bool = False, high_precision: bool = False) -> Extension:
     """``PathStyleExtension`` — dashed/offset path rendering.
 
     Parameters

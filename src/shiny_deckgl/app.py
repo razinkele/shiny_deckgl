@@ -21,6 +21,9 @@ Tabs:
                          GridLayer, combined overlays with speed/trail controls
   9. v1.0 Features     – BrushingExtension, DataFilterExtension, MapLibre
                          GeoJSON clustering, cooperative gestures
+ 10. Extensions        – BrushingExtension, DataFilterExtension demos
+ 11. 3-D Column        – 3-D column map with terrain, lighting, and
+                         orthographic/first-person views
  12. Seal IBM          – Individual-Based Model of Baltic seal movement,
                          animated foraging trips from haul-out colonies
 """

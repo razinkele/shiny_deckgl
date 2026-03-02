@@ -185,7 +185,7 @@ __all__ = [
     "terrain_extension",
     "fill_style_extension",
     "path_style_extension",
-    # IBM visual assets & helpers (v1.1.0)
+    # IBM visual assets & helpers
     "SPECIES_COLORS",
     "ICON_ATLAS",
     "ICON_MAPPING",

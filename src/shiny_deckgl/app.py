@@ -1025,8 +1025,13 @@ app_ui = ui.page_navbar(
                     ui.accordion_panel(
                         "\U0001F4CD Overlays",
                         sidebar_hint(
-                            "Toggle haul-out colony markers and "
-                            "estimated foraging-range ellipses."
+                            "Toggle haul-out colony markers, "
+                            "estimated foraging-range ellipses, "
+                            "and EMODnet bathymetry underlay."
+                        ),
+                        ui.input_switch(
+                            "seal_bathymetry", "EMODnet bathymetry",
+                            value=True,
                         ),
                         ui.input_switch(
                             "seal_haulouts", "Show haul-out sites",
@@ -2507,6 +2512,7 @@ def server(input, output, session: Session):
         input.seal_species,
         seal_anim.speed,
         seal_anim.trail,
+        input.seal_bathymetry,
         input.seal_haulouts,
         input.seal_foraging,
     )
@@ -2514,6 +2520,18 @@ def server(input, output, session: Session):
         selected = set(input.seal_species())
         trips = _seal_trips()
         layers: list[dict] = []
+
+        # EMODnet bathymetry WMS underlay
+        if input.seal_bathymetry():
+            wms_url = (
+                f"{EMODNET_WMS_URL}?"
+                "SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
+                "&FORMAT=image/png&TRANSPARENT=true"
+                "&LAYERS=emodnet:mean_atlas_land"
+                "&CRS=EPSG:3857&WIDTH=256&HEIGHT=256"
+                "&BBOX={{bbox-epsg-3857}}"
+            )
+            layers.append(tile_layer("seal-bathymetry-wms", wms_url))
 
         # Foraging area ellipses (below tracks)
         if input.seal_foraging():

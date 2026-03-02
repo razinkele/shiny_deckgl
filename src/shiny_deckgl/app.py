@@ -21,6 +21,8 @@ Tabs:
                          GridLayer, combined overlays with speed/trail controls
   9. v1.0 Features     – BrushingExtension, DataFilterExtension, MapLibre
                          GeoJSON clustering, cooperative gestures
+ 12. Seal IBM          – Individual-Based Model of Baltic seal movement,
+                         animated foraging trips from haul-out colonies
 """
 
 from __future__ import annotations
@@ -90,13 +92,16 @@ from ._demo_data import (
     make_port_data_simple,
     make_port_geojson,
     make_trips_data,
-    SAMPLE_STUDY_AREA,
     make_bathymetry_grid,
     make_fish_observations,
-    make_bathymetry_geojson,
     make_3d_arc_data,
     BALTIC_VIEW_3D,
-    LIGHTING_EFFECT_3D,
+    make_seal_trips,
+    make_seal_haulout_data,
+    make_seal_foraging_areas,
+    SEAL_SPECIES_COLORS,
+    SEAL_ICON_ATLAS,
+    SEAL_ICON_MAPPING,
 )
 from ._demo_css import MARINE_CSS, sidebar_hint
 
@@ -104,7 +109,6 @@ from .components import CARTO_POSITRON, PALETTE_OCEAN
 from .extensions import (
     brushing_extension,
     data_filter_extension,
-    collision_filter_extension,
 )
 from ._version import __version__ as SHINY_DECKGL_VERSION
 from ._cdn import (
@@ -209,15 +213,23 @@ anim_widget = MapWidget(
     animate=True,
 )
 
-# Tab 9 — v1.0.0 Features (Extensions, Clusters, Cooperative Gestures)
-v1_widget = MapWidget(
-    "v1_map",
-    tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
+# Tab 9 — v1.0.0 deck.gl Extensions
+v1_deck_widget = MapWidget(
+    "v1_deck_map",
+    tooltip={"html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt", "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
     controls=[],
 )
 
-# Tab 10 — 3D Visualization
+# Tab 10 — v1.0.0 MapLibre Features (Clusters, Cooperative Gestures)
+v1_ml_widget = MapWidget(
+    "v1_ml_map",
+    tooltip={"html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt", "style": TOOLTIP_STYLE},
+    view_state=BALTIC_VIEW,
+    controls=[],
+)
+
+# Tab 11 — 3D Visualization
 three_d_widget = MapWidget(
     "three_d_map",
     tooltip={
@@ -229,6 +241,21 @@ three_d_widget = MapWidget(
         "style": TOOLTIP_STYLE,
     },
     view_state=BALTIC_VIEW_3D,
+)
+
+# Tab 12 — Seal IBM (Individual-Based Model)
+seal_widget = MapWidget(
+    "seal_map",
+    tooltip={
+        "html": (
+            "<b>{name}</b><br/>"
+            "Species: {species}<br/>"
+            "Haul-out: {haulout}"
+        ),
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW,
+    animate=True,
 )
 
 
@@ -244,6 +271,7 @@ app_ui = ui.page_navbar(
         "\U0001F30A deck.gl Layers",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\u2693 Basemap",
@@ -317,6 +345,7 @@ app_ui = ui.page_navbar(
         "\U0001F5FA MapLibre Controls",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\u2693 Basemap",
@@ -397,6 +426,7 @@ app_ui = ui.page_navbar(
         "\U0001F4E1 Events & Tooltips",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4AC Tooltip Template",
@@ -481,6 +511,7 @@ app_ui = ui.page_navbar(
         "\u2699 Advanced",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4A1 Lighting Effects",
@@ -571,6 +602,7 @@ app_ui = ui.page_navbar(
         "\U0001F4E6 Export",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4E4 Export Actions",
@@ -607,6 +639,7 @@ app_ui = ui.page_navbar(
         "\u270F\uFE0F Drawing",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\u270F\uFE0F Drawing Controls",
@@ -676,6 +709,7 @@ app_ui = ui.page_navbar(
         "\U0001F6A2 Animation",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F6A2 TripsLayer Animation",
@@ -694,7 +728,7 @@ app_ui = ui.page_navbar(
                         ),
                         ui.input_slider(
                             "anim_speed", "Animation speed",
-                            min=0.5, max=5.0, value=1.0, step=0.25,
+                            min=0.1, max=20.0, value=1.0, step=0.1,
                         ),
                     ),
                     ui.accordion_panel(
@@ -731,19 +765,19 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 9: v1.0.0 Features -------------------------------------------
+    # -- Tab 9: v1.0 deck.gl Extensions -----------------------------------
     ui.nav_panel(
-        "\u2728 v1.0 Features",
+        "\u2728 v1.0 Extensions",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
-                        "\U0001F9E9 Extensions",
+                        "\U0001F9E9 BrushingExtension",
                         sidebar_hint(
-                            "Deck.gl layer extensions: BrushingExtension "
-                            "highlights features near the cursor. "
-                            "DataFilterExtension performs GPU-based numeric "
-                            "filtering."
+                            "Highlights features near the cursor. "
+                            "Move your mouse over the map to see the "
+                            "brushing radius in action."
                         ),
                         ui.input_switch(
                             "v1_brushing", "Enable brushing",
@@ -752,6 +786,14 @@ app_ui = ui.page_navbar(
                         ui.input_slider(
                             "v1_brush_radius", "Brush radius (m)",
                             min=5000, max=200000, value=50000, step=5000,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F50D DataFilterExtension",
+                        sidebar_hint(
+                            "GPU-based numeric filtering. Only ports "
+                            "within the cargo range are rendered \u2014 "
+                            "filtering happens entirely on the GPU."
                         ),
                         ui.input_switch(
                             "v1_data_filter", "Enable data filter",
@@ -762,15 +804,38 @@ app_ui = ui.page_navbar(
                             min=0, max=100, value=[10, 80], step=5,
                         ),
                     ),
+                    id="tab9_accordion",
+                    open=False,
+                    multiple=True,
+                ),
+                width=280,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\u2728 v1.0.0 deck.gl Extensions — Brushing & Data Filter"
+                ),
+                v1_deck_widget.ui(height="75vh"),
+            ),
+        ),
+    ),
+
+    # -- Tab 10: v1.0 MapLibre Features ------------------------------------
+    ui.nav_panel(
+        "\u2728 v1.0 Clusters",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
+                ui.accordion(
                     ui.accordion_panel(
                         "\U0001F4CD Clusters",
                         sidebar_hint(
                             "MapLibre GeoJSON clustering groups nearby points "
-                            "into circles. Click a cluster to zoom in."
+                            "into circles sized by point count. "
+                            "Click a cluster to zoom in and expand it."
                         ),
                         ui.input_switch(
                             "v1_show_clusters", "Show clusters",
-                            value=False,
+                            value=True,
                         ),
                         ui.input_slider(
                             "v1_cluster_radius", "Cluster radius (px)",
@@ -781,33 +846,35 @@ app_ui = ui.page_navbar(
                         "\U0001F91D Cooperative Gestures",
                         sidebar_hint(
                             "Require Ctrl+scroll to zoom the map. "
-                            "Useful in scrollable pages."
+                            "Useful when the map is embedded in a "
+                            "scrollable page."
                         ),
                         ui.input_switch(
                             "v1_cooperative", "Cooperative gestures",
                             value=False,
                         ),
                     ),
-                    id="tab9_accordion",
-                    open=False,
+                    id="tab10_accordion",
+                    open=["\U0001F4CD Clusters"],
                     multiple=True,
                 ),
                 width=280,
             ),
             ui.card(
                 ui.card_header(
-                    "\u2728 v1.0.0 Features — Extensions, Clusters & Gestures"
+                    "\u2728 v1.0.0 MapLibre Features — Clusters & Gestures"
                 ),
-                v1_widget.ui(height="75vh"),
+                v1_ml_widget.ui(height="75vh"),
             ),
         ),
     ),
 
-    # -- Tab 10: 3-D Visualization -----------------------------------------
+    # -- Tab 11: 3-D Visualization -----------------------------------------
     ui.nav_panel(
         "\U0001F30D 3D Visualisation",
         ui.layout_sidebar(
             ui.sidebar(
+                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F3D4 Bathymetry",
@@ -894,8 +961,8 @@ app_ui = ui.page_navbar(
                             min=-180, max=180, value=-15, step=5,
                         ),
                     ),
-                    id="tab10_accordion",
-                    open=["Bathymetry"],
+                    id="tab11_accordion",
+                    open=["\U0001F3D4 Bathymetry"],
                     multiple=True,
                 ),
                 width=300,
@@ -905,6 +972,101 @@ app_ui = ui.page_navbar(
                     "\U0001F30D 3-D Baltic Sea Visualisation"
                 ),
                 three_d_widget.ui(height="80vh"),
+            ),
+        ),
+    ),
+
+    # -- Tab 12: Seal IBM (Individual-Based Model) -------------------------
+    ui.nav_panel(
+        "\U0001F9AD Seal IBM",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.tags.small(
+                    "deck.gl + IBM", class_="badge text-bg-primary mb-2",
+                ),
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F9AD Species & Individuals",
+                        sidebar_hint(
+                            "Individual-Based Model of Baltic Sea seal "
+                            "movement. Seals depart from real haul-out "
+                            "colonies on correlated random-walk foraging "
+                            "trips and return to their colony."
+                        ),
+                        ui.input_slider(
+                            "seal_n_individuals", "Number of seals",
+                            min=5, max=1000, value=30, step=5,
+                        ),
+                        ui.input_checkbox_group(
+                            "seal_species", "Species to show",
+                            choices={
+                                "Grey seal": "\U0001F9AD Grey seal",
+                                "Ringed seal": "\U0001F535 Ringed seal",
+                                "Harbour seal": "\U0001F7E4 Harbour seal",
+                            },
+                            selected=[
+                                "Grey seal",
+                                "Ringed seal",
+                                "Harbour seal",
+                            ],
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\u23F1 Animation Controls",
+                        sidebar_hint(
+                            "Adjust animation speed and trail length for "
+                            "the seal movement tracks."
+                        ),
+                        ui.layout_columns(
+                            ui.input_action_button(
+                                "seal_play", "\u25B6 Play",
+                                class_="btn-sm btn-success",
+                            ),
+                            ui.input_action_button(
+                                "seal_pause", "\u23F8 Pause",
+                                class_="btn-sm btn-warning",
+                            ),
+                            ui.input_action_button(
+                                "seal_reset", "\u23F9 Reset",
+                                class_="btn-sm btn-danger",
+                            ),
+                            col_widths=(4, 4, 4),
+                        ),
+                        ui.input_slider(
+                            "seal_speed", "Animation speed",
+                            min=0.5, max=100.0, value=8.0, step=0.5,
+                        ),
+                        ui.input_slider(
+                            "seal_trail", "Trail length",
+                            min=20, max=400, value=180, step=10,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Overlays",
+                        sidebar_hint(
+                            "Toggle haul-out colony markers and "
+                            "estimated foraging-range ellipses."
+                        ),
+                        ui.input_switch(
+                            "seal_haulouts", "Show haul-out sites",
+                            value=False,
+                        ),
+                        ui.input_switch(
+                            "seal_foraging", "Show foraging areas",
+                            value=True,
+                        ),
+                    ),
+                    id="tab12_accordion",
+                    open=["\U0001F9AD Species & Individuals"],
+                    multiple=True,
+                ),
+                width=300,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\U0001F9AD Baltic Sea — Seal Movement (IBM Simulation)"
+                ),
+                seal_widget.ui(height="80vh"),
             ),
         ),
     ),
@@ -965,6 +1127,32 @@ def server(input, output, session: Session):
     _export_log: reactive.Value[str] = reactive.Value("")
     _advanced_log: reactive.Value[str] = reactive.Value("")
 
+    # -- Pre-computed static data (generated once per session) ----------
+    _arc_data = make_arc_data()
+    _heatmap_points = make_heatmap_points(300)
+    _path_data = make_path_data()
+    _port_data_simple = make_port_data_simple()
+    _cargo_values = [p["cargo_mt"] for p in PORTS]
+
+    # -- Shared helpers ---------------------------------------------------
+
+    def _make_lighting_effects(
+        ambient: float, point_intensity: float,
+    ) -> list[dict]:
+        """Build a standard Baltic-centered LightingEffect spec."""
+        return [{
+            "type": "LightingEffect",
+            "ambientLight": {
+                "color": [255, 255, 255],
+                "intensity": ambient,
+            },
+            "pointLights": [{
+                "color": [255, 255, 220],
+                "intensity": point_intensity,
+                "position": [19.5, 57.0, 80000],
+            }],
+        }]
+
     # =================================================================
     # Tab 1 — deck.gl Layers
     # =================================================================
@@ -973,13 +1161,12 @@ def server(input, output, session: Session):
         """Build the layer stack for the main interactive map."""
         layers: list[dict] = []
         palette = PALETTE_CHOICES.get(input.palette(), PALETTE_OCEAN)
-        cargo_values = [p["cargo_mt"] for p in PORTS]
 
         mode = input.color_mode()
         if mode == "Equal-width bins":
-            port_colors = color_bins(cargo_values, 6, palette)
+            port_colors = color_bins(_cargo_values, 6, palette)
         elif mode == "Quantile bins":
-            port_colors = color_quantiles(cargo_values, 6, palette)
+            port_colors = color_quantiles(_cargo_values, 6, palette)
         else:
             port_colors = color_range(len(PORTS), palette)
 
@@ -1011,7 +1198,7 @@ def server(input, output, session: Session):
         if input.show_heatmap():
             layers.append(heatmap_layer(
                 "observation-heat",
-                data=make_heatmap_points(300),
+                data=_heatmap_points,
                 getPosition="@@d",
                 getWeight="@@=d[2]",
                 radiusPixels=40, intensity=1.5, threshold=0.1,
@@ -1021,7 +1208,7 @@ def server(input, output, session: Session):
         if input.show_paths():
             layers.append(path_layer(
                 "route-paths",
-                data=make_path_data(),
+                data=_path_data,
                 getPath="@@=d.path",
                 getColor="@@=d.color",
                 getWidth=3, widthMinPixels=2, pickable=True,
@@ -1031,7 +1218,7 @@ def server(input, output, session: Session):
         if input.show_routes():
             layers.append(arc_layer(
                 "port-arcs",
-                data=make_arc_data(),
+                data=_arc_data,
                 getSourcePosition="@@=d.sourcePosition",
                 getTargetPosition="@@=d.targetPosition",
                 getSourceColor="@@=d.sourceColor",
@@ -1068,8 +1255,9 @@ def server(input, output, session: Session):
         """Build the deck.gl legend control spec for Tab 1."""
         entries: list[dict] = []
         if input.wms_layer():
+            safe_id = input.wms_layer().replace(":", "_")
             entries.append({
-                "layer_id": f"wms-{input.wms_layer().replace(' ', '-').lower()}",
+                "layer_id": f"wms-{safe_id}",
                 "label": f"WMS: {input.wms_layer()}",
                 "color": [70, 130, 180],
                 "shape": "rect",
@@ -1167,21 +1355,6 @@ def server(input, output, session: Session):
     async def _fly_baltic():
         await map_widget.fly_to(
             session, 19.5, 57.0, zoom=5, pitch=0, bearing=0,
-        )
-
-    # Layer visibility toggle
-    @reactive.Effect
-    @reactive.event(input.show_ports)
-    async def _toggle_ports():
-        await map_widget.set_layer_visibility(
-            session, {"ports": input.show_ports()},
-        )
-
-    @reactive.Effect
-    @reactive.event(input.show_mpa)
-    async def _toggle_mpa():
-        await map_widget.set_layer_visibility(
-            session, {"mpa-zones": input.show_mpa()},
         )
 
     # Drag marker (main map)
@@ -1358,7 +1531,7 @@ def server(input, output, session: Session):
             ),
             layer(
                 "ArcLayer", "ev-arcs",
-                data=make_arc_data(),
+                data=_arc_data,
                 getSourcePosition="@@=d.sourcePosition",
                 getTargetPosition="@@=d.targetPosition",
                 getSourceColor="@@=d.sourceColor",
@@ -1366,7 +1539,7 @@ def server(input, output, session: Session):
                 getWidth=2, pickable=True,
             ),
             scatterplot_layer(
-                "ev-ports", make_port_data_simple(),
+                "ev-ports", _port_data_simple,
                 getPosition="@@=d.position",
                 getFillColor=[200, 0, 80, 180],
                 radiusMinPixels=8, pickable=True,
@@ -1590,18 +1763,9 @@ def server(input, output, session: Session):
         layers = _adv_layers.get()
         effects = None
         if input.enable_lighting():
-            effects = [{
-                "type": "LightingEffect",
-                "ambientLight": {
-                    "color": [255, 255, 255],
-                    "intensity": input.ambient(),
-                },
-                "pointLights": [{
-                    "color": [255, 255, 220],
-                    "intensity": input.point_intensity(),
-                    "position": [19.5, 57.0, 80000],
-                }],
-            }]
+            effects = _make_lighting_effects(
+                input.ambient(), input.point_intensity(),
+            )
             _advanced_log.set(
                 f"Lighting ON\n"
                 f"  Ambient intensity: {input.ambient()}\n"
@@ -1655,22 +1819,23 @@ def server(input, output, session: Session):
             )
 
     # Extensions (DataFilterExtension)
-    @reactive.Effect
-    @reactive.event(input.push_filtered)
-    async def _push_filtered():
-        max_cargo = input.filter_value()
-        filtered_data = [
-            {
-                "position": [p["lon"], p["lat"]],
-                "name": p["name"],
-                "cargo_mt": p["cargo_mt"],
-                "filterValue": p["cargo_mt"],
-            }
-            for p in PORTS
-        ]
-        filtered_lyr = layer(
+
+    # Pre-compute filter data (static; only filterRange changes)
+    _filtered_port_data = [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "cargo_mt": p["cargo_mt"],
+            "filterValue": p["cargo_mt"],
+        }
+        for p in PORTS
+    ]
+
+    def _make_filtered_layer(max_cargo: float) -> dict:
+        """Build a DataFilterExtension scatterplot layer."""
+        return layer(
             "ScatterplotLayer", "filtered-ports",
-            data=filtered_data,
+            data=_filtered_port_data,
             getPosition="@@=d.position",
             getFillColor=[255, 200, 0, 220],
             getRadius=8, radiusScale=1000, radiusMinPixels=20,
@@ -1680,6 +1845,12 @@ def server(input, output, session: Session):
             filterRange=[0, max_cargo],
             parameters={"depthCompare": "always"},
         )
+
+    @reactive.Effect
+    @reactive.event(input.push_filtered)
+    async def _push_filtered():
+        max_cargo = input.filter_value()
+        filtered_lyr = _make_filtered_layer(max_cargo)
         layers = [
             lyr for lyr in _adv_layers.get()
             if lyr.get("id") != "filtered-ports"
@@ -1702,27 +1873,7 @@ def server(input, output, session: Session):
         if not any(lyr.get("id") == "filtered-ports" for lyr in layers):
             return
         max_cargo = input.filter_value()
-        filtered_data = [
-            {
-                "position": [p["lon"], p["lat"]],
-                "name": p["name"],
-                "cargo_mt": p["cargo_mt"],
-                "filterValue": p["cargo_mt"],
-            }
-            for p in PORTS
-        ]
-        filtered_lyr = layer(
-            "ScatterplotLayer", "filtered-ports",
-            data=filtered_data,
-            getPosition="@@=d.position",
-            getFillColor=[255, 200, 0, 220],
-            getRadius=8, radiusScale=1000, radiusMinPixels=20,
-            pickable=True,
-            extensions=["DataFilterExtension"],
-            getFilterValue="@@=d.filterValue",
-            filterRange=[0, max_cargo],
-            parameters={"depthCompare": "always"},
-        )
+        filtered_lyr = _make_filtered_layer(max_cargo)
         new_layers = [
             lyr for lyr in layers if lyr.get("id") != "filtered-ports"
         ] + [filtered_lyr]
@@ -2083,11 +2234,13 @@ def server(input, output, session: Session):
                 scatterplot_layer(
                     "anim_ports",
                     port_data,
+                    getPosition="@@=d.position",
                     getRadius=6000,
                     getFillColor=[20, 145, 155, 200],
                     getLineColor=[255, 255, 255, 200],
                     lineWidthMinPixels=1,
                     stroked=True,
+                    pickable=True,
                 )
             )
 
@@ -2113,7 +2266,7 @@ def server(input, output, session: Session):
         await anim_widget.update(session, layers)
 
     # =================================================================
-    # Tab 9: v1.0.0 Features — Extensions, Clusters, Cooperative Gestures
+    # Tab 9: v1.0.0 deck.gl Extensions
     # =================================================================
 
     _v1_port_data = [
@@ -2152,6 +2305,7 @@ def server(input, output, session: Session):
             scatterplot_layer(
                 "v1_ports",
                 _v1_port_data,
+                getPosition="@@=d.position",
                 getRadius=8000,
                 getFillColor=[20, 145, 155, 200],
                 getLineColor=[255, 255, 255],
@@ -2161,50 +2315,37 @@ def server(input, output, session: Session):
                 **extra,
             ),
         ]
-        await v1_widget.update(session, layers)
+        await v1_deck_widget.update(session, layers)
+
+    # =================================================================
+    # Tab 10: v1.0.0 MapLibre Features
+    # =================================================================
 
     @reactive.Effect
     @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
     async def _v1_clusters():
         if input.v1_show_clusters():
-            cluster_data = {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Point",
-                            "coordinates": [p["lon"], p["lat"]],
-                        },
-                        "properties": {
-                            "name": p["name"],
-                            "cargo_mt": p["cargo_mt"],
-                        },
-                    }
-                    for p in PORTS
-                ],
-            }
-            await v1_widget.add_cluster_layer(
+            await v1_ml_widget.add_cluster_layer(
                 session,
                 "v1-clusters",
-                cluster_data,
+                make_port_geojson(),
                 cluster_radius=input.v1_cluster_radius(),
                 cluster_color="#14919b",
                 point_color="#e65100",
                 point_radius=6,
             )
         else:
-            await v1_widget.remove_cluster_layer(session, "v1-clusters")
+            await v1_ml_widget.remove_cluster_layer(session, "v1-clusters")
 
     @reactive.Effect
     @reactive.event(input.v1_cooperative)
     async def _v1_cooperative():
-        await v1_widget.set_cooperative_gestures(
+        await v1_ml_widget.set_cooperative_gestures(
             session, input.v1_cooperative()
         )
 
     # =================================================================
-    # Tab 10: 3-D Visualisation
+    # Tab 11: 3-D Visualisation
     # =================================================================
 
     # Pre-generate data (constant for the session)
@@ -2318,18 +2459,9 @@ def server(input, output, session: Session):
         # --- Lighting ---
         effects = None
         if input.td_lighting():
-            effects = [{
-                "type": "LightingEffect",
-                "ambientLight": {
-                    "color": [255, 255, 255],
-                    "intensity": input.td_ambient(),
-                },
-                "pointLights": [{
-                    "color": [255, 255, 220],
-                    "intensity": input.td_point_light(),
-                    "position": [19.5, 57.0, 80000],
-                }],
-            }]
+            effects = _make_lighting_effects(
+                input.td_ambient(), input.td_point_light(),
+            )
 
         await three_d_widget.update(session, layers, effects=effects)
 
@@ -2366,6 +2498,124 @@ def server(input, output, session: Session):
 
     def _species_color(species: str) -> list[int]:
         return _SPECIES_COLORS.get(species, [180, 180, 180, 200])
+
+    # =================================================================
+    # Tab 12 — Seal IBM (Individual-Based Model)
+    # =================================================================
+
+    _SEAL_LOOP = 600
+    _seal_haulout_data = make_seal_haulout_data()
+    _seal_foraging_geojson = make_seal_foraging_areas()
+
+    # Play / Pause / Reset button handlers
+    @reactive.Effect
+    @reactive.event(input.seal_play)
+    async def _seal_play():
+        await seal_widget.trips_control(session, "resume")
+
+    @reactive.Effect
+    @reactive.event(input.seal_pause)
+    async def _seal_pause():
+        await seal_widget.trips_control(session, "pause")
+
+    @reactive.Effect
+    @reactive.event(input.seal_reset)
+    async def _seal_reset():
+        await seal_widget.trips_control(session, "reset")
+
+    @reactive.Calc
+    def _seal_trips():
+        """Regenerate trips when the number of individuals changes."""
+        return make_seal_trips(
+            n_seals=input.seal_n_individuals(),
+            loop_length=_SEAL_LOOP,
+        )
+
+    @reactive.Effect
+    @reactive.event(
+        input.seal_n_individuals,
+        input.seal_species,
+        input.seal_speed,
+        input.seal_trail,
+        input.seal_haulouts,
+        input.seal_foraging,
+    )
+    async def _seal_layers():
+        selected = set(input.seal_species())
+        trips = _seal_trips()
+        layers: list[dict] = []
+
+        # Foraging area ellipses (below tracks)
+        if input.seal_foraging():
+            filtered_features = [
+                f for f in _seal_foraging_geojson["features"]
+                if f["properties"]["species"] in selected
+            ]
+            if filtered_features:
+                foraging_geojson = {
+                    "type": "FeatureCollection",
+                    "features": filtered_features,
+                }
+                layers.append(
+                    geojson_layer(
+                        "seal_foraging_areas",
+                        foraging_geojson,
+                        getFillColor=[100, 180, 220, 40],
+                        getLineColor=[80, 140, 200, 100],
+                        lineWidthMinPixels=1,
+                        stroked=True,
+                        filled=True,
+                    )
+                )
+
+        # Animated seal tracks (TripsLayer) with head icons
+        filtered_trips = [t for t in trips if t["species"] in selected]
+        if filtered_trips:
+            layers.append(
+                trips_layer(
+                    "seal_trips",
+                    filtered_trips,
+                    trailLength=input.seal_trail(),
+                    getColor="@@d.color",
+                    widthMinPixels=3,
+                    _tripsAnimation={
+                        "loopLength": _SEAL_LOOP,
+                        "speed": input.seal_speed(),
+                    },
+                    _tripsHeadIcons={
+                        "iconAtlas": SEAL_ICON_ATLAS,
+                        "iconMapping": SEAL_ICON_MAPPING,
+                        "iconField": "species",
+                        "getSize": 24,
+                        "sizeScale": 1,
+                        "sizeMinPixels": 10,
+                        "sizeMaxPixels": 64,
+                    },
+                )
+            )
+
+        # Haul-out colony markers
+        if input.seal_haulouts():
+            filtered_haulouts = [
+                h for h in _seal_haulout_data
+                if h["species"] in selected
+            ]
+            if filtered_haulouts:
+                layers.append(
+                    scatterplot_layer(
+                        "seal_haulouts",
+                        filtered_haulouts,
+                        getPosition="@@=d.position",
+                        getRadius="@@=d.radius * 800",
+                        getFillColor="@@d.color",
+                        getLineColor=[255, 255, 255, 200],
+                        lineWidthMinPixels=2,
+                        stroked=True,
+                        pickable=True,
+                    )
+                )
+
+        await seal_widget.update(session, layers)
 
 
 app = App(app_ui, server)

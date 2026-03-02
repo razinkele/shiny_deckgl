@@ -813,27 +813,105 @@
   // Scans layers for any TripsLayer.  If found and the layer specifies
   // _tripsAnimation: {loopLength, speed}, starts a requestAnimationFrame
   // loop that increments currentTime and re-builds the layer each frame.
+  // If _tripsHeadIcons is also present, a companion IconLayer renders a
+  // sprite at the interpolated head of each trajectory.
+
+  /**
+   * Interpolate the current head position for every trip in *tripsData*
+   * given the TripsLayer's *currentTime*.  Returns an array of objects
+   * with { position, color, icon } for rendering as an IconLayer.
+   */
+  function interpolateTripHeads(tripsData, currentTime, iconField) {
+    var heads = [];
+    for (var i = 0; i < tripsData.length; i++) {
+      var trip = tripsData[i];
+      var path = trip.path;
+      if (!path || path.length < 2) continue;
+
+      var pos = null;
+      var angle = 0; // degrees for deck.gl getAngle (billboard:false)
+      for (var j = 0; j < path.length - 1; j++) {
+        var t0 = path[j][2];
+        var t1 = path[j + 1][2];
+        if (currentTime >= t0 && currentTime <= t1) {
+          var frac = (t1 !== t0) ? (currentTime - t0) / (t1 - t0) : 0;
+          var dx = path[j + 1][0] - path[j][0];
+          var dy = path[j + 1][1] - path[j][1];
+          pos = [
+            path[j][0] + dx * frac,
+            path[j][1] + dy * frac,
+          ];
+          // The SVG seal faces RIGHT (east).  deck.gl getAngle with
+          // billboard:false is degrees CW from north applied to the
+          // icon's TOP.  We need the seal's body (right = head) to
+          // align with the movement direction, so we compute:
+          //   compass_bearing = 90 - atan2(dy,dx)*180/π
+          // then subtract 90° because the seal's "forward" is RIGHT
+          // (not TOP):  angle = bearing - 90 = -atan2(dy,dx)*180/π.
+          // However, empirically this produces a 90° offset because
+          // deck.gl applies the rotation to the atlas sprite directly,
+          // so the correct formula is simply:
+          angle = Math.atan2(dy, dx) * 180 / Math.PI;
+          break;
+        }
+      }
+      // Before first or past last timestamp — snap to endpoints
+      if (!pos) {
+        if (currentTime <= path[0][2]) {
+          pos = [path[0][0], path[0][1]];
+          if (path.length >= 2) {
+            var dx0 = path[1][0] - path[0][0];
+            var dy0 = path[1][1] - path[0][1];
+            angle = Math.atan2(dy0, dx0) * 180 / Math.PI;
+          }
+        } else {
+          var last = path[path.length - 1];
+          pos = [last[0], last[1]];
+          if (path.length >= 2) {
+            var prev = path[path.length - 2];
+            angle = Math.atan2(last[1] - prev[1], last[0] - prev[0]) * 180 / Math.PI;
+          }
+        }
+      }
+
+      heads.push({
+        position: pos,
+        color: trip.color || [255, 140, 0, 230],
+        icon: trip[iconField || 'species'] || 'Grey seal',
+        angle: angle,
+      });
+    }
+    return heads;
+  }
+
   function startTripsAnimation(instance, targetId) {
     // Stop any running animation first
     stopTripsAnimation(instance);
 
     var layersData = instance.lastLayers;
-    var tripsConfigs = [];     // {index, loopLength, speed}
+    var tripsConfigs = [];     // {index, loopLength, speed, headIcons?}
     for (var i = 0; i < layersData.length; i++) {
       var lp = layersData[i];
       if (lp.type === 'TripsLayer' && lp._tripsAnimation) {
-        tripsConfigs.push({
+        var cfg = {
           index: i,
           loopLength: lp._tripsAnimation.loopLength || 1800,
           speed: lp._tripsAnimation.speed || 1,
-        });
+        };
+        if (lp._tripsHeadIcons) {
+          cfg.headIcons = lp._tripsHeadIcons;
+        }
+        tripsConfigs.push(cfg);
       }
     }
     if (tripsConfigs.length === 0) return;
 
+    // Preserve accumulated time when resuming from a pause
+    var timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
+                       ? instance.tripsAnimation.pausedAt : 0;
     var startedAt = performance.now();
     function tick() {
-      var elapsed = (performance.now() - startedAt) / 1000;  // seconds
+      var elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
       // Update currentTime on each TripsLayer
       for (var c = 0; c < tripsConfigs.length; c++) {
         var cfg = tripsConfigs[c];
@@ -847,17 +925,64 @@
         targetId,
         instance.tooltipConfig
       );
+
+      // Append head-icon layers for TripsLayers with _tripsHeadIcons
+      // Uses IconLayer with mask:true — SVG is white, getColor tints it.
+      for (var c = 0; c < tripsConfigs.length; c++) {
+        var cfg = tripsConfigs[c];
+        if (!cfg.headIcons) continue;
+        var lp = layersData[cfg.index];
+        var hi = cfg.headIcons;
+        var heads = interpolateTripHeads(
+          lp.data, lp.currentTime, hi.iconField || 'species'
+        );
+        if (heads.length > 0) {
+          deckLayers.push(new deck.IconLayer({
+            id: (lp.id || 'trips') + '_heads',
+            data: heads,
+            iconAtlas: hi.iconAtlas,
+            iconMapping: hi.iconMapping,
+            getPosition: function(d) { return d.position; },
+            getIcon: function(d) { return d.icon; },
+            getColor: function(d) { return d.color; },
+            getAngle: function(d) { return d.angle || 0; },
+            getSize: hi.getSize || 24,
+            sizeScale: hi.sizeScale || 1,
+            sizeMinPixels: hi.sizeMinPixels || 10,
+            sizeMaxPixels: hi.sizeMaxPixels || 64,
+            billboard: false,
+            pickable: false,
+          }));
+        }
+      }
+
       instance.overlay.setProps({ layers: deckLayers });
 
       instance.tripsAnimation = instance.tripsAnimation || {};
       instance.tripsAnimation.rafId = requestAnimationFrame(tick);
+      instance.tripsAnimation.startedAt = startedAt;
+      instance.tripsAnimation.timeOffset = timeOffset;
     }
-    instance.tripsAnimation = { rafId: requestAnimationFrame(tick) };
+    instance.tripsAnimation = { rafId: requestAnimationFrame(tick), startedAt: startedAt, timeOffset: timeOffset };
+  }
+
+  function pauseTripsAnimation(instance) {
+    if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
+      cancelAnimationFrame(instance.tripsAnimation.rafId);
+      // Compute accumulated elapsed time so we can resume from the same point
+      var accumulated = (performance.now() - instance.tripsAnimation.startedAt) / 1000
+                      + (instance.tripsAnimation.timeOffset || 0);
+      instance.tripsAnimation.rafId = null;
+      instance.tripsAnimation.pausedAt = accumulated;
+    }
   }
 
   function stopTripsAnimation(instance) {
     if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
       cancelAnimationFrame(instance.tripsAnimation.rafId);
+    }
+    // Full stop — clear pausedAt so next start begins from 0
+    if (instance.tripsAnimation) {
       instance.tripsAnimation = null;
     }
   }
@@ -937,6 +1062,29 @@
 
     // Start/stop TripsLayer animation if needed (v0.9.0)
     startTripsAnimation(instance, targetId);
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_trips_control — pause / resume / reset TripsLayer animation
+  // -----------------------------------------------------------------------
+  // payload: { id: "map_id", action: "pause" | "resume" | "reset" }
+  Shiny.addCustomMessageHandler("deck_trips_control", function (payload) {
+    if (!payload || !payload.id) return;
+    var targetId = payload.id;
+    var instance = mapInstances[targetId];
+    if (!instance) return;
+    var action = payload.action || 'pause';
+
+    if (action === 'pause') {
+      pauseTripsAnimation(instance);
+    } else if (action === 'resume') {
+      // Resume from where we paused
+      startTripsAnimation(instance, targetId);
+    } else if (action === 'reset') {
+      // Full stop then restart from time 0
+      stopTripsAnimation(instance);
+      startTripsAnimation(instance, targetId);
+    }
   });
 
   // -----------------------------------------------------------------------

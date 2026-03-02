@@ -282,6 +282,59 @@ class TestMapWidget:
         # (simplified check: the JSON content is present)
         assert "{name}" in html
 
+    # -- Module namespace tests -----------------------------------------------
+
+    def test_id_resolved_outside_module(self):
+        """Outside any module context, id == bare id."""
+        w = MapWidget("plain")
+        assert w.id == "plain"
+        assert w._bare_id == "plain"
+
+    def test_id_resolved_inside_module_namespace(self):
+        """Inside a Shiny module namespace context, id is fully qualified."""
+        from shiny._namespaces import namespace_context
+        with namespace_context("mymod"):
+            w = MapWidget("map1")
+        assert w.id == "mymod-map1"
+        assert w._bare_id == "map1"
+
+    def test_ui_div_uses_resolved_id_in_module(self):
+        """The HTML div id must be the namespace-resolved id."""
+        from shiny._namespaces import namespace_context
+        with namespace_context("ns"):
+            w = MapWidget("m")
+            html = str(w.ui())
+        assert 'id="ns-m"' in html
+
+    def test_input_ids_use_bare_id(self):
+        """Input property helpers must return bare names (Shiny auto-namespaces)."""
+        from shiny._namespaces import namespace_context
+        with namespace_context("mod"):
+            w = MapWidget("x")
+        assert w.click_input_id == "x_click"
+        assert w.hover_input_id == "x_hover"
+        assert w.view_state_input_id == "x_view_state"
+        assert w.drag_input_id == "x_drag"
+        assert w.map_click_input_id == "x_map_click"
+        assert w.map_contextmenu_input_id == "x_map_contextmenu"
+
+    def test_nested_module_namespace(self):
+        """Nested modules produce doubly-qualified ids."""
+        from shiny._namespaces import namespace_context
+        with namespace_context("outer"):
+            with namespace_context("inner"):
+                w = MapWidget("m")
+        assert w.id == "outer-inner-m"
+        assert w._bare_id == "m"
+
+    def test_server_payload_uses_resolved_id(self):
+        """Server helpers should use the resolved (namespaced) id."""
+        from shiny._namespaces import namespace_context
+        with namespace_context("srv"):
+            w = MapWidget("deck")
+        # Simulate: the payloads reference self.id which is now resolved
+        assert w.id == "srv-deck"
+
 
 # ---------------------------------------------------------------------------
 # Generic layer()
@@ -3073,10 +3126,12 @@ class TestAppFactory:
         assert isinstance(app, App)
 
     def test_v1_widget_exists(self):
-        """Tab 9 v1.0.0 widget should be importable from app module."""
-        from shiny_deckgl.app import v1_widget
-        assert isinstance(v1_widget, MapWidget)
-        assert v1_widget.id == "v1_map"
+        """Tab 9/10 v1.0.0 widgets should be importable from app module."""
+        from shiny_deckgl.app import v1_deck_widget, v1_ml_widget
+        assert isinstance(v1_deck_widget, MapWidget)
+        assert v1_deck_widget.id == "v1_deck_map"
+        assert isinstance(v1_ml_widget, MapWidget)
+        assert v1_ml_widget.id == "v1_ml_map"
 
 
 # ==========================================================================

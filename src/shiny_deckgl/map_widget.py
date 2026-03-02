@@ -31,6 +31,23 @@ from .controls import CONTROL_TYPES, CONTROL_POSITIONS
 from ._data_utils import _serialise_data
 
 
+def _resolve_ns(raw_id: str) -> str:
+    """Resolve *raw_id* through the current Shiny module namespace.
+
+    Inside a ``@module.ui`` or ``@module.server`` context this returns
+    the fully-qualified (namespaced) ID, e.g. ``"mod-my_map"``.
+    Outside any module the raw ID is returned unchanged.
+
+    The function gracefully falls back to the bare ID when the private
+    ``shiny._namespaces`` API is unavailable (future-proofing).
+    """
+    try:
+        from shiny._namespaces import resolve_id  # noqa: WPS433
+        return str(resolve_id(raw_id))
+    except Exception:  # pragma: no cover — defensive
+        return raw_id
+
+
 # ---------------------------------------------------------------------------
 # Cached resource reader (O2 – avoid re-reading on every to_html call)
 # ---------------------------------------------------------------------------
@@ -115,7 +132,11 @@ class MapWidget:
         # Cooperative gestures (v1.0.0)
         cooperative_gestures: bool = False,
     ):
-        self.id = id
+        # Resolve through the current Shiny module namespace so the
+        # widget works identically inside and outside @module.ui /
+        # @module.server — no manual module.resolve_id() needed.
+        self._bare_id: str = id
+        self.id: str = _resolve_ns(id)
         self.view_state = view_state or {
             "longitude": 21.1,
             "latitude": 55.7,
@@ -139,23 +160,28 @@ class MapWidget:
 
     @property
     def click_input_id(self) -> str:
-        """The Shiny input name for click events on this map."""
-        return f"{self.id}_click"
+        """The Shiny input name for click events on this map.
+
+        Returns the *bare* (un-namespaced) name so it can be used
+        directly with the module ``input`` object, which auto-prepends
+        the namespace.
+        """
+        return f"{self._bare_id}_click"
 
     @property
     def hover_input_id(self) -> str:
         """The Shiny input name for hover events on this map."""
-        return f"{self.id}_hover"
+        return f"{self._bare_id}_hover"
 
     @property
     def view_state_input_id(self) -> str:
         """The Shiny input name for the current viewport state."""
-        return f"{self.id}_view_state"
+        return f"{self._bare_id}_view_state"
 
     @property
     def drag_input_id(self) -> str:
         """The Shiny input name for drag-marker events on this map."""
-        return f"{self.id}_drag"
+        return f"{self._bare_id}_drag"
 
     @property
     def map_click_input_id(self) -> str:
@@ -163,12 +189,12 @@ class MapWidget:
 
         Returns ``{longitude, latitude, point: {x, y}}``.
         """
-        return f"{self.id}_map_click"
+        return f"{self._bare_id}_map_click"
 
     @property
     def map_contextmenu_input_id(self) -> str:
         """Shiny input for right-click / context-menu events on the map."""
-        return f"{self.id}_map_contextmenu"
+        return f"{self._bare_id}_map_contextmenu"
 
     # -- UI -------------------------------------------------------------------
 
@@ -291,6 +317,29 @@ class MapWidget:
         if widgets is not None:
             payload["widgets"] = widgets
         await session.send_custom_message("deck_update", payload)
+
+    async def trips_control(
+        self,
+        session: "Session",
+        action: str = "pause",
+    ) -> None:
+        """Pause, resume, or reset a TripsLayer animation.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        action
+            One of ``"pause"`` (freeze at current time), ``"resume"``
+            (continue from paused time), or ``"reset"`` (restart from
+            time 0).
+        """
+        if action not in ("pause", "resume", "reset"):
+            raise ValueError(f"action must be 'pause', 'resume', or 'reset', got {action!r}")
+        await session.send_custom_message("deck_trips_control", {
+            "id": self.id,
+            "action": action,
+        })
 
     async def set_layer_visibility(
         self,
@@ -1295,7 +1344,7 @@ class MapWidget:
 
         Returns ``{layerId, properties, longitude, latitude}``.
         """
-        return f"{self.id}_feature_click"
+        return f"{self._bare_id}_feature_click"
 
     # -- Spatial Queries (v0.4.0) ---------------------------------------------
 
@@ -1381,7 +1430,7 @@ class MapWidget:
 
         Returns ``{requestId: str, features: [GeoJSON features]}``.
         """
-        return f"{self.id}_query_result"
+        return f"{self._bare_id}_query_result"
 
     # -- Multiple Markers (v0.4.0) --------------------------------------------
 
@@ -1457,7 +1506,7 @@ class MapWidget:
 
         Returns ``{markerId, longitude, latitude}``.
         """
-        return f"{self.id}_marker_click"
+        return f"{self._bare_id}_marker_click"
 
     @property
     def marker_drag_input_id(self) -> str:
@@ -1465,7 +1514,7 @@ class MapWidget:
 
         Returns ``{markerId, longitude, latitude}``.
         """
-        return f"{self.id}_marker_drag"
+        return f"{self._bare_id}_marker_drag"
 
     # -- Drawing Tools (v0.5.0) -----------------------------------------------
 
@@ -1544,12 +1593,12 @@ class MapWidget:
     @property
     def drawn_features_input_id(self) -> str:
         """Shiny input for drawn GeoJSON features."""
-        return f"{self.id}_drawn_features"
+        return f"{self._bare_id}_drawn_features"
 
     @property
     def draw_mode_input_id(self) -> str:
         """Shiny input for the current drawing mode."""
-        return f"{self.id}_draw_mode"
+        return f"{self._bare_id}_draw_mode"
 
     # -- GeoPandas Integration (v0.5.0) ---------------------------------------
 
@@ -1749,7 +1798,7 @@ class MapWidget:
 
         Returns ``{requestId: str, dataUrl: str, width: int, height: int}``.
         """
-        return f"{self.id}_export_result"
+        return f"{self._bare_id}_export_result"
 
     @property
     def has_image_input_id(self) -> str:
@@ -1757,7 +1806,7 @@ class MapWidget:
 
         Returns ``{imageId: str, exists: bool}``.
         """
-        return f"{self.id}_has_image"
+        return f"{self._bare_id}_has_image"
 
     # -- Serialisation --------------------------------------------------------
 

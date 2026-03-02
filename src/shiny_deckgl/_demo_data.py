@@ -730,17 +730,17 @@ def make_seal_foraging_areas() -> dict:
 # ---------------------------------------------------------------------------
 # Seal SVG icon atlas (base64-encoded sprite sheet for deck.gl IconLayer)
 # ---------------------------------------------------------------------------
-# Three 64×64 white seal silhouettes in a 192×64 strip.
-# All fills are #fff — designed for IconLayer mask:true mode where
-# getColor controls the tint.  Base64 encoding is used for reliable
-# loading across browsers (avoids URL-encoding edge-cases).
+# Three 64×64 species-coloured seal silhouettes in a 192×64 strip.
+# Each species has its own fill colour, a darker accent stroke for
+# definition, a lighter belly patch, and a tiny eye dot.
+# Base64 encoding is used for reliable loading across browsers.
 # viewBox is 0 0 192 64, aligned with the on-screen sprite dimensions.
 # Each species is drawn with SVG <path> elements for a realistic
 # swimming-seal silhouette (torpedo body, rounded head, hind flippers).
 #
-# Grey seal  (x=0):   bulky body, broad snout
-# Ringed seal (x=64): slender body, small head
-# Harbour seal (x=128): medium build, rounded head
+# Grey seal    (x=0):   #7a8a8a slate-grey, bulky body, broad snout
+# Ringed seal  (x=64):  #4a8cdc icy blue, slender body, small head
+# Harbour seal (x=128): #c8a050 sandy gold, medium build, rounded head
 
 SEAL_ICON_ATLAS: str = (
     "data:image/svg+xml;base64,"
@@ -751,30 +751,43 @@ SEAL_ICON_ATLAS: str = (
     "MTggQyA0MiwxOCA0OCwyMCA1MiwyNCBDIDU2LDI2IDU4LDI4IDU4LDMwIEMgNjAs"
     "MzEgNjAsMzMgNTgsMzQgQyA1NiwzNiA1NCwzOCA1MCwzOCBDIDQ2LDQwIDQwLDQy"
     "IDM0LDQyIEMgMjQsNDIgMTYsNDAgMTIsMzYgQyAxMCwzOCAxMCwzNiA4LDM4IEwg"
-    "Niw0MCBDIDMsMzggNCwzNiA2LDM0IFoiIGZpbGw9IiNmZmYiLz48ZWxsaXBzZSBj"
-    "eD0iNDAiIGN5PSI0MCIgcng9IjUiIHJ5PSIyIiBmaWxsPSIjZmZmIiB0cmFuc2Zv"
-    "cm09InJvdGF0ZSgtMTUsNDAsNDApIi8+PC9nPjxnIHRyYW5zZm9ybT0idHJhbnNs"
-    "YXRlKDY0LDApIj48cGF0aCBkPSJNIDgsMzQgQyA2LDMxIDUsMjkgOCwyNyBMIDEw"
-    "LDI1IEMgMTEsMjMgMTEsMjcgMTQsMjkgQyAxOCwyMyAyNiwyMCAzNSwyMCBDIDQy"
-    "LDIwIDQ3LDIyIDUwLDI1IEMgNTMsMjcgNTUsMjkgNTUsMzEgQyA1NywzMiA1Nywz"
-    "NCA1NSwzNSBDIDUzLDM3IDUxLDM4IDQ4LDM4IEMgNDQsNDAgMzgsNDEgMzUsNDEg"
-    "QyAyNiw0MSAxOCwzOSAxNCwzNiBDIDExLDM3IDExLDM2IDEwLDM4IEwgOCwzOSBD"
-    "IDUsMzggNiwzNiA4LDM0IFoiIGZpbGw9IiNmZmYiLz48ZWxsaXBzZSBjeD0iMzgi"
-    "IGN5PSIzOS41IiByeD0iNCIgcnk9IjEuNSIgZmlsbD0iI2ZmZiIgdHJhbnNmb3Jt"
-    "PSJyb3RhdGUoLTEyLDM4LDM5LjUpIi8+PC9nPjxnIHRyYW5zZm9ybT0idHJhbnNs"
-    "YXRlKDEyOCwwKSI+PHBhdGggZD0iTSA3LDM0IEMgNSwzMSA0LDI5IDcsMjcgTCA5"
-    "LDI1IEMgMTAsMjMgMTAsMjcgMTMsMjkgQyAxNywyMiAyNSwxOSAzNCwxOSBDIDQy"
-    "LDE5IDQ3LDIxIDUxLDI0IEMgNTQsMjYgNTYsMjggNTYsMzEgQyA1OCwzMiA1OCwz"
-    "NCA1NiwzNSBDIDU0LDM3IDUyLDM4IDQ5LDM4IEMgNDUsNDAgMzksNDIgMzQsNDIg"
-    "QyAyNSw0MiAxNyw0MCAxMywzNiBDIDEwLDM3IDEwLDM2IDksMzggTCA3LDQwIEMg"
-    "NCwzOCA1LDM2IDcsMzQgWiIgZmlsbD0iI2ZmZiIvPjxlbGxpcHNlIGN4PSIzOSIg"
-    "Y3k9IjQwIiByeD0iNC41IiByeT0iMS44IiBmaWxsPSIjZmZmIiB0cmFuc2Zvcm09"
-    "InJvdGF0ZSgtMTQsMzksNDApIi8+PC9nPjwvc3ZnPg=="
+    "Niw0MCBDIDMsMzggNCwzNiA2LDM0IFoiIGZpbGw9IiM3YThhOGEiIHN0cm9rZT0i"
+    "IzVhNmE2YSIgc3Ryb2tlLXdpZHRoPSIwLjgiLz48cGF0aCBkPSJNIDIwLDMwIEMg"
+    "MjYsMjggNDAsMjggNDgsMzAgQyA0OCwzNCA0MCwzOCAzNCwzOCBDIDI2LDM4IDIw"
+    "LDM0IDIwLDMwIFoiIGZpbGw9IiM5NWE1YTAiIG9wYWNpdHk9IjAuNCIvPjxlbGxp"
+    "cHNlIGN4PSI0MCIgY3k9IjQwIiByeD0iNSIgcnk9IjIiIGZpbGw9IiM1YTZhNmEi"
+    "IHRyYW5zZm9ybT0icm90YXRlKC0xNSw0MCw0MCkiLz48Y2lyY2xlIGN4PSIxMCIg"
+    "Y3k9IjI2IiByPSIxLjIiIGZpbGw9IiMyMjIiIG9wYWNpdHk9IjAuNyIvPjwvZz48"
+    "ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2NCwwKSI+PHBhdGggZD0iTSA4LDM0IEMg"
+    "NiwzMSA1LDI5IDgsMjcgTCAxMCwyNSBDIDExLDIzIDExLDI3IDE0LDI5IEMgMTgs"
+    "MjMgMjYsMjAgMzUsMjAgQyA0MiwyMCA0NywyMiA1MCwyNSBDIDUzLDI3IDU1LDI5"
+    "IDU1LDMxIEMgNTcsMzIgNTcsMzQgNTUsMzUgQyA1MywzNyA1MSwzOCA0OCwzOCBD"
+    "IDQ0LDQwIDM4LDQxIDM1LDQxIEMgMjYsNDEgMTgsMzkgMTQsMzYgQyAxMSwzNyAx"
+    "MSwzNiAxMCwzOCBMIDgsMzkgQyA1LDM4IDYsMzYgOCwzNCBaIiBmaWxsPSIjNGE4"
+    "Y2RjIiBzdHJva2U9IiMzNDZhYjAiIHN0cm9rZS13aWR0aD0iMC44Ii8+PHBhdGgg"
+    "ZD0iTSAyMiwzMCBDIDI4LDI4IDQwLDI5IDQ3LDMxIEMgNDcsMzQgMzksMzcgMzUs"
+    "MzcgQyAyNywzNyAyMiwzNCAyMiwzMCBaIiBmaWxsPSIjNmVhYWYwIiBvcGFjaXR5"
+    "PSIwLjQiLz48ZWxsaXBzZSBjeD0iMzgiIGN5PSIzOS41IiByeD0iNCIgcnk9IjEu"
+    "NSIgZmlsbD0iIzM0NmFiMCIgdHJhbnNmb3JtPSJyb3RhdGUoLTEyLDM4LDM5LjUp"
+    "Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIyNyIgcj0iMSIgZmlsbD0iIzIyMiIgb3Bh"
+    "Y2l0eT0iMC43Ii8+PC9nPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEyOCwwKSI+"
+    "PHBhdGggZD0iTSA3LDM0IEMgNSwzMSA0LDI5IDcsMjcgTCA5LDI1IEMgMTAsMjMg"
+    "MTAsMjcgMTMsMjkgQyAxNywyMiAyNSwxOSAzNCwxOSBDIDQyLDE5IDQ3LDIxIDUx"
+    "LDI0IEMgNTQsMjYgNTYsMjggNTYsMzEgQyA1OCwzMiA1OCwzNCA1NiwzNSBDIDU0"
+    "LDM3IDUyLDM4IDQ5LDM4IEMgNDUsNDAgMzksNDIgMzQsNDIgQyAyNSw0MiAxNyw0"
+    "MCAxMywzNiBDIDEwLDM3IDEwLDM2IDksMzggTCA3LDQwIEMgNCwzOCA1LDM2IDcs"
+    "MzQgWiIgZmlsbD0iI2M4YTA1MCIgc3Ryb2tlPSIjOWE3YTMwIiBzdHJva2Utd2lk"
+    "dGg9IjAuOCIvPjxwYXRoIGQ9Ik0gMjEsMzAgQyAyNywyOCA0MCwyOCA0OCwzMSBD"
+    "IDQ4LDM0IDQwLDM4IDM0LDM4IEMgMjYsMzggMjEsMzQgMjEsMzAgWiIgZmlsbD0i"
+    "I2UwYzg3OCIgb3BhY2l0eT0iMC40Ii8+PGVsbGlwc2UgY3g9IjM5IiBjeT0iNDAi"
+    "IHJ4PSI0LjUiIHJ5PSIxLjgiIGZpbGw9IiM5YTdhMzAiIHRyYW5zZm9ybT0icm90"
+    "YXRlKC0xNCwzOSw0MCkiLz48Y2lyY2xlIGN4PSIxMSIgY3k9IjI3IiByPSIxLjEi"
+    "IGZpbGw9IiMyMjIiIG9wYWNpdHk9IjAuNyIvPjwvZz48L3N2Zz4="
 )
 
 # Icon mapping — keyed by species name.  anchorY=32 centres the icon
-# vertically on the point.  mask:true is set on the IconLayer so
-# getColor controls the tint.
+# vertically on the point.  Colours are baked into the SVG; getColor
+# on the IconLayer can still tint if desired.
 SEAL_ICON_MAPPING: dict[str, dict] = {
     "Grey seal":    {"x": 0,   "y": 0, "width": 64, "height": 64, "anchorY": 32},
     "Ringed seal":  {"x": 64,  "y": 0, "width": 64, "height": 64, "anchorY": 32},

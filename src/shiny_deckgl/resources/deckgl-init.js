@@ -927,7 +927,7 @@
       );
 
       // Append head-icon layers for TripsLayers with _tripsHeadIcons
-      // Uses IconLayer with mask:true — SVG is white, getColor tints it.
+      // Species-coloured SVG atlas — each silhouette has its own fill.
       for (var c = 0; c < tripsConfigs.length; c++) {
         var cfg = tripsConfigs[c];
         if (!cfg.headIcons) continue;

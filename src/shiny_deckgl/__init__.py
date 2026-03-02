@@ -87,6 +87,7 @@ from .components import (
     fill_style_extension,
     path_style_extension,
 )
+from .extensions import Extension
 from .ui import head_includes
 from .ibm import (
     SPECIES_COLORS,
@@ -177,6 +178,7 @@ __all__ = [
     "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",
+    "Extension",
     "brushing_extension",
     "collision_filter_extension",
     "data_filter_extension",

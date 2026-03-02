@@ -150,12 +150,13 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # ---------------------------------------------------------------------------
-# EMODnet WMS layers
+# EMODnet WMS layers (discovered via OWSLib GetCapabilities)
 # ---------------------------------------------------------------------------
 
 EMODNET_WMS_URL = "https://ows.emodnet-bathymetry.eu/wms"
 
-WMS_LAYER_CHOICES = {
+# Fallback choices if OWSLib query fails (network unavailable, timeout, etc.)
+_WMS_LAYER_FALLBACK: dict[str, str] = {
     "": "(none)",
     "emodnet:mean": "Mean depth  [emodnet:mean]",
     "emodnet:mean_atlas_land": "Mean depth + land  [emodnet:mean_atlas_land]",
@@ -164,6 +165,27 @@ WMS_LAYER_CHOICES = {
     "coastlines": "Coastlines  [coastlines]",
     "emodnet:contours": "Depth contours  [emodnet:contours]",
 }
+
+
+def _fetch_wms_layer_choices() -> dict[str, str]:
+    """Query EMODnet WMS GetCapabilities via OWSLib and build a choices dict.
+
+    Returns the fallback static list if the request fails.
+    """
+    try:
+        from owslib.wms import WebMapService
+
+        wms = WebMapService(EMODNET_WMS_URL, version="1.3.0", timeout=10)
+        choices: dict[str, str] = {"": "(none)"}
+        for name, layer in wms.contents.items():
+            title = layer.title or name
+            choices[name] = f"{title}  [{name}]"
+        return choices
+    except Exception:  # noqa: BLE001 — network/parse failures
+        return _WMS_LAYER_FALLBACK
+
+
+WMS_LAYER_CHOICES = _fetch_wms_layer_choices()
 
 # ---------------------------------------------------------------------------
 # Lookup dicts for basemaps and palettes

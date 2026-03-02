@@ -744,7 +744,7 @@
         }
       }
 
-      const LayerClass = deck[layerProps.type];
+      const LayerClass = deck[layerProps.type] || deck['_' + layerProps.type];
       if (!LayerClass) {
         console.warn('[shiny_deckgl] Unknown layer type: ' + layerProps.type + ' — skipped');
         return null;

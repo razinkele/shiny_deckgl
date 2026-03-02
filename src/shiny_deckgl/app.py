@@ -44,6 +44,7 @@ from .components import (
     scatterplot_layer,
     geojson_layer,
     tile_layer,
+    wms_layer,
     # v0.7.0 layer helpers
     arc_layer,
     column_layer,
@@ -65,9 +66,21 @@ from .components import (
     compass_widget,
     fullscreen_widget,
     scale_widget,
+    gimbal_widget,
+    reset_view_widget,
+    screenshot_widget,
     fps_widget,
+    loading_widget,
+    theme_widget,
+    # Experimental widgets (deck.gl >= 9.2)
+    context_menu_widget,
+    info_widget,
+    splitter_widget,
+    stats_widget,
     # v0.8.0 transitions
     transition,
+    # Views
+    map_view,
     # MapLibre control helpers
     geolocate_control,
     globe_control,
@@ -565,16 +578,79 @@ app_ui = ui.page_navbar(
                             "Toggle deck.gl widgets on the Advanced map. "
                             "Widgets are added/removed via set_widgets()."
                         ),
-                        ui.input_switch("adv_zoom_widget",
-                                        "Zoom widget", value=False),
-                        ui.input_switch("adv_compass_widget",
-                                        "Compass widget", value=False),
-                        ui.input_switch("adv_fps_widget",
-                                        "FPS widget", value=False),
-                        ui.input_switch("adv_fullscreen_widget",
-                                        "Fullscreen widget", value=False),
-                        ui.input_switch("adv_scale_widget",
-                                        "Scale widget", value=False),
+                        ui.tags.strong("Standard"),
+                        ui.tooltip(
+                            ui.input_switch("adv_zoom_widget",
+                                            "Zoom", value=False),
+                            "Zoom in/out buttons (ZoomWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_compass_widget",
+                                            "Compass", value=False),
+                            "Bearing indicator; click to reset north (CompassWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_fps_widget",
+                                            "FPS counter", value=False),
+                            "Real-time frames-per-second counter (FpsWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_fullscreen_widget",
+                                            "Fullscreen", value=False),
+                            "Toggle browser fullscreen mode (FullscreenWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_scale_widget",
+                                            "Scale bar", value=False),
+                            "Distance scale bar in metric units (ScaleWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_gimbal_widget",
+                                            "Gimbal (3-D)", value=False),
+                            "3-D camera gimbal for pitch & bearing (GimbalWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_reset_view_widget",
+                                            "Reset view", value=False),
+                            "Reset camera to the initial view state (ResetViewWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_screenshot_widget",
+                                            "Screenshot", value=False),
+                            "Capture a PNG screenshot of the map (ScreenshotWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_loading_widget",
+                                            "Loading spinner", value=False),
+                            "Spinner displayed while layers are loading (LoadingWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_theme_widget",
+                                            "Theme toggle", value=False),
+                            "Switch between light and dark deck.gl theme (ThemeWidget)",
+                        ),
+                        ui.tags.hr(),
+                        ui.tags.strong("Experimental (deck.gl \u2265 9.2)"),
+                        ui.tooltip(
+                            ui.input_switch("adv_context_menu_widget",
+                                            "Context menu", value=False),
+                            "Right-click context menu on the map (ContextMenuWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_info_widget",
+                                            "Info display", value=False),
+                            "Layer hover/pick information panel (InfoWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_splitter_widget",
+                                            "Splitter", value=False),
+                            "Split-screen view divider to compare layers (SplitterWidget)",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch("adv_stats_widget",
+                                            "Stats (GPU/CPU)", value=False),
+                            "GPU/CPU performance statistics overlay (StatsWidget)",
+                        ),
                     ),
                     ui.accordion_panel(
                         "\U0001F3AC Transitions (v0.8.0)",
@@ -1156,19 +1232,15 @@ def server(input, output, session: Session):
         else:
             port_colors = color_range(len(PORTS), palette)
 
-        # WMS tile layer (EMODnet bathymetry)
+        # WMS layer (EMODnet bathymetry via OWSLib-validated service)
         wms_layer_name = input.wms_layer()
         if wms_layer_name:
-            wms_url = (
-                f"{EMODNET_WMS_URL}?"
-                "SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
-                "&FORMAT=image/png&TRANSPARENT=true"
-                f"&LAYERS={wms_layer_name}"
-                "&CRS=EPSG:3857&WIDTH=256&HEIGHT=256"
-                "&BBOX={{bbox-epsg-3857}}"
-            )
             safe_id = wms_layer_name.replace(":", "_")
-            layers.append(tile_layer(f"wms-{safe_id}", wms_url))
+            layers.append(wms_layer(
+                f"wms-{safe_id}",
+                EMODNET_WMS_URL,
+                layers=[wms_layer_name],
+            ))
 
         # GeoJSON — Marine Protected Areas (HELCOM)
         if input.show_mpa():
@@ -1873,15 +1945,20 @@ def server(input, output, session: Session):
             or "Use the controls to test advanced features\u2026"
         )
 
-    # Widgets toggle (v0.8.0)
+    # Widgets toggle (v0.8.0 + experimental v9.2)
     @reactive.Effect
     @reactive.event(
         input.adv_zoom_widget, input.adv_compass_widget,
         input.adv_fps_widget, input.adv_fullscreen_widget,
-        input.adv_scale_widget,
+        input.adv_scale_widget, input.adv_gimbal_widget,
+        input.adv_reset_view_widget, input.adv_screenshot_widget,
+        input.adv_loading_widget, input.adv_theme_widget,
+        input.adv_context_menu_widget, input.adv_info_widget,
+        input.adv_splitter_widget, input.adv_stats_widget,
     )
     async def _toggle_adv_widgets():
         widgets: list[dict] = []
+        # Standard widgets
         if input.adv_zoom_widget():
             widgets.append(zoom_widget())
         if input.adv_compass_widget():
@@ -1892,6 +1969,27 @@ def server(input, output, session: Session):
             widgets.append(fullscreen_widget())
         if input.adv_scale_widget():
             widgets.append(scale_widget())
+        if input.adv_gimbal_widget():
+            widgets.append(gimbal_widget())
+        if input.adv_reset_view_widget():
+            widgets.append(reset_view_widget())
+        if input.adv_screenshot_widget():
+            widgets.append(screenshot_widget())
+        if input.adv_loading_widget():
+            widgets.append(loading_widget())
+        if input.adv_theme_widget():
+            widgets.append(theme_widget())
+        # Experimental widgets (deck.gl >= 9.2)
+        if input.adv_context_menu_widget():
+            widgets.append(context_menu_widget())
+        if input.adv_info_widget():
+            widgets.append(info_widget(placement="top-left"))
+        if input.adv_splitter_widget():
+            widgets.append(splitter_widget(
+                orientation="vertical",
+            ))
+        if input.adv_stats_widget():
+            widgets.append(stats_widget(placement="bottom-left"))
         await adv_widget.set_widgets(session, widgets)
         names = [w["@@widgetClass"] for w in widgets]
         _advanced_log.set(
@@ -2521,17 +2619,13 @@ def server(input, output, session: Session):
         trips = _seal_trips()
         layers: list[dict] = []
 
-        # EMODnet bathymetry WMS underlay
+        # EMODnet bathymetry WMS underlay (deck.gl native WMSLayer)
         if input.seal_bathymetry():
-            wms_url = (
-                f"{EMODNET_WMS_URL}?"
-                "SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
-                "&FORMAT=image/png&TRANSPARENT=true"
-                "&LAYERS=emodnet:mean_atlas_land"
-                "&CRS=EPSG:3857&WIDTH=256&HEIGHT=256"
-                "&BBOX={{bbox-epsg-3857}}"
-            )
-            layers.append(tile_layer("seal-bathymetry-wms", wms_url))
+            layers.append(wms_layer(
+                "seal-bathymetry-wms",
+                EMODNET_WMS_URL,
+                layers=["emodnet:mean_atlas_land"],
+            ))
 
         # Foraging area ellipses (below tracks)
         if input.seal_foraging():
@@ -2603,7 +2697,10 @@ def server(input, output, session: Session):
                     )
                 )
 
-        await seal_widget.update(session, layers)
+        await seal_widget.update(
+            session, layers,
+            widgets=[loading_widget()],
+        )
 
 
 app = App(app_ui, server)

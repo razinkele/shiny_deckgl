@@ -115,6 +115,7 @@ from ._demo_data import (
 )
 from ._demo_data import (
     make_seal_trips,
+    make_seal_trips_ibm,
     make_seal_haulout_data,
     make_seal_foraging_areas,
 )
@@ -1071,6 +1072,29 @@ app_ui = ui.page_navbar(
                             "movement. Seals depart from real haul-out "
                             "colonies on correlated random-walk foraging "
                             "trips and return to their colony."
+                        ),
+                        ui.input_radio_buttons(
+                            "seal_model_type", "Movement model",
+                            choices={
+                                "crw": "\U0001F500 Correlated Random Walk",
+                                "mcconnell": "\U0001F9E0 McConnell IBM (energy)",
+                            },
+                            selected="crw",
+                        ),
+                        ui.panel_conditional(
+                            "input.seal_model_type === 'mcconnell'",
+                            sidebar_hint(
+                                "McConnell, Smout & Wu (2017) "
+                                "energy-budget model: seals forage in "
+                                "habitat-quality patches, deplete energy, "
+                                "return to haulouts to rest, then "
+                                "depart again."
+                            ),
+                            ui.input_slider(
+                                "seal_sim_hours",
+                                "Simulation hours",
+                                min=24, max=720, value=168, step=24,
+                            ),
                         ),
                         ui.input_slider(
                             "seal_n_individuals", "Number of seals",
@@ -2598,15 +2622,26 @@ def server(input, output, session: Session):
 
     @reactive.Calc
     def _seal_trips():
-        """Regenerate trips when the number of individuals changes."""
+        """Regenerate trips when model type or parameters change."""
+        model = input.seal_model_type()
+        n = input.seal_n_individuals()
+        if model == "mcconnell":
+            sim_h = input.seal_sim_hours()
+            return make_seal_trips_ibm(
+                n_seals=n,
+                sim_hours=sim_h,
+                loop_length=_SEAL_LOOP,
+            )
         return make_seal_trips(
-            n_seals=input.seal_n_individuals(),
+            n_seals=n,
             loop_length=_SEAL_LOOP,
         )
 
     @reactive.Effect
     @reactive.event(
+        input.seal_model_type,
         input.seal_n_individuals,
+        input.seal_sim_hours,
         input.seal_species,
         seal_anim.speed,
         seal_anim.trail,

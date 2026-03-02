@@ -859,3 +859,391 @@ def make_seal_haulout_icons() -> list[dict]:
         }
         for s in _SEAL_HAULOUT_SITES
     ]
+
+
+# ---------------------------------------------------------------------------
+# McConnell et al. (2017) mechanistic IBM — energy-budget seal movement
+# ---------------------------------------------------------------------------
+# Adapted from McConnell, Smout & Wu (2017) "Modelling Harbour Seal
+# Movements" (Scottish Marine & Freshwater Science Vol 8 No 20).
+# The model couples an energy budget (metabolic cost / foraging gain /
+# haulout recovery) with habitat-biased movement on a 2-D raster.
+# ---------------------------------------------------------------------------
+
+def _build_baltic_habitat(
+    resolution: float = 0.25,
+) -> tuple:
+    """Build a Baltic Sea habitat-quality raster from the embedded sea mask.
+
+    Returns ``(habitat_2d, bounds, haulout_xy, site_quality)`` where
+    *habitat_2d* is a numpy array (ny × nx) in [0, 1] — 0 = land,
+    positive = sea with foraging-quality gradient.
+
+    Foraging hotspots are placed as Gaussian patches centred on each
+    haulout site, overlaid on a base sea value.
+    """
+    import numpy as np
+
+    lon_min, lon_max = _SEA_LON_MIN, _SEA_LON_MAX
+    lat_min, lat_max = _SEA_LAT_MIN, _SEA_LAT_MAX
+
+    nx = int(round((lon_max - lon_min) / resolution))
+    ny = int(round((lat_max - lat_min) / resolution))
+
+    # Create coordinate grids
+    lons = np.linspace(lon_min, lon_max, nx)
+    lats = np.linspace(lat_min, lat_max, ny)
+    LON, LAT = np.meshgrid(lons, lats)
+
+    # Base habitat: look up sea mask cell for each raster pixel
+    habitat = np.zeros((ny, nx), dtype=np.float64)
+    for r in range(ny):
+        for c in range(nx):
+            if is_sea(lons[c], lats[r]):
+                habitat[r, c] = 0.3  # base sea value
+
+    # Add Gaussian foraging hotspots near each haulout
+    for site in _SEAL_HAULOUT_SITES:
+        sigma_lon = _SEAL_TRIP_PARAMS[site["species"]]["range_deg"] * 0.35
+        sigma_lat = sigma_lon * 0.6
+        patch = 0.7 * np.exp(
+            -(((LON - site["lon"]) / sigma_lon) ** 2
+              + ((LAT - site["lat"]) / sigma_lat) ** 2) / 2
+        )
+        habitat += patch
+
+    # Zero out land cells (mask)
+    for r in range(ny):
+        for c in range(nx):
+            if not is_sea(lons[c], lats[r]):
+                habitat[r, c] = 0.0
+
+    # Normalize to [0, 1]
+    sea_mask_arr = habitat > 0
+    if sea_mask_arr.any():
+        hmax = habitat[sea_mask_arr].max()
+        if hmax > 0:
+            habitat[sea_mask_arr] = habitat[sea_mask_arr] / hmax
+
+    bounds = (lon_min, lon_max, lat_min, lat_max)
+
+    # Haulout coordinates as numpy array
+    haulout_xy = np.array(
+        [[s["lon"], s["lat"]] for s in _SEAL_HAULOUT_SITES],
+        dtype=np.float64,
+    )
+    # Site quality proportional to population (log-scaled)
+    site_quality = np.array(
+        [np.log2(s["population"] + 1) / 10.0 for s in _SEAL_HAULOUT_SITES],
+        dtype=np.float64,
+    )
+
+    return habitat, bounds, haulout_xy, site_quality
+
+
+# Cache the habitat raster (built lazily on first call)
+_BALTIC_HABITAT_CACHE: dict = {}
+
+
+def _get_baltic_habitat(resolution: float = 0.25) -> tuple:
+    """Return cached (habitat, bounds, haulout_xy, site_quality)."""
+    if resolution not in _BALTIC_HABITAT_CACHE:
+        _BALTIC_HABITAT_CACHE[resolution] = _build_baltic_habitat(resolution)
+    return _BALTIC_HABITAT_CACHE[resolution]
+
+
+def make_seal_trips_ibm(
+    n_seals: int = 25,
+    sim_hours: int = 168,
+    loop_length: int = 600,
+    *,
+    seed: int = 42,
+) -> list[dict]:
+    """Generate seal movement tracks using a McConnell-style energy-budget IBM.
+
+    Implements a mechanistic individual-based model following McConnell,
+    Smout & Wu (2017) where each seal has:
+
+    - **Energy budget**: metabolic cost while swimming, foraging gain
+      proportional to habitat quality, haulout recovery.
+    - **Habitat-biased movement**: drift toward higher-quality foraging
+      areas via the habitat gradient, plus diffusive random component.
+    - **State switching**: seals haul out when energy is depleted or
+      max-at-sea time is exceeded, and depart when energy recovers.
+    - **Land avoidance**: steps onto land cells are reflected/rejected.
+
+    Each agent's at-sea segments are extracted as separate foraging
+    trips and formatted via :func:`format_trips`.
+
+    Parameters
+    ----------
+    n_seals
+        Number of individual seals to simulate.
+    sim_hours
+        Duration of the simulation in hours (default 168 = one week).
+    loop_length
+        Animation loop length for ``format_trips()``.
+    seed
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    list[dict]
+        Same format as :func:`make_seal_trips` — each dict has
+        ``path``, ``timestamps``, ``name``, ``species``, ``haulout``,
+        ``color``, ``seal_id``.
+    """
+    import numpy as np
+    from .ibm import format_trips
+
+    rng = np.random.default_rng(seed)
+
+    # -- Build environment ------------------------------------------------
+    habitat, bounds, haulout_xy, site_quality = _get_baltic_habitat(0.25)
+    xmin, xmax, ymin, ymax = bounds
+    ny, nx = habitat.shape
+
+    # Precompute gradient field
+    gy, gx = np.gradient(habitat)
+
+    def _habitat_value(xy):
+        """Bilinear sample of habitat raster at (lon, lat)."""
+        u = (xy[0] - xmin) / (xmax - xmin) * (nx - 1)
+        v = (xy[1] - ymin) / (ymax - ymin) * (ny - 1)
+        if u < 0 or u > nx - 1 or v < 0 or v > ny - 1:
+            return 0.0
+        u0 = int(np.floor(u))
+        v0 = int(np.floor(v))
+        u1 = min(u0 + 1, nx - 1)
+        v1 = min(v0 + 1, ny - 1)
+        du, dv = u - u0, v - v0
+        return float(
+            (1 - du) * (1 - dv) * habitat[v0, u0]
+            + du * (1 - dv) * habitat[v0, u1]
+            + (1 - du) * dv * habitat[v1, u0]
+            + du * dv * habitat[v1, u1]
+        )
+
+    def _gradient_at(xy):
+        """Approximate habitat gradient at (lon, lat)."""
+        u = np.clip(
+            (xy[0] - xmin) / (xmax - xmin) * (nx - 1), 0, nx - 1
+        )
+        v = np.clip(
+            (xy[1] - ymin) / (ymax - ymin) * (ny - 1), 0, ny - 1
+        )
+        u0, v0 = int(np.floor(u)), int(np.floor(v))
+        return np.array([gx[v0, u0], gy[v0, u0]], dtype=np.float64)
+
+    def _softmax(x, tau=0.5):
+        x = np.asarray(x, dtype=np.float64)
+        x = x - x.max()
+        ex = np.exp(x / max(1e-9, tau))
+        s = ex.sum()
+        return ex / s if s > 0 else np.ones_like(x) / len(x)
+
+    # -- IBM parameters (adapted for lon/lat degrees) ---------------------
+    # Typical seal swim speed: 5–7 km/h ≈ 0.05° lat/h
+    SPEED_MAX = 0.06          # max displacement per step (degrees)
+    DIFFUSIVE_SIGMA = 0.018   # random movement component
+    BIAS_STRENGTH = 0.025     # habitat-gradient following
+    METABOLIC_COST = 0.04     # energy lost per hour at sea
+    FORAGING_SCALE = 0.06     # energy gain * habitat_value per hour
+    HAULOUT_RECOVERY = 0.15   # energy recovery per hour hauled out
+    ENERGY_LOW = 0.25         # haul-out trigger threshold
+    ENERGY_MAX = 1.0
+    MIN_HAULOUT_H = 4         # minimum rest hours
+    MAX_AT_SEA_H = 72         # maximum hours before forced haulout
+    DEPART_ENERGY = 0.85      # energy to re-depart from haulout
+    SITE_DIST_PENALTY = 0.3   # utility penalty per degree distance
+
+    # -- Species-specific scaling -----------------------------------------
+    _SPECIES_SPEED = {
+        "Grey seal": 1.3,     # largest, fastest
+        "Ringed seal": 0.75,  # smallest, shortest trips
+        "Harbour seal": 1.0,  # reference
+    }
+
+    # -- Initialize agents ------------------------------------------------
+    n_sites = len(_SEAL_HAULOUT_SITES)
+    pop_weights = np.array(
+        [s["population"] for s in _SEAL_HAULOUT_SITES], dtype=np.float64
+    )
+    pop_weights /= pop_weights.sum()
+
+    class _AgentState:
+        __slots__ = (
+            "xy", "energy", "at_sea", "hours_since_haulout",
+            "hours_on_haulout", "current_site", "site_idx",
+            "species", "speed_scale",
+        )
+
+    agents: list = []
+    for _ in range(n_seals):
+        idx = int(rng.choice(n_sites, p=pop_weights))
+        site = _SEAL_HAULOUT_SITES[idx]
+        a = _AgentState()
+        a.xy = haulout_xy[idx].copy() + rng.normal(0, 0.01, size=2)
+        if not is_sea(float(a.xy[0]), float(a.xy[1])):
+            a.xy = haulout_xy[idx].copy()
+        a.energy = float(rng.uniform(0.7, 1.0))
+        a.at_sea = True
+        a.hours_since_haulout = 0
+        a.hours_on_haulout = 0
+        a.current_site = None
+        a.site_idx = idx
+        a.species = site["species"]
+        a.speed_scale = _SPECIES_SPEED[site["species"]]
+        agents.append(a)
+
+    # -- Run simulation ---------------------------------------------------
+    trajectories: list[list[tuple]] = [[] for _ in range(n_seals)]
+
+    for t in range(sim_hours):
+        for i, a in enumerate(agents):
+            trajectories[i].append(
+                (round(float(a.xy[0]), 5),
+                 round(float(a.xy[1]), 5),
+                 a.at_sea, a.energy)
+            )
+
+            if a.at_sea:
+                # -- At-sea step --
+                hval = _habitat_value(a.xy)
+                a.energy = max(
+                    0.0,
+                    a.energy - METABOLIC_COST + FORAGING_SCALE * hval,
+                )
+                a.energy = min(ENERGY_MAX, a.energy)
+                a.hours_since_haulout += 1
+
+                # Movement: diffusive + habitat-biased
+                grad = _gradient_at(a.xy)
+                gnorm = float(np.linalg.norm(grad))
+                if gnorm > 0:
+                    grad = grad / gnorm
+
+                step = (
+                    rng.normal(0, DIFFUSIVE_SIGMA * a.speed_scale, size=2)
+                    + BIAS_STRENGTH * a.speed_scale * grad
+                )
+                speed_lim = SPEED_MAX * a.speed_scale
+                L = float(np.linalg.norm(step))
+                if L > speed_lim:
+                    step = step / L * speed_lim
+
+                new_xy = a.xy + step
+                new_xy[0] = np.clip(new_xy[0], xmin + 0.1, xmax - 0.1)
+                new_xy[1] = np.clip(new_xy[1], ymin + 0.1, ymax - 0.1)
+
+                # Land avoidance: reflect, perpendicular, or stay
+                if not is_sea(float(new_xy[0]), float(new_xy[1])):
+                    new_xy = a.xy - step * 0.5
+                    new_xy[0] = np.clip(new_xy[0], xmin + 0.1, xmax - 0.1)
+                    new_xy[1] = np.clip(new_xy[1], ymin + 0.1, ymax - 0.1)
+                    if not is_sea(float(new_xy[0]), float(new_xy[1])):
+                        perp = np.array([-step[1], step[0]])
+                        new_xy = a.xy + perp * 0.5
+                        new_xy[0] = np.clip(
+                            new_xy[0], xmin + 0.1, xmax - 0.1
+                        )
+                        new_xy[1] = np.clip(
+                            new_xy[1], ymin + 0.1, ymax - 0.1
+                        )
+                        if not is_sea(
+                            float(new_xy[0]), float(new_xy[1])
+                        ):
+                            new_xy = a.xy.copy()
+
+                a.xy = new_xy
+
+                # Haulout decision
+                need_rest = (
+                    a.energy <= ENERGY_LOW
+                    or a.hours_since_haulout >= MAX_AT_SEA_H
+                )
+                if need_rest:
+                    dists = np.linalg.norm(
+                        haulout_xy - a.xy[np.newaxis, :], axis=1
+                    )
+                    util = site_quality - SITE_DIST_PENALTY * dists
+                    probs = _softmax(util)
+                    site_idx = int(rng.choice(n_sites, p=probs))
+                    a.xy = haulout_xy[site_idx].copy()
+                    a.at_sea = False
+                    a.hours_on_haulout = 0
+                    a.current_site = site_idx
+
+            else:
+                # -- Hauled-out step --
+                a.hours_on_haulout += 1
+                a.energy = min(
+                    ENERGY_MAX, a.energy + HAULOUT_RECOVERY
+                )
+                if (
+                    a.hours_on_haulout >= MIN_HAULOUT_H
+                    and a.energy >= DEPART_ENERGY
+                ):
+                    a.at_sea = True
+                    a.hours_since_haulout = 0
+                    a.current_site = None
+                    push = rng.normal(0, 0.02, size=2)
+                    new_xy = a.xy + push
+                    if is_sea(float(new_xy[0]), float(new_xy[1])):
+                        a.xy = new_xy
+
+    # -- Extract foraging trips from trajectories -------------------------
+    trips: list[dict] = []
+    trip_id = 0
+
+    for agent_idx in range(n_seals):
+        traj = trajectories[agent_idx]
+        a = agents[agent_idx]
+        site = _SEAL_HAULOUT_SITES[a.site_idx]
+
+        current_trip: list[list[float]] = []
+        prev_at_sea = False
+
+        for lon, lat, at_sea, energy in traj:
+            if at_sea:
+                current_trip.append([lon, lat])
+                prev_at_sea = True
+            else:
+                if prev_at_sea and len(current_trip) >= 3:
+                    current_trip.append([lon, lat])
+                    trip_id += 1
+                    formatted = format_trips(
+                        [current_trip],
+                        loop_length=loop_length,
+                        properties=[{
+                            "name": (
+                                f"Seal #{agent_idx + 1} "
+                                f"trip {trip_id}"
+                            ),
+                            "species": a.species,
+                            "haulout": site["name"],
+                            "color": SPECIES_COLORS[a.species],
+                            "seal_id": agent_idx + 1,
+                        }],
+                    )
+                    trips.append(formatted[0])
+                current_trip = []
+                prev_at_sea = False
+
+        # Trip still in progress at end of simulation
+        if prev_at_sea and len(current_trip) >= 3:
+            trip_id += 1
+            formatted = format_trips(
+                [current_trip],
+                loop_length=loop_length,
+                properties=[{
+                    "name": f"Seal #{agent_idx + 1} trip {trip_id}",
+                    "species": a.species,
+                    "haulout": site["name"],
+                    "color": SPECIES_COLORS[a.species],
+                    "seal_id": agent_idx + 1,
+                }],
+            )
+            trips.append(formatted[0])
+
+    return trips

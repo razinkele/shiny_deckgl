@@ -665,20 +665,21 @@ def make_seal_trips(
         # Combine: haul-out → foraging → return → haul-out
         full_path = outbound + inbound + [[round(start_lon, 5), round(start_lat, 5)]]
 
-        # Assign timestamps evenly over the loop
-        n_pts = len(full_path)
-        timestamps = [int(i * loop_length / (n_pts - 1)) for i in range(n_pts)]
-        path_3d = [[pt[0], pt[1], ts] for pt, ts in zip(full_path, timestamps)]
+        # Use format_trips() to assign timestamps and build the dict
+        from .ibm import format_trips
 
-        trips.append({
-            "path": path_3d,
-            "timestamps": timestamps,
-            "name": f"Seal #{seal_idx + 1}",
-            "species": species,
-            "haulout": site["name"],
-            "color": SPECIES_COLORS[species],
-            "seal_id": seal_idx + 1,
-        })
+        formatted = format_trips(
+            [full_path],
+            loop_length=loop_length,
+            properties=[{
+                "name": f"Seal #{seal_idx + 1}",
+                "species": species,
+                "haulout": site["name"],
+                "color": SPECIES_COLORS[species],
+                "seal_id": seal_idx + 1,
+            }],
+        )
+        trips.append(formatted[0])
 
     return trips
 

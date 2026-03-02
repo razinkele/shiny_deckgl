@@ -92,6 +92,9 @@ from .ibm import (
     SPECIES_COLORS,
     ICON_ATLAS,
     ICON_MAPPING,
+    format_trips,
+    trips_animation_ui,
+    trips_animation_server,
 )
 from ._version import __version__
 
@@ -182,9 +185,12 @@ __all__ = [
     "terrain_extension",
     "fill_style_extension",
     "path_style_extension",
-    # IBM visual assets (v1.1.0)
+    # IBM visual assets & helpers (v1.1.0)
     "SPECIES_COLORS",
     "ICON_ATLAS",
     "ICON_MAPPING",
+    "format_trips",
+    "trips_animation_ui",
+    "trips_animation_server",
     "__version__",
 ]

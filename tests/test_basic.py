@@ -5342,18 +5342,28 @@ class TestIBMModuleImports:
             SPECIES_COLORS,
             ICON_ATLAS,
             ICON_MAPPING,
+            format_trips,
+            trips_animation_ui,
+            trips_animation_server,
         )
         assert isinstance(SPECIES_COLORS, dict)
         assert isinstance(ICON_ATLAS, str)
         assert isinstance(ICON_MAPPING, dict)
+        assert callable(format_trips)
+        assert callable(trips_animation_ui)
+        assert callable(trips_animation_server)
 
     def test_import_from_ibm_submodule(self):
         from shiny_deckgl.ibm import (
             SPECIES_COLORS,
             ICON_ATLAS,
             ICON_MAPPING,
+            format_trips,
+            trips_animation_ui,
+            trips_animation_server,
         )
         assert len(SPECIES_COLORS) == 3
+        assert callable(format_trips)
 
     def test_simulation_NOT_in_ibm(self):
         """Simulation code must NOT be in the library ibm module."""
@@ -5384,7 +5394,11 @@ class TestIBMModuleImports:
         assert "SPECIES_COLORS" in ibm.__all__
         assert "ICON_ATLAS" in ibm.__all__
         assert "ICON_MAPPING" in ibm.__all__
-        assert len(ibm.__all__) == 3
+        assert len(ibm.__all__) == 6
+        # New helpers in __all__
+        assert "format_trips" in ibm.__all__
+        assert "trips_animation_ui" in ibm.__all__
+        assert "trips_animation_server" in ibm.__all__
         # Old seal-specific names should NOT be in __all__
         assert "SEAL_ICON_ATLAS" not in ibm.__all__
         assert "make_seal_haulout_icons" not in ibm.__all__
@@ -5680,4 +5694,194 @@ class TestMakeSealHauloutIcons:
         from shiny_deckgl._demo_data import make_seal_haulout_icons
         for d in make_seal_haulout_icons():
             assert d["size"] >= 24
+
+
+# ── format_trips ──────────────────────────────────────────────────
+
+class TestFormatTrips:
+    """Tests for the format_trips() data normaliser."""
+
+    def test_import_from_package(self):
+        from shiny_deckgl import format_trips
+        assert callable(format_trips)
+
+    def test_import_from_ibm(self):
+        from shiny_deckgl.ibm import format_trips
+        assert callable(format_trips)
+
+    def test_2d_auto_timestamps(self):
+        """2-D paths get evenly-spaced timestamps from loop_length."""
+        from shiny_deckgl.ibm import format_trips
+        path = [[20.0, 57.0], [20.5, 57.2], [21.0, 57.4]]
+        result = format_trips([path], loop_length=100)
+        assert len(result) == 1
+        trip = result[0]
+        assert "path" in trip
+        assert "timestamps" in trip
+        assert len(trip["path"]) == 3
+        assert len(trip["timestamps"]) == 3
+        # First timestamp is 0, last is loop_length
+        assert trip["timestamps"][0] == 0
+        assert trip["timestamps"][-1] == 100
+        # Each path point is [lon, lat, time]
+        assert len(trip["path"][0]) == 3
+        assert trip["path"][0][0] == 20.0
+        assert trip["path"][0][1] == 57.0
+
+    def test_3d_passthrough(self):
+        """Paths with 3 elements keep embedded timestamps."""
+        from shiny_deckgl.ibm import format_trips
+        path = [[20.0, 57.0, 0], [20.5, 57.2, 50], [21.0, 57.4, 100]]
+        result = format_trips([path])
+        trip = result[0]
+        assert trip["timestamps"] == [0, 50, 100]
+        assert trip["path"][1] == [20.5, 57.2, 50]
+
+    def test_explicit_timestamps(self):
+        """Explicit timestamps override auto-generation."""
+        from shiny_deckgl.ibm import format_trips
+        path = [[20.0, 57.0], [20.5, 57.2]]
+        result = format_trips([path], timestamps=[[10, 90]])
+        trip = result[0]
+        assert trip["timestamps"] == [10, 90]
+        assert trip["path"][0][2] == 10
+        assert trip["path"][1][2] == 90
+
+    def test_properties_merge(self):
+        """Per-trip properties are merged into the output dict."""
+        from shiny_deckgl.ibm import format_trips
+        path = [[20.0, 57.0], [20.5, 57.2]]
+        result = format_trips(
+            [path],
+            properties=[{"name": "Trip 1", "color": [255, 0, 0]}],
+        )
+        trip = result[0]
+        assert trip["name"] == "Trip 1"
+        assert trip["color"] == [255, 0, 0]
+
+    def test_multiple_trips(self):
+        """Multiple paths produce multiple output dicts."""
+        from shiny_deckgl.ibm import format_trips
+        p1 = [[10.0, 55.0], [10.5, 55.5]]
+        p2 = [[20.0, 57.0], [20.5, 57.2], [21.0, 57.4]]
+        result = format_trips([p1, p2], loop_length=200)
+        assert len(result) == 2
+        assert len(result[0]["path"]) == 2
+        assert len(result[1]["path"]) == 3
+
+    def test_empty_path_skipped(self):
+        """Empty paths are skipped in the output."""
+        from shiny_deckgl.ibm import format_trips
+        result = format_trips([[], [[10.0, 55.0], [10.5, 55.5]]])
+        assert len(result) == 1
+
+    def test_single_point_path(self):
+        """Single-point path gets timestamp 0."""
+        from shiny_deckgl.ibm import format_trips
+        result = format_trips([[[10.0, 55.0]]])
+        assert result[0]["timestamps"] == [0]
+
+    def test_properties_length_mismatch_raises(self):
+        """Mismatched properties length raises ValueError."""
+        from shiny_deckgl.ibm import format_trips
+        import pytest
+        with pytest.raises(ValueError, match="properties length"):
+            format_trips(
+                [[[10.0, 55.0]]],
+                properties=[{"a": 1}, {"b": 2}],
+            )
+
+    def test_timestamps_length_mismatch_raises(self):
+        """Mismatched timestamps length raises ValueError."""
+        from shiny_deckgl.ibm import format_trips
+        import pytest
+        with pytest.raises(ValueError, match="timestamps length"):
+            format_trips(
+                [[[10.0, 55.0]]],
+                timestamps=[[0], [100]],
+            )
+
+    def test_explicit_timestamps_wrong_inner_length_raises(self):
+        """Inner timestamp list length != path length raises ValueError."""
+        from shiny_deckgl.ibm import format_trips
+        import pytest
+        with pytest.raises(ValueError, match=r"timestamps\[0\] length"):
+            format_trips(
+                [[[10.0, 55.0], [10.5, 55.5]]],
+                timestamps=[[0, 50, 100]],
+            )
+
+    def test_make_seal_trips_uses_format_trips(self):
+        """make_seal_trips output structure matches format_trips output."""
+        from shiny_deckgl._demo_data import make_seal_trips
+        trips = make_seal_trips(n_seals=3, loop_length=100, seed=42)
+        for t in trips:
+            assert "path" in t
+            assert "timestamps" in t
+            assert len(t["path"]) == len(t["timestamps"])
+            assert len(t["path"][0]) == 3  # [lon, lat, time]
+            assert t["timestamps"][0] == 0
+
+
+# ── trips_animation_ui / trips_animation_server ──────────────────
+
+class TestTripsAnimationUI:
+    """Tests for the trips_animation_ui Shiny module."""
+
+    def test_import_from_package(self):
+        from shiny_deckgl import trips_animation_ui
+        assert callable(trips_animation_ui)
+
+    def test_import_from_ibm(self):
+        from shiny_deckgl.ibm import trips_animation_ui
+        assert callable(trips_animation_ui)
+
+    def test_returns_tag(self):
+        """trips_animation_ui returns a Shiny TagList."""
+        from shiny_deckgl.ibm import trips_animation_ui
+        result = trips_animation_ui("test_anim")
+        # Should be a Shiny Tag/TagList (has render method or similar)
+        assert result is not None
+        html = str(result)
+        assert "play" in html.lower() or "Play" in html
+        assert "pause" in html.lower() or "Pause" in html
+        assert "reset" in html.lower() or "Reset" in html
+
+    def test_custom_defaults(self):
+        """Custom slider defaults are reflected in the output."""
+        from shiny_deckgl.ibm import trips_animation_ui
+        result = trips_animation_ui(
+            "test_anim2",
+            speed_default=20.0,
+            trail_default=300,
+        )
+        html = str(result)
+        assert result is not None
+        # Speed and trail sliders should be present
+        assert "speed" in html.lower() or "Animation speed" in html
+        assert "trail" in html.lower() or "Trail length" in html
+
+
+class TestTripsAnimationServer:
+    """Tests for the trips_animation_server Shiny module."""
+
+    def test_import_from_package(self):
+        from shiny_deckgl import trips_animation_server
+        assert callable(trips_animation_server)
+
+    def test_import_from_ibm(self):
+        from shiny_deckgl.ibm import trips_animation_server
+        assert callable(trips_animation_server)
+
+    def test_in_ibm_all(self):
+        """trips_animation_server is in ibm.__all__."""
+        from shiny_deckgl.ibm import __all__ as ibm_all
+        assert "trips_animation_server" in ibm_all
+
+    def test_in_package_all(self):
+        """New helpers are in shiny_deckgl.__all__."""
+        from shiny_deckgl import __all__ as pkg_all
+        assert "format_trips" in pkg_all
+        assert "trips_animation_ui" in pkg_all
+        assert "trips_animation_server" in pkg_all
 

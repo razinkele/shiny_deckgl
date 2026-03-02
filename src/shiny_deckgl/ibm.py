@@ -1,27 +1,43 @@
 """Individual-Based Model (IBM) movement-visualisation assets.
 
-This module provides **species-agnostic** visual assets for rendering
-animal movement tracks on a deck.gl map: colour look-ups and an SVG
-sprite sheet for ``IconLayer``.  The assets ship with seal sprites but
-the naming is generic so the module can be extended to other taxa.
+This module provides **species-agnostic** visual assets and helpers for
+rendering animal movement tracks on a deck.gl map.
 
-Actual coordinate / trajectory generation is the responsibility of the
-user's own simulation code (the built-in demo app ships with a
-correlated random-walk example in ``_demo_data``).
-
-Public API
-----------
+Visual Assets
+-------------
 * ``SPECIES_COLORS``  – RGBA look-up per species
 * ``ICON_ATLAS``      – base64 data-URI of a 192×64 SVG sprite sheet
 * ``ICON_MAPPING``    – deck.gl icon-mapping dict keyed by species
+
+Data Helpers
+------------
+* ``format_trips()``  – convert raw coordinate lists into the dict
+  format that ``trips_layer()`` expects
+
+Shiny Modules
+-------------
+* ``trips_animation_ui()``     – Play/Pause/Reset buttons + speed &
+  trail sliders (drop into any Shiny sidebar)
+* ``trips_animation_server()`` – wires the buttons to
+  ``MapWidget.trips_control()`` and exposes ``speed`` / ``trail``
+  reactive inputs back to the caller
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from shiny import Session
+    from .map_widget import MapWidget
 
 __all__ = [
     "SPECIES_COLORS",
     "ICON_ATLAS",
     "ICON_MAPPING",
+    "format_trips",
+    "trips_animation_ui",
+    "trips_animation_server",
 ]
 
 # ---------------------------------------------------------------------------
@@ -102,3 +118,255 @@ ICON_MAPPING: dict[str, dict] = {
     "Ringed seal":  {"x": 64,  "y": 0, "width": 64, "height": 64, "anchorY": 32},
     "Harbour seal": {"x": 128, "y": 0, "width": 64, "height": 64, "anchorY": 32},
 }
+
+
+# ---------------------------------------------------------------------------
+# Data helper — format_trips
+# ---------------------------------------------------------------------------
+
+def format_trips(
+    paths: list[list[list[float]]],
+    *,
+    loop_length: int = 600,
+    timestamps: list[list[int | float]] | None = None,
+    properties: list[dict] | None = None,
+) -> list[dict]:
+    """Convert raw coordinate lists into the dict format ``trips_layer()`` expects.
+
+    This bridges the gap between *"I have paths"* and *"trips_layer needs
+    this exact dict structure"*.  You supply a list of 2-D paths (each a
+    list of ``[lon, lat]`` pairs) and ``format_trips`` adds evenly-spaced
+    timestamps, builds the 3-D ``[lon, lat, time]`` arrays, and merges in
+    any per-trip metadata you provide.
+
+    Parameters
+    ----------
+    paths
+        One entry per trip.  Each entry is a list of coordinate pairs
+        ``[[lon, lat], ...]``.  If a coordinate already has three
+        elements ``[lon, lat, time]``, the third element is kept as the
+        timestamp and the *timestamps* parameter is ignored for that
+        trip.
+    loop_length
+        Total animation loop duration (arbitrary time units).  Used to
+        auto-generate evenly-spaced timestamps when the path has only
+        2-D coordinates and no explicit *timestamps* are supplied.
+    timestamps
+        Optional explicit per-trip timestamp arrays.  Must be the same
+        length as *paths* and each inner list must match the
+        corresponding path length.  If ``None``, timestamps are
+        generated automatically from *loop_length*.
+    properties
+        Optional list of dicts (one per trip) with arbitrary extra keys
+        (e.g. ``name``, ``species``, ``color``).  These are merged into
+        the output dicts so that ``trips_layer`` accessors such as
+        ``getColor="@@d.color"`` work.
+
+    Returns
+    -------
+    list[dict]
+        Each dict has at least:
+
+        * ``path`` – list of ``[lon, lat, time]`` triplets
+        * ``timestamps`` – flat list of time values
+
+        Plus any keys supplied via *properties*.
+
+    Examples
+    --------
+    >>> from shiny_deckgl.ibm import format_trips
+    >>> trips = format_trips(
+    ...     paths=[[[20.0, 57.0], [20.5, 57.2], [20.0, 57.0]]],
+    ...     loop_length=100,
+    ...     properties=[{"name": "Trip 1", "color": [255, 0, 0]}],
+    ... )
+    >>> trips[0]["path"][0]
+    [20.0, 57.0, 0]
+    """
+    if properties is not None and len(properties) != len(paths):
+        raise ValueError(
+            f"properties length ({len(properties)}) must match "
+            f"paths length ({len(paths)})"
+        )
+    if timestamps is not None and len(timestamps) != len(paths):
+        raise ValueError(
+            f"timestamps length ({len(timestamps)}) must match "
+            f"paths length ({len(paths)})"
+        )
+
+    result: list[dict] = []
+
+    for idx, path in enumerate(paths):
+        n_pts = len(path)
+        if n_pts == 0:
+            continue
+
+        # Determine timestamps for this trip
+        has_3d = len(path[0]) >= 3
+        if has_3d:
+            ts = [pt[2] for pt in path]
+            path_3d = [[pt[0], pt[1], pt[2]] for pt in path]
+        elif timestamps is not None:
+            ts = list(timestamps[idx])
+            if len(ts) != n_pts:
+                raise ValueError(
+                    f"timestamps[{idx}] length ({len(ts)}) != "
+                    f"path length ({n_pts})"
+                )
+            path_3d = [[pt[0], pt[1], t] for pt, t in zip(path, ts)]
+        else:
+            # Auto-generate evenly spaced
+            if n_pts == 1:
+                ts = [0]
+            else:
+                ts = [int(i * loop_length / (n_pts - 1)) for i in range(n_pts)]
+            path_3d = [[pt[0], pt[1], t] for pt, t in zip(path, ts)]
+
+        trip: dict[str, Any] = {
+            "path": path_3d,
+            "timestamps": ts,
+        }
+
+        # Merge user-supplied properties
+        if properties is not None:
+            trip.update(properties[idx])
+
+        result.append(trip)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Shiny module — trips animation controls
+# ---------------------------------------------------------------------------
+
+def trips_animation_ui(
+    id: str,
+    *,
+    speed_default: float = 8.0,
+    speed_min: float = 0.5,
+    speed_max: float = 100.0,
+    speed_step: float = 0.5,
+    trail_default: int = 180,
+    trail_min: int = 20,
+    trail_max: int = 400,
+    trail_step: int = 10,
+):
+    """UI fragment for TripsLayer animation controls.
+
+    Drop this into a sidebar or card to get Play / Pause / Reset
+    buttons plus speed and trail-length sliders.  Wire it up on the
+    server side with :func:`trips_animation_server`.
+
+    Parameters
+    ----------
+    id
+        Shiny module namespace ID (e.g. ``"seal_anim"``).
+    speed_default / speed_min / speed_max / speed_step
+        Initial value and range for the animation speed slider.
+    trail_default / trail_min / trail_max / trail_step
+        Initial value and range for the trail length slider.
+
+    Returns
+    -------
+    shiny.ui.TagList
+        Ready to embed in a sidebar or layout.
+    """
+    from shiny import module, ui as _ui  # deferred to avoid import at load
+
+    @module.ui
+    def _inner_ui():
+        return _ui.TagList(
+            _ui.layout_columns(
+                _ui.input_action_button(
+                    "play", "\u25B6 Play", class_="btn-sm btn-success",
+                ),
+                _ui.input_action_button(
+                    "pause", "\u23F8 Pause", class_="btn-sm btn-warning",
+                ),
+                _ui.input_action_button(
+                    "reset", "\u23F9 Reset", class_="btn-sm btn-danger",
+                ),
+                col_widths=(4, 4, 4),
+            ),
+            _ui.input_slider(
+                "speed", "Animation speed",
+                min=speed_min, max=speed_max, value=speed_default,
+                step=speed_step,
+            ),
+            _ui.input_slider(
+                "trail", "Trail length",
+                min=trail_min, max=trail_max, value=trail_default,
+                step=trail_step,
+            ),
+        )
+
+    return _inner_ui(id)
+
+
+def trips_animation_server(
+    id: str,
+    *,
+    widget: "MapWidget",
+    session: "Session",
+):
+    """Server logic for TripsLayer animation controls.
+
+    Wires the Play / Pause / Reset buttons produced by
+    :func:`trips_animation_ui` to the widget's ``trips_control``
+    method.  Returns a namespace object whose ``.speed()`` and
+    ``.trail()`` reactive accessors mirror the slider values so
+    the caller can feed them into ``trips_layer()``.
+
+    Parameters
+    ----------
+    id
+        Must match the *id* passed to :func:`trips_animation_ui`.
+    widget
+        The :class:`~shiny_deckgl.MapWidget` that hosts the TripsLayer.
+    session
+        The active Shiny ``Session``.
+
+    Returns
+    -------
+    types.SimpleNamespace
+        ``.speed`` and ``.trail`` — callable reactive values
+        (``input.speed`` and ``input.trail`` from the module).
+
+    Example
+    -------
+    ::
+
+        anim = trips_animation_server("seal_anim", widget=my_widget, session=session)
+        # Later, inside a reactive effect:
+        speed = anim.speed()
+        trail = anim.trail()
+    """
+    import types
+    from shiny import module, reactive
+
+    result_holder: list = []
+
+    @module.server
+    def _inner_server(input, output, inner_session):
+        @reactive.Effect
+        @reactive.event(input.play)
+        async def _play():
+            await widget.trips_control(session, "resume")
+
+        @reactive.Effect
+        @reactive.event(input.pause)
+        async def _pause():
+            await widget.trips_control(session, "pause")
+
+        @reactive.Effect
+        @reactive.event(input.reset)
+        async def _reset():
+            await widget.trips_control(session, "reset")
+
+        result_holder.append(
+            types.SimpleNamespace(speed=input.speed, trail=input.trail)
+        )
+
+    _inner_server(id)
+    return result_holder[0]

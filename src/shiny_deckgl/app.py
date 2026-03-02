@@ -102,7 +102,7 @@ from ._demo_data import (
     make_seal_haulout_data,
     make_seal_foraging_areas,
 )
-from .ibm import ICON_ATLAS, ICON_MAPPING
+from .ibm import ICON_ATLAS, ICON_MAPPING, trips_animation_ui, trips_animation_server
 from ._demo_css import MARINE_CSS, sidebar_hint
 
 from .components import CARTO_POSITRON, PALETTE_OCEAN
@@ -1017,29 +1017,7 @@ app_ui = ui.page_navbar(
                             "Adjust animation speed and trail length for "
                             "the seal movement tracks."
                         ),
-                        ui.layout_columns(
-                            ui.input_action_button(
-                                "seal_play", "\u25B6 Play",
-                                class_="btn-sm btn-success",
-                            ),
-                            ui.input_action_button(
-                                "seal_pause", "\u23F8 Pause",
-                                class_="btn-sm btn-warning",
-                            ),
-                            ui.input_action_button(
-                                "seal_reset", "\u23F9 Reset",
-                                class_="btn-sm btn-danger",
-                            ),
-                            col_widths=(4, 4, 4),
-                        ),
-                        ui.input_slider(
-                            "seal_speed", "Animation speed",
-                            min=0.5, max=100.0, value=8.0, step=0.5,
-                        ),
-                        ui.input_slider(
-                            "seal_trail", "Trail length",
-                            min=20, max=400, value=180, step=10,
-                        ),
+                        trips_animation_ui("seal_anim"),
                     ),
                     ui.accordion_panel(
                         "\U0001F4CD Overlays",
@@ -2507,21 +2485,10 @@ def server(input, output, session: Session):
     _seal_haulout_data = make_seal_haulout_data()
     _seal_foraging_geojson = make_seal_foraging_areas()
 
-    # Play / Pause / Reset button handlers
-    @reactive.Effect
-    @reactive.event(input.seal_play)
-    async def _seal_play():
-        await seal_widget.trips_control(session, "resume")
-
-    @reactive.Effect
-    @reactive.event(input.seal_pause)
-    async def _seal_pause():
-        await seal_widget.trips_control(session, "pause")
-
-    @reactive.Effect
-    @reactive.event(input.seal_reset)
-    async def _seal_reset():
-        await seal_widget.trips_control(session, "reset")
+    # Play / Pause / Reset + speed & trail via reusable module
+    seal_anim = trips_animation_server(
+        "seal_anim", widget=seal_widget, session=session,
+    )
 
     @reactive.Calc
     def _seal_trips():
@@ -2535,8 +2502,8 @@ def server(input, output, session: Session):
     @reactive.event(
         input.seal_n_individuals,
         input.seal_species,
-        input.seal_speed,
-        input.seal_trail,
+        seal_anim.speed,
+        seal_anim.trail,
         input.seal_haulouts,
         input.seal_foraging,
     )
@@ -2575,12 +2542,12 @@ def server(input, output, session: Session):
                 trips_layer(
                     "seal_trips",
                     filtered_trips,
-                    trailLength=input.seal_trail(),
+                    trailLength=seal_anim.trail(),
                     getColor="@@d.color",
                     widthMinPixels=3,
                     _tripsAnimation={
                         "loopLength": _SEAL_LOOP,
-                        "speed": input.seal_speed(),
+                        "speed": seal_anim.speed(),
                     },
                     _tripsHeadIcons={
                         "iconAtlas": ICON_ATLAS,

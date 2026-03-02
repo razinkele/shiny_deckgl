@@ -89,11 +89,9 @@ from .components import (
 )
 from .ui import head_includes
 from .ibm import (
-    SEAL_HAULOUT_SITES,
-    SEAL_SPECIES_COLORS,
-    SEAL_ICON_ATLAS,
-    SEAL_ICON_MAPPING,
-    make_seal_haulout_icons,
+    SPECIES_COLORS,
+    ICON_ATLAS,
+    ICON_MAPPING,
 )
 from ._version import __version__
 
@@ -185,10 +183,8 @@ __all__ = [
     "fill_style_extension",
     "path_style_extension",
     # IBM visual assets (v1.1.0)
-    "SEAL_HAULOUT_SITES",
-    "SEAL_SPECIES_COLORS",
-    "SEAL_ICON_ATLAS",
-    "SEAL_ICON_MAPPING",
-    "make_seal_haulout_icons",
+    "SPECIES_COLORS",
+    "ICON_ATLAS",
+    "ICON_MAPPING",
     "__version__",
 ]

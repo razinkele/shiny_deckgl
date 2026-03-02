@@ -538,18 +538,37 @@ LIGHTING_EFFECT_3D = {
 # ---------------------------------------------------------------------------
 # Seal IBM (Individual-Based Model) — movement simulation
 # ---------------------------------------------------------------------------
-# The visual assets (SVG sprites, icon mapping, haulout sites, colours)
-# live in ibm.py.  This module contains the SIMULATION / coordinate
-# generation algorithms that produce data the demo feeds into deck.gl.
+# The visual assets (SVG sprites, icon mapping, colours) live in ibm.py
+# under generic names.  This module contains the SIMULATION / coordinate
+# generation algorithms and seal-specific reference data that produce
+# data the demo feeds into deck.gl.
 # ---------------------------------------------------------------------------
 
-from .ibm import (  # noqa: E402
-    SEAL_HAULOUT_SITES,
-    SEAL_SPECIES_COLORS,
-    SEAL_ICON_ATLAS,       # noqa: F401 — re-exported for backward compat
-    SEAL_ICON_MAPPING,     # noqa: F401
-    make_seal_haulout_icons,  # noqa: F401
-)
+from .ibm import SPECIES_COLORS  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Colony / haul-out reference data (demo-only, not part of the library)
+# ---------------------------------------------------------------------------
+
+#: Real Baltic Sea haul-out / breeding sites for three seal species.
+_SEAL_HAULOUT_SITES: list[dict] = [
+    # Grey seal (Halichoerus grypus) — large offshore sandbanks & skerries
+    {"name": "Gotland NW skerries",   "species": "Grey seal",    "lon": 18.15, "lat": 57.95, "population": 120},
+    {"name": "Åland archipelago",      "species": "Grey seal",    "lon": 20.10, "lat": 60.15, "population": 200},
+    {"name": "Klaipėda offshore bank", "species": "Grey seal",    "lon": 20.85, "lat": 55.85, "population":  80},
+    {"name": "Hiiumaa west",           "species": "Grey seal",    "lon": 22.00, "lat": 58.95, "population": 150},
+    {"name": "Stockholm outer arch.",  "species": "Grey seal",    "lon": 18.80, "lat": 59.20, "population":  90},
+    # Ringed seal (Pusa hispida botnica) — ice-breeding, northern Baltic
+    {"name": "Bothnian Bay south",     "species": "Ringed seal",  "lon": 22.50, "lat": 64.00, "population": 250},
+    {"name": "Gulf of Finland east",   "species": "Ringed seal",  "lon": 27.50, "lat": 60.10, "population":  60},
+    {"name": "Kvarken archipelago",    "species": "Ringed seal",  "lon": 21.20, "lat": 63.20, "population": 180},
+    {"name": "Gulf of Riga",           "species": "Ringed seal",  "lon": 23.80, "lat": 57.60, "population":  40},
+    # Harbour seal (Phoca vitulina) — southern/western Baltic
+    {"name": "Kattegat coast",         "species": "Harbour seal", "lon": 11.80, "lat": 56.80, "population": 300},
+    {"name": "Limfjorden",             "species": "Harbour seal", "lon": 12.20, "lat": 55.30, "population": 110},
+    {"name": "Kalmar Strait",          "species": "Harbour seal", "lon": 16.60, "lat": 56.60, "population":  85},
+    {"name": "Wismar Bay",             "species": "Harbour seal", "lon": 11.50, "lat": 54.10, "population":  70},
+]
 
 # Typical foraging trip parameters by species (from telemetry literature)
 _SEAL_TRIP_PARAMS: dict[str, dict] = {
@@ -597,8 +616,8 @@ def make_seal_trips(
     for seal_idx in range(n_seals):
         # Pick a haul-out site (weighted by population)
         site = rng.choices(
-            SEAL_HAULOUT_SITES,
-            weights=[s["population"] for s in SEAL_HAULOUT_SITES],
+            _SEAL_HAULOUT_SITES,
+            weights=[s["population"] for s in _SEAL_HAULOUT_SITES],
             k=1,
         )[0]
         species = site["species"]
@@ -657,7 +676,7 @@ def make_seal_trips(
             "name": f"Seal #{seal_idx + 1}",
             "species": species,
             "haulout": site["name"],
-            "color": SEAL_SPECIES_COLORS[species],
+            "color": SPECIES_COLORS[species],
             "seal_id": seal_idx + 1,
         })
 
@@ -673,9 +692,9 @@ def make_seal_haulout_data() -> list[dict]:
             "species": s["species"],
             "population": s["population"],
             "radius": max(4, s["population"] / 20),
-            "color": SEAL_SPECIES_COLORS[s["species"]],
+            "color": SPECIES_COLORS[s["species"]],
         }
-        for s in SEAL_HAULOUT_SITES
+        for s in _SEAL_HAULOUT_SITES
     ]
 
 
@@ -688,7 +707,7 @@ def make_seal_foraging_areas() -> dict:
     import math
 
     features = []
-    for site in SEAL_HAULOUT_SITES:
+    for site in _SEAL_HAULOUT_SITES:
         params = _SEAL_TRIP_PARAMS[site["species"]]
         r = params["range_deg"] * 0.5  # semi-axis in degrees
         lon0, lat0 = site["lon"], site["lat"]
@@ -711,3 +730,29 @@ def make_seal_foraging_areas() -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+def make_seal_haulout_icons() -> list[dict]:
+    """Build IconLayer data for haul-out sites with species-specific icons.
+
+    Each entry has ``position``, ``icon`` (species name mapping into
+    the library's :data:`~shiny_deckgl.ibm.ICON_MAPPING`), ``name``,
+    ``species``, ``population``, and ``size`` (proportional to log of
+    population).
+
+    Returns
+    -------
+    list[dict]
+        Ready for ``icon_layer(data=...)``.
+    """
+    import math
+
+    return [
+        {
+            "position": [s["lon"], s["lat"]],
+            "icon": s["species"],
+            "name": s["name"],
+            "species": s["species"],
+            "population": s["population"],
+            "size": max(24, int(math.log2(s["population"] + 1) * 8)),
+        }
+        for s in _SEAL_HAULOUT_SITES
+    ]

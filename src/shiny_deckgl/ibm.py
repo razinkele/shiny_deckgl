@@ -1,64 +1,35 @@
 """Individual-Based Model (IBM) movement-visualisation assets.
 
-This module provides the **visual assets** needed to render animal
-movement tracks on a deck.gl map: species reference data, colour look-ups,
-and an SVG sprite sheet.  Actual coordinate / trajectory generation is
-the responsibility of the user's own simulation code (the built-in demo
-app ships with a correlated random-walk example in ``_demo_data``).
+This module provides **species-agnostic** visual assets for rendering
+animal movement tracks on a deck.gl map: colour look-ups and an SVG
+sprite sheet for ``IconLayer``.  The assets ship with seal sprites but
+the naming is generic so the module can be extended to other taxa.
+
+Actual coordinate / trajectory generation is the responsibility of the
+user's own simulation code (the built-in demo app ships with a
+correlated random-walk example in ``_demo_data``).
 
 Public API
 ----------
-**Constants**
-
-* ``SEAL_HAULOUT_SITES``   – 13 real colony locations (3 species)
-* ``SEAL_SPECIES_COLORS``  – RGBA look-up per species
-* ``SEAL_ICON_ATLAS``      – base64 data-URI of a 192×64 SVG sprite sheet
-* ``SEAL_ICON_MAPPING``    – deck.gl icon-mapping dict keyed by species
-
-**Helpers**
-
-* ``make_seal_haulout_icons()``  – IconLayer data for haul-out markers
+* ``SPECIES_COLORS``  – RGBA look-up per species
+* ``ICON_ATLAS``      – base64 data-URI of a 192×64 SVG sprite sheet
+* ``ICON_MAPPING``    – deck.gl icon-mapping dict keyed by species
 """
 
 from __future__ import annotations
 
-import math
-
 __all__ = [
-    "SEAL_HAULOUT_SITES",
-    "SEAL_SPECIES_COLORS",
-    "SEAL_ICON_ATLAS",
-    "SEAL_ICON_MAPPING",
-    "make_seal_haulout_icons",
+    "SPECIES_COLORS",
+    "ICON_ATLAS",
+    "ICON_MAPPING",
 ]
 
 # ---------------------------------------------------------------------------
-# Colony / haul-out reference data
+# Species colour palette
 # ---------------------------------------------------------------------------
-
-#: Real Baltic Sea haul-out / breeding sites for three seal species.
-#: Coordinates are approximate centres of documented colony locations.
-SEAL_HAULOUT_SITES: list[dict] = [
-    # Grey seal (Halichoerus grypus) — large offshore sandbanks & skerries
-    {"name": "Gotland NW skerries",   "species": "Grey seal",    "lon": 18.15, "lat": 57.95, "population": 120},
-    {"name": "Åland archipelago",      "species": "Grey seal",    "lon": 20.10, "lat": 60.15, "population": 200},
-    {"name": "Klaipėda offshore bank", "species": "Grey seal",    "lon": 20.85, "lat": 55.85, "population":  80},
-    {"name": "Hiiumaa west",           "species": "Grey seal",    "lon": 22.00, "lat": 58.95, "population": 150},
-    {"name": "Stockholm outer arch.",  "species": "Grey seal",    "lon": 18.80, "lat": 59.20, "population":  90},
-    # Ringed seal (Pusa hispida botnica) — ice-breeding, northern Baltic
-    {"name": "Bothnian Bay south",     "species": "Ringed seal",  "lon": 22.50, "lat": 64.00, "population": 250},
-    {"name": "Gulf of Finland east",   "species": "Ringed seal",  "lon": 27.50, "lat": 60.10, "population":  60},
-    {"name": "Kvarken archipelago",    "species": "Ringed seal",  "lon": 21.20, "lat": 63.20, "population": 180},
-    {"name": "Gulf of Riga",           "species": "Ringed seal",  "lon": 23.80, "lat": 57.60, "population":  40},
-    # Harbour seal (Phoca vitulina) — southern/western Baltic
-    {"name": "Kattegat coast",         "species": "Harbour seal", "lon": 11.80, "lat": 56.80, "population": 300},
-    {"name": "Limfjorden",             "species": "Harbour seal", "lon": 12.20, "lat": 55.30, "population": 110},
-    {"name": "Kalmar Strait",          "species": "Harbour seal", "lon": 16.60, "lat": 56.60, "population":  85},
-    {"name": "Wismar Bay",             "species": "Harbour seal", "lon": 11.50, "lat": 54.10, "population":  70},
-]
 
 #: RGBA colours per species for consistent rendering across layers.
-SEAL_SPECIES_COLORS: dict[str, list[int]] = {
+SPECIES_COLORS: dict[str, list[int]] = {
     "Grey seal":    [100, 100, 100, 220],   # slate grey
     "Ringed seal":  [70, 140, 220, 220],    # icy blue
     "Harbour seal": [180, 140, 80, 220],    # sandy brown
@@ -81,7 +52,7 @@ SEAL_SPECIES_COLORS: dict[str, list[int]] = {
 
 #: Base64-encoded data-URI of the 192×64 SVG sprite-sheet.  Pass this as
 #: ``iconAtlas`` to ``icon_layer()`` or the ``_tripsHeadIcons`` dict.
-SEAL_ICON_ATLAS: str = (
+ICON_ATLAS: str = (
     "data:image/svg+xml;base64,"
     "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIx"
     "OTIiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCAxOTIgNjQiPjxnIHRyYW5zZm9y"
@@ -126,37 +97,8 @@ SEAL_ICON_ATLAS: str = (
 
 #: deck.gl icon-mapping dict keyed by species name.
 #: ``anchorY=32`` centres the icon vertically on the point.
-SEAL_ICON_MAPPING: dict[str, dict] = {
+ICON_MAPPING: dict[str, dict] = {
     "Grey seal":    {"x": 0,   "y": 0, "width": 64, "height": 64, "anchorY": 32},
     "Ringed seal":  {"x": 64,  "y": 0, "width": 64, "height": 64, "anchorY": 32},
     "Harbour seal": {"x": 128, "y": 0, "width": 64, "height": 64, "anchorY": 32},
 }
-
-
-# ---------------------------------------------------------------------------
-# Helper
-# ---------------------------------------------------------------------------
-
-def make_seal_haulout_icons() -> list[dict]:
-    """Build IconLayer data for haul-out sites with species-specific seal icons.
-
-    Each entry has ``position``, ``icon`` (species name mapping into
-    :data:`SEAL_ICON_MAPPING`), ``name``, ``species``, ``population``,
-    and ``size`` (proportional to log of population).
-
-    Returns
-    -------
-    list[dict]
-        Ready for ``icon_layer(data=...)``.
-    """
-    return [
-        {
-            "position": [s["lon"], s["lat"]],
-            "icon": s["species"],
-            "name": s["name"],
-            "species": s["species"],
-            "population": s["population"],
-            "size": max(24, int(math.log2(s["population"] + 1) * 8)),
-        }
-        for s in SEAL_HAULOUT_SITES
-    ]

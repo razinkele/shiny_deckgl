@@ -101,10 +101,8 @@ from ._demo_data import (
     make_seal_trips,
     make_seal_haulout_data,
     make_seal_foraging_areas,
-    SEAL_SPECIES_COLORS,
-    SEAL_ICON_ATLAS,
-    SEAL_ICON_MAPPING,
 )
+from .ibm import ICON_ATLAS, ICON_MAPPING
 from ._demo_css import MARINE_CSS, sidebar_hint
 
 from .components import CARTO_POSITRON, PALETTE_OCEAN
@@ -2585,8 +2583,8 @@ def server(input, output, session: Session):
                         "speed": input.seal_speed(),
                     },
                     _tripsHeadIcons={
-                        "iconAtlas": SEAL_ICON_ATLAS,
-                        "iconMapping": SEAL_ICON_MAPPING,
+                        "iconAtlas": ICON_ATLAS,
+                        "iconMapping": ICON_MAPPING,
                         "iconField": "species",
                         "getSize": 24,
                         "sizeScale": 1,

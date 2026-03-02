@@ -536,17 +536,178 @@ LIGHTING_EFFECT_3D = {
 
 
 # ---------------------------------------------------------------------------
-# Seal IBM — backward-compatible re-exports (moved to ibm.py in v1.1.0)
+# Seal IBM (Individual-Based Model) — movement simulation
 # ---------------------------------------------------------------------------
-from .ibm import (  # noqa: E402, F401
+# The visual assets (SVG sprites, icon mapping, haulout sites, colours)
+# live in ibm.py.  This module contains the SIMULATION / coordinate
+# generation algorithms that produce data the demo feeds into deck.gl.
+# ---------------------------------------------------------------------------
+
+from .ibm import (  # noqa: E402
     SEAL_HAULOUT_SITES,
     SEAL_SPECIES_COLORS,
-    SEAL_TRIP_PARAMS as _SEAL_TRIP_PARAMS,  # was private here
-    SEAL_ICON_ATLAS,
-    SEAL_ICON_MAPPING,
-    make_seal_trips,
-    make_seal_haulout_data,
-    make_seal_foraging_areas,
-    make_seal_haulout_icons,
+    SEAL_ICON_ATLAS,       # noqa: F401 — re-exported for backward compat
+    SEAL_ICON_MAPPING,     # noqa: F401
+    make_seal_haulout_icons,  # noqa: F401
 )
+
+# Typical foraging trip parameters by species (from telemetry literature)
+_SEAL_TRIP_PARAMS: dict[str, dict] = {
+    "Grey seal":    {"range_deg": 1.8, "step": 0.06, "legs": 30, "turn": 0.6},
+    "Ringed seal":  {"range_deg": 0.8, "step": 0.03, "legs": 20, "turn": 0.9},
+    "Harbour seal": {"range_deg": 1.2, "step": 0.04, "legs": 25, "turn": 0.7},
+}
+
+
+def make_seal_trips(
+    n_seals: int = 25,
+    loop_length: int = 600,
+    *,
+    seed: int = 77,
+) -> list[dict]:
+    """Generate mock seal movement tracks using a correlated random walk.
+
+    Each seal starts at a haul-out site, performs a foraging trip
+    (outbound leg), then returns to the haul-out (inbound leg).
+    The path is a correlated random walk where turn angles are drawn
+    from a wrapped Cauchy distribution (parameterised per species)
+    producing realistic-looking looping foraging trips.
+
+    Parameters
+    ----------
+    n_seals
+        Number of individual seal tracks to generate.
+    loop_length
+        Total animation loop length in time units.
+    seed
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    list[dict]
+        Each dict has ``path`` (list of [lon, lat, timestamp]),
+        ``timestamps``, ``name``, ``species``, ``haulout``,
+        ``color``, and ``seal_id``.
+    """
+    import math
+
+    rng = random.Random(seed)
+    trips: list[dict] = []
+
+    for seal_idx in range(n_seals):
+        # Pick a haul-out site (weighted by population)
+        site = rng.choices(
+            SEAL_HAULOUT_SITES,
+            weights=[s["population"] for s in SEAL_HAULOUT_SITES],
+            k=1,
+        )[0]
+        species = site["species"]
+        params = _SEAL_TRIP_PARAMS[species]
+
+        # Starting position (jittered around haul-out)
+        start_lon = site["lon"] + rng.gauss(0, 0.05)
+        start_lat = site["lat"] + rng.gauss(0, 0.03)
+
+        # Correlated random walk — outbound foraging leg
+        n_legs = params["legs"] + rng.randint(-5, 5)
+        n_legs = max(10, n_legs)
+        step_size = params["step"] * rng.uniform(0.6, 1.4)
+        heading = rng.uniform(0, 2 * math.pi)
+
+        outbound: list[list[float]] = [[start_lon, start_lat]]
+        lon, lat = start_lon, start_lat
+
+        for _ in range(n_legs):
+            # Wrapped Cauchy turn (concentration = params["turn"])
+            u = rng.random()
+            rho = params["turn"]
+            turn = math.atan2(
+                (1 - rho**2) * math.sin(2 * math.pi * u),
+                (1 + rho**2) * math.cos(2 * math.pi * u) - 2 * rho,
+            )
+            heading += turn
+            lon += step_size * math.cos(heading) * rng.uniform(0.7, 1.3)
+            lat += step_size * math.sin(heading) * 0.6 * rng.uniform(0.7, 1.3)
+            # Clamp to Baltic bounds
+            lon = max(9.0, min(30.0, lon))
+            lat = max(53.0, min(66.0, lat))
+            outbound.append([round(lon, 5), round(lat, 5)])
+
+        # Inbound leg — return to haul-out along a smoothed shortcut
+        inbound_steps = max(5, n_legs // 3)
+        inbound: list[list[float]] = []
+        for i in range(1, inbound_steps + 1):
+            t = i / inbound_steps
+            # Lerp with slight random jitter
+            ret_lon = lon + (start_lon - lon) * t + rng.gauss(0, 0.02)
+            ret_lat = lat + (start_lat - lat) * t + rng.gauss(0, 0.01)
+            inbound.append([round(ret_lon, 5), round(ret_lat, 5)])
+
+        # Combine: haul-out → foraging → return → haul-out
+        full_path = outbound + inbound + [[round(start_lon, 5), round(start_lat, 5)]]
+
+        # Assign timestamps evenly over the loop
+        n_pts = len(full_path)
+        timestamps = [int(i * loop_length / (n_pts - 1)) for i in range(n_pts)]
+        path_3d = [[pt[0], pt[1], ts] for pt, ts in zip(full_path, timestamps)]
+
+        trips.append({
+            "path": path_3d,
+            "timestamps": timestamps,
+            "name": f"Seal #{seal_idx + 1}",
+            "species": species,
+            "haulout": site["name"],
+            "color": SEAL_SPECIES_COLORS[species],
+            "seal_id": seal_idx + 1,
+        })
+
+    return trips
+
+
+def make_seal_haulout_data() -> list[dict]:
+    """Build scatterplot data for haul-out sites with population sizing."""
+    return [
+        {
+            "position": [s["lon"], s["lat"]],
+            "name": s["name"],
+            "species": s["species"],
+            "population": s["population"],
+            "radius": max(4, s["population"] / 20),
+            "color": SEAL_SPECIES_COLORS[s["species"]],
+        }
+        for s in SEAL_HAULOUT_SITES
+    ]
+
+
+def make_seal_foraging_areas() -> dict:
+    """Build GeoJSON polygons approximating foraging ranges around haul-outs.
+
+    Each haul-out gets an elliptical polygon whose size is based on the
+    species' typical foraging range.
+    """
+    import math
+
+    features = []
+    for site in SEAL_HAULOUT_SITES:
+        params = _SEAL_TRIP_PARAMS[site["species"]]
+        r = params["range_deg"] * 0.5  # semi-axis in degrees
+        lon0, lat0 = site["lon"], site["lat"]
+        # Build ellipse (lon-stretched because of latitude)
+        coords = []
+        for i in range(25):
+            angle = 2 * math.pi * i / 24
+            px = lon0 + r * 1.4 * math.cos(angle)
+            py = lat0 + r * 0.8 * math.sin(angle)
+            coords.append([round(px, 4), round(py, 4)])
+        coords.append(coords[0])  # close ring
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Polygon", "coordinates": [coords]},
+            "properties": {
+                "name": f"{site['name']} foraging area",
+                "species": site["species"],
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}
+
 

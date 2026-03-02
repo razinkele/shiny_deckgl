@@ -91,12 +91,8 @@ from .ui import head_includes
 from .ibm import (
     SEAL_HAULOUT_SITES,
     SEAL_SPECIES_COLORS,
-    SEAL_TRIP_PARAMS,
     SEAL_ICON_ATLAS,
     SEAL_ICON_MAPPING,
-    make_seal_trips,
-    make_seal_haulout_data,
-    make_seal_foraging_areas,
     make_seal_haulout_icons,
 )
 from ._version import __version__
@@ -188,15 +184,11 @@ __all__ = [
     "terrain_extension",
     "fill_style_extension",
     "path_style_extension",
-    # IBM movement-visualisation (v1.1.0)
+    # IBM visual assets (v1.1.0)
     "SEAL_HAULOUT_SITES",
     "SEAL_SPECIES_COLORS",
-    "SEAL_TRIP_PARAMS",
     "SEAL_ICON_ATLAS",
     "SEAL_ICON_MAPPING",
-    "make_seal_trips",
-    "make_seal_haulout_data",
-    "make_seal_foraging_areas",
     "make_seal_haulout_icons",
     "__version__",
 ]

@@ -97,7 +97,7 @@ from ._demo_data import (
     make_3d_arc_data,
     BALTIC_VIEW_3D,
 )
-from .ibm import (
+from ._demo_data import (
     make_seal_trips,
     make_seal_haulout_data,
     make_seal_foraging_areas,

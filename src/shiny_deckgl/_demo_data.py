@@ -568,6 +568,60 @@ LIGHTING_EFFECT_3D = {
 # data the demo feeds into deck.gl.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Land/sea mask — embedded 0.5° grid derived from EMODnet Bathymetry
+# (emodnet:mean layer, GetFeatureInfo on a 43×27 grid).  1 = sea, 0 = land.
+# See https://ows.emodnet-bathymetry.eu/wms for the source WMS.
+# ---------------------------------------------------------------------------
+import base64 as _b64
+import zlib as _zlib
+
+_SEA_MASK_B64 = (
+    "eJwdjSESQjEMRF+JKO5b/gxDr4DE/Rv88zCY9mCIOBxnqEOCrGB+SIjYye5mN+CzD9jN"
+    "4wyrvXyf6hfmxSD12uEqzp+8HxQ9WZeP2J0jxSJoGgnbQA65k7YQa4h5/P2AKTg3aF7J"
+    "BUrLShrhLlr8h8pocfMDPY8m5Q=="
+)
+_SEA_GRID_SHAPE = (27, 43)  # (lat_rows, lon_cols)
+_SEA_LON_MIN, _SEA_LON_MAX = 9.0, 30.0
+_SEA_LAT_MIN, _SEA_LAT_MAX = 53.0, 66.0
+_SEA_RES = 0.5  # degrees
+
+
+def _load_sea_mask():
+    """Decode the embedded sea mask into a 2-D numpy-like list of lists."""
+    raw = _zlib.decompress(_b64.b64decode(_SEA_MASK_B64))
+    bits: list[int] = []
+    for byte in raw:
+        for bit in range(7, -1, -1):
+            bits.append((byte >> bit) & 1)
+    total = _SEA_GRID_SHAPE[0] * _SEA_GRID_SHAPE[1]
+    flat = bits[:total]
+    grid = []
+    cols = _SEA_GRID_SHAPE[1]
+    for r in range(_SEA_GRID_SHAPE[0]):
+        grid.append(flat[r * cols : (r + 1) * cols])
+    return grid
+
+
+_SEA_MASK: list[list[int]] = _load_sea_mask()
+
+
+def is_sea(lon: float, lat: float) -> bool:
+    """Return True if *(lon, lat)* is over sea according to the embedded mask.
+
+    Uses the 0.5° EMODnet bathymetry grid.  Points outside the grid
+    (beyond Baltic bounds) are treated as land.
+    """
+    if lon < _SEA_LON_MIN or lon > _SEA_LON_MAX:
+        return False
+    if lat < _SEA_LAT_MIN or lat > _SEA_LAT_MAX:
+        return False
+    col = int(round((lon - _SEA_LON_MIN) / _SEA_RES))
+    row = int(round((lat - _SEA_LAT_MIN) / _SEA_RES))
+    col = max(0, min(col, _SEA_GRID_SHAPE[1] - 1))
+    row = max(0, min(row, _SEA_GRID_SHAPE[0] - 1))
+    return _SEA_MASK[row][col] == 1
+
 from .ibm import SPECIES_COLORS  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -578,7 +632,7 @@ from .ibm import SPECIES_COLORS  # noqa: E402
 _SEAL_HAULOUT_SITES: list[dict] = [
     # Grey seal (Halichoerus grypus) — large offshore sandbanks & skerries
     {"name": "Gotland NW skerries",   "species": "Grey seal",    "lon": 18.15, "lat": 57.95, "population": 120},
-    {"name": "Åland archipelago",      "species": "Grey seal",    "lon": 20.10, "lat": 60.15, "population": 200},
+    {"name": "Åland archipelago",      "species": "Grey seal",    "lon": 20.00, "lat": 60.50, "population": 200},
     {"name": "Klaipėda offshore bank", "species": "Grey seal",    "lon": 20.85, "lat": 55.85, "population":  80},
     {"name": "Hiiumaa west",           "species": "Grey seal",    "lon": 22.00, "lat": 58.95, "population": 150},
     {"name": "Stockholm outer arch.",  "species": "Grey seal",    "lon": 18.80, "lat": 59.20, "population":  90},
@@ -589,8 +643,8 @@ _SEAL_HAULOUT_SITES: list[dict] = [
     {"name": "Gulf of Riga",           "species": "Ringed seal",  "lon": 23.80, "lat": 57.60, "population":  40},
     # Harbour seal (Phoca vitulina) — southern/western Baltic
     {"name": "Kattegat coast",         "species": "Harbour seal", "lon": 11.80, "lat": 56.80, "population": 300},
-    {"name": "Limfjorden",             "species": "Harbour seal", "lon": 12.20, "lat": 55.30, "population": 110},
-    {"name": "Kalmar Strait",          "species": "Harbour seal", "lon": 16.60, "lat": 56.60, "population":  85},
+    {"name": "Storebælt",              "species": "Harbour seal", "lon": 11.00, "lat": 55.50, "population": 110},
+    {"name": "Kalmar Strait",          "species": "Harbour seal", "lon": 16.50, "lat": 56.00, "population":  85},
     {"name": "Wismar Bay",             "species": "Harbour seal", "lon": 11.50, "lat": 54.10, "population":  70},
 ]
 
@@ -651,6 +705,9 @@ def make_seal_trips(
         # Starting position (jittered around haul-out)
         start_lon = site["lon"] + rng.gauss(0, 0.05)
         start_lat = site["lat"] + rng.gauss(0, 0.03)
+        # Safeguard: if jitter pushed start onto a land cell, snap back
+        if not is_sea(start_lon, start_lat):
+            start_lon, start_lat = site["lon"], site["lat"]
 
         # Correlated random walk — outbound foraging leg
         n_legs = params["legs"] + rng.randint(-5, 5)
@@ -670,11 +727,26 @@ def make_seal_trips(
                 (1 + rho**2) * math.cos(2 * math.pi * u) - 2 * rho,
             )
             heading += turn
-            lon += step_size * math.cos(heading) * rng.uniform(0.7, 1.3)
-            lat += step_size * math.sin(heading) * 0.6 * rng.uniform(0.7, 1.3)
+            new_lon = lon + step_size * math.cos(heading) * rng.uniform(0.7, 1.3)
+            new_lat = lat + step_size * math.sin(heading) * 0.6 * rng.uniform(0.7, 1.3)
             # Clamp to Baltic bounds
-            lon = max(9.0, min(30.0, lon))
-            lat = max(53.0, min(66.0, lat))
+            new_lon = max(9.0, min(30.0, new_lon))
+            new_lat = max(53.0, min(66.0, new_lat))
+            # Land avoidance — reject step if it lands on terrestrial ground
+            if not is_sea(new_lon, new_lat):
+                # Try up to 5 alternative headings before giving up
+                for _retry in range(5):
+                    heading += math.pi / 3  # rotate 60° and try again
+                    new_lon = lon + step_size * math.cos(heading) * rng.uniform(0.7, 1.3)
+                    new_lat = lat + step_size * math.sin(heading) * 0.6 * rng.uniform(0.7, 1.3)
+                    new_lon = max(9.0, min(30.0, new_lon))
+                    new_lat = max(53.0, min(66.0, new_lat))
+                    if is_sea(new_lon, new_lat):
+                        break
+                else:
+                    # All retries hit land — stay in place
+                    continue
+            lon, lat = new_lon, new_lat
             outbound.append([round(lon, 5), round(lat, 5)])
 
         # Inbound leg — return to haul-out along a smoothed shortcut
@@ -685,6 +757,13 @@ def make_seal_trips(
             # Lerp with slight random jitter
             ret_lon = lon + (start_lon - lon) * t + rng.gauss(0, 0.02)
             ret_lat = lat + (start_lat - lat) * t + rng.gauss(0, 0.01)
+            # Land avoidance on return leg — snap to last sea position
+            if not is_sea(ret_lon, ret_lat):
+                # Use pure interpolation without jitter (straighter path)
+                ret_lon = lon + (start_lon - lon) * t
+                ret_lat = lat + (start_lat - lat) * t
+                if not is_sea(ret_lon, ret_lat):
+                    continue  # skip this waypoint entirely
             inbound.append([round(ret_lon, 5), round(ret_lat, 5)])
 
         # Combine: haul-out → foraging → return → haul-out

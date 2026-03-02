@@ -3847,7 +3847,7 @@ class TestV080Version:
     """Version bump verification."""
 
     def test_version_is_100(self):
-        assert m.__version__ == "1.1.0"
+        assert m.__version__ == "1.1.1"
 
 
 # ===========================================================================

@@ -96,6 +96,8 @@ from ._demo_data import (
     make_fish_observations,
     make_3d_arc_data,
     BALTIC_VIEW_3D,
+)
+from .ibm import (
     make_seal_trips,
     make_seal_haulout_data,
     make_seal_foraging_areas,

@@ -5328,3 +5328,364 @@ class TestCombined3DScene:
         assert "GridLayer" in types
         for lyr in parsed["layers"]:
             assert lyr["extruded"] is True
+
+
+# =====================================================================
+# IBM module — seal movement visualisation
+# =====================================================================
+
+class TestIBMModuleImports:
+    """All public IBM symbols importable from the top-level package."""
+
+    def test_import_constants_from_package(self):
+        from shiny_deckgl import (
+            SEAL_HAULOUT_SITES,
+            SEAL_SPECIES_COLORS,
+            SEAL_TRIP_PARAMS,
+            SEAL_ICON_ATLAS,
+            SEAL_ICON_MAPPING,
+        )
+        assert isinstance(SEAL_HAULOUT_SITES, list)
+        assert isinstance(SEAL_SPECIES_COLORS, dict)
+        assert isinstance(SEAL_TRIP_PARAMS, dict)
+        assert isinstance(SEAL_ICON_ATLAS, str)
+        assert isinstance(SEAL_ICON_MAPPING, dict)
+
+    def test_import_functions_from_package(self):
+        from shiny_deckgl import (
+            make_seal_trips,
+            make_seal_haulout_data,
+            make_seal_foraging_areas,
+            make_seal_haulout_icons,
+        )
+        assert callable(make_seal_trips)
+        assert callable(make_seal_haulout_data)
+        assert callable(make_seal_foraging_areas)
+        assert callable(make_seal_haulout_icons)
+
+    def test_import_from_ibm_submodule(self):
+        from shiny_deckgl.ibm import (
+            SEAL_HAULOUT_SITES,
+            SEAL_SPECIES_COLORS,
+            SEAL_TRIP_PARAMS,
+            SEAL_ICON_ATLAS,
+            SEAL_ICON_MAPPING,
+            make_seal_trips,
+            make_seal_haulout_data,
+            make_seal_foraging_areas,
+            make_seal_haulout_icons,
+        )
+        assert len(SEAL_HAULOUT_SITES) == 13
+
+    def test_backward_compat_import_from_demo_data(self):
+        """Old imports from _demo_data still work."""
+        from shiny_deckgl._demo_data import (
+            SEAL_HAULOUT_SITES,
+            SEAL_SPECIES_COLORS,
+            SEAL_ICON_ATLAS,
+            SEAL_ICON_MAPPING,
+            make_seal_trips,
+            make_seal_haulout_data,
+            make_seal_foraging_areas,
+            make_seal_haulout_icons,
+        )
+        assert len(SEAL_HAULOUT_SITES) == 13
+
+    def test_ibm_module_all(self):
+        import shiny_deckgl.ibm as ibm
+        assert hasattr(ibm, "__all__")
+        assert "make_seal_trips" in ibm.__all__
+        assert "SEAL_ICON_ATLAS" in ibm.__all__
+
+
+class TestSealHauloutSites:
+    """Validate the haul-out reference data."""
+
+    def test_count(self):
+        from shiny_deckgl.ibm import SEAL_HAULOUT_SITES
+        assert len(SEAL_HAULOUT_SITES) == 13
+
+    def test_required_keys(self):
+        from shiny_deckgl.ibm import SEAL_HAULOUT_SITES
+        for s in SEAL_HAULOUT_SITES:
+            assert "name" in s
+            assert "species" in s
+            assert "lon" in s
+            assert "lat" in s
+            assert "population" in s
+
+    def test_species_values(self):
+        from shiny_deckgl.ibm import SEAL_HAULOUT_SITES
+        species_set = {s["species"] for s in SEAL_HAULOUT_SITES}
+        assert species_set == {"Grey seal", "Ringed seal", "Harbour seal"}
+
+    def test_coordinates_in_baltic(self):
+        from shiny_deckgl.ibm import SEAL_HAULOUT_SITES
+        for s in SEAL_HAULOUT_SITES:
+            assert 9 <= s["lon"] <= 30, f"lon out of Baltic range: {s}"
+            assert 53 <= s["lat"] <= 66, f"lat out of Baltic range: {s}"
+
+    def test_populations_positive(self):
+        from shiny_deckgl.ibm import SEAL_HAULOUT_SITES
+        for s in SEAL_HAULOUT_SITES:
+            assert s["population"] > 0
+
+
+class TestSealSpeciesColors:
+    """Validate species colour mapping."""
+
+    def test_three_species(self):
+        from shiny_deckgl.ibm import SEAL_SPECIES_COLORS
+        assert len(SEAL_SPECIES_COLORS) == 3
+
+    def test_rgba_format(self):
+        from shiny_deckgl.ibm import SEAL_SPECIES_COLORS
+        for species, rgba in SEAL_SPECIES_COLORS.items():
+            assert len(rgba) == 4, f"Expected 4 RGBA values for {species}"
+            for v in rgba:
+                assert 0 <= v <= 255
+
+
+class TestSealTripParams:
+    """Validate foraging trip parameters."""
+
+    def test_three_species(self):
+        from shiny_deckgl.ibm import SEAL_TRIP_PARAMS
+        assert len(SEAL_TRIP_PARAMS) == 3
+
+    def test_required_keys(self):
+        from shiny_deckgl.ibm import SEAL_TRIP_PARAMS
+        for species, p in SEAL_TRIP_PARAMS.items():
+            assert "range_deg" in p
+            assert "step" in p
+            assert "legs" in p
+            assert "turn" in p
+
+    def test_positive_values(self):
+        from shiny_deckgl.ibm import SEAL_TRIP_PARAMS
+        for species, p in SEAL_TRIP_PARAMS.items():
+            assert p["range_deg"] > 0
+            assert p["step"] > 0
+            assert p["legs"] > 0
+            assert 0 < p["turn"] < 1
+
+
+class TestSealIconAtlas:
+    """Validate the base64 SVG icon atlas."""
+
+    def test_is_data_uri(self):
+        from shiny_deckgl.ibm import SEAL_ICON_ATLAS
+        assert SEAL_ICON_ATLAS.startswith("data:image/svg+xml;base64,")
+
+    def test_valid_base64(self):
+        import base64
+        from shiny_deckgl.ibm import SEAL_ICON_ATLAS
+        b64 = SEAL_ICON_ATLAS.split(",", 1)[1]
+        raw = base64.b64decode(b64)
+        assert len(raw) > 100
+
+    def test_svg_content(self):
+        import base64
+        from shiny_deckgl.ibm import SEAL_ICON_ATLAS
+        b64 = SEAL_ICON_ATLAS.split(",", 1)[1]
+        svg = base64.b64decode(b64).decode("utf-8")
+        assert "<svg" in svg
+        assert 'width="192"' in svg
+        assert 'height="64"' in svg
+
+    def test_species_colours_in_svg(self):
+        import base64
+        from shiny_deckgl.ibm import SEAL_ICON_ATLAS
+        b64 = SEAL_ICON_ATLAS.split(",", 1)[1]
+        svg = base64.b64decode(b64).decode("utf-8")
+        assert "#7a8a8a" in svg  # Grey seal
+        assert "#4a8cdc" in svg  # Ringed seal
+        assert "#c8a050" in svg  # Harbour seal
+
+
+class TestSealIconMapping:
+    """Validate icon-mapping dict."""
+
+    def test_three_species(self):
+        from shiny_deckgl.ibm import SEAL_ICON_MAPPING
+        assert len(SEAL_ICON_MAPPING) == 3
+
+    def test_species_keys(self):
+        from shiny_deckgl.ibm import SEAL_ICON_MAPPING
+        assert set(SEAL_ICON_MAPPING.keys()) == {"Grey seal", "Ringed seal", "Harbour seal"}
+
+    def test_icon_dimensions(self):
+        from shiny_deckgl.ibm import SEAL_ICON_MAPPING
+        for species, m in SEAL_ICON_MAPPING.items():
+            assert m["width"] == 64
+            assert m["height"] == 64
+            assert "x" in m
+            assert "y" in m
+            assert "anchorY" in m
+
+    def test_non_overlapping_x(self):
+        from shiny_deckgl.ibm import SEAL_ICON_MAPPING
+        xs = [m["x"] for m in SEAL_ICON_MAPPING.values()]
+        assert len(set(xs)) == 3  # all unique
+
+
+class TestMakeSealTrips:
+    """Validate the correlated random walk trip generator."""
+
+    def test_default_returns_25_trips(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips()
+        assert len(trips) == 25
+
+    def test_custom_count(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=5)
+        assert len(trips) == 5
+
+    def test_trip_structure(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=3, loop_length=100)
+        for t in trips:
+            assert "path" in t
+            assert "timestamps" in t
+            assert "name" in t
+            assert "species" in t
+            assert "haulout" in t
+            assert "color" in t
+            assert "seal_id" in t
+
+    def test_path_is_3d(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=1, loop_length=100)
+        path = trips[0]["path"]
+        assert len(path) > 5
+        for pt in path:
+            assert len(pt) == 3  # [lon, lat, timestamp]
+
+    def test_timestamps_monotonic(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=2, loop_length=200)
+        for t in trips:
+            ts = t["timestamps"]
+            for i in range(1, len(ts)):
+                assert ts[i] >= ts[i - 1]
+
+    def test_deterministic_with_seed(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        a = make_seal_trips(n_seals=3, seed=42)
+        b = make_seal_trips(n_seals=3, seed=42)
+        assert a == b
+
+    def test_different_seeds_differ(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        a = make_seal_trips(n_seals=3, seed=1)
+        b = make_seal_trips(n_seals=3, seed=2)
+        assert a != b
+
+    def test_species_in_valid_set(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=50)
+        valid = {"Grey seal", "Ringed seal", "Harbour seal"}
+        for t in trips:
+            assert t["species"] in valid
+
+    def test_coordinates_in_baltic(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=10)
+        for t in trips:
+            for pt in t["path"]:
+                assert 9.0 <= pt[0] <= 30.0, f"lon out of bounds: {pt}"
+                assert 53.0 <= pt[1] <= 66.0, f"lat out of bounds: {pt}"
+
+    def test_large_count(self):
+        from shiny_deckgl.ibm import make_seal_trips
+        trips = make_seal_trips(n_seals=200, loop_length=300)
+        assert len(trips) == 200
+
+
+class TestMakeSealHauloutData:
+    """Validate haul-out scatterplot data."""
+
+    def test_returns_13_entries(self):
+        from shiny_deckgl.ibm import make_seal_haulout_data
+        data = make_seal_haulout_data()
+        assert len(data) == 13
+
+    def test_entry_structure(self):
+        from shiny_deckgl.ibm import make_seal_haulout_data
+        for d in make_seal_haulout_data():
+            assert "position" in d
+            assert len(d["position"]) == 2
+            assert "name" in d
+            assert "species" in d
+            assert "population" in d
+            assert "radius" in d
+            assert "color" in d
+
+    def test_radius_positive(self):
+        from shiny_deckgl.ibm import make_seal_haulout_data
+        for d in make_seal_haulout_data():
+            assert d["radius"] >= 4
+
+
+class TestMakeSealForagingAreas:
+    """Validate foraging area GeoJSON."""
+
+    def test_is_feature_collection(self):
+        from shiny_deckgl.ibm import make_seal_foraging_areas
+        fc = make_seal_foraging_areas()
+        assert fc["type"] == "FeatureCollection"
+
+    def test_13_features(self):
+        from shiny_deckgl.ibm import make_seal_foraging_areas
+        fc = make_seal_foraging_areas()
+        assert len(fc["features"]) == 13
+
+    def test_polygon_geometry(self):
+        from shiny_deckgl.ibm import make_seal_foraging_areas
+        fc = make_seal_foraging_areas()
+        for f in fc["features"]:
+            assert f["type"] == "Feature"
+            assert f["geometry"]["type"] == "Polygon"
+            ring = f["geometry"]["coordinates"][0]
+            assert len(ring) >= 25
+            # Ring is closed
+            assert ring[0] == ring[-1]
+
+    def test_feature_properties(self):
+        from shiny_deckgl.ibm import make_seal_foraging_areas
+        fc = make_seal_foraging_areas()
+        for f in fc["features"]:
+            assert "name" in f["properties"]
+            assert "species" in f["properties"]
+
+
+class TestMakeSealHauloutIcons:
+    """Validate IconLayer data builder."""
+
+    def test_returns_13_entries(self):
+        from shiny_deckgl.ibm import make_seal_haulout_icons
+        data = make_seal_haulout_icons()
+        assert len(data) == 13
+
+    def test_entry_structure(self):
+        from shiny_deckgl.ibm import make_seal_haulout_icons
+        for d in make_seal_haulout_icons():
+            assert "position" in d
+            assert len(d["position"]) == 2
+            assert "icon" in d
+            assert "name" in d
+            assert "species" in d
+            assert "population" in d
+            assert "size" in d
+
+    def test_icon_matches_species(self):
+        from shiny_deckgl.ibm import make_seal_haulout_icons
+        for d in make_seal_haulout_icons():
+            assert d["icon"] == d["species"]
+
+    def test_size_reasonable(self):
+        from shiny_deckgl.ibm import make_seal_haulout_icons
+        for d in make_seal_haulout_icons():
+            assert d["size"] >= 24
+

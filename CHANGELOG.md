@@ -5,7 +5,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.1.0] — 2026-03-02
 
+### Added
+
+- **`format_trips()`** — data normaliser that converts raw `[lon, lat]` or
+  `[lon, lat, time]` coordinate lists into the dict format `trips_layer()`
+  expects, with auto-generated timestamps and per-trip property merging.
+- **`trips_animation_ui()`** — reusable Shiny module UI fragment with
+  Play / Pause / Reset buttons plus speed and trail-length sliders; drop into
+  any sidebar to control a TripsLayer animation.
+- **`trips_animation_server()`** — companion server logic that wires the
+  animation buttons to `MapWidget.trips_control()` and exposes `speed` /
+  `trail` reactive values back to the caller.
+- **`Extension` type alias** — `str | list[str | dict]` exported from
+  `extensions.py`; all 8 extension helpers now annotated `-> Extension`
+  instead of the previous mix of `-> str` and `-> list`.
+- **3 new test classes** — `TestFormatTrips` (12 tests), `TestTripsAnimationUI`
+  (4 tests), `TestTripsAnimationServer` (4 tests); 672 tests total.
+
+### Changed
+
+- **`wms_layer()`** now raises `ValueError` when the required `layers` keyword
+  argument is omitted (previously silently defaulted to an empty list,
+  producing a blank WMS response).
+- **`_demo_data.py`** — `make_seal_trips()` now delegates timestamp/path
+  formatting to `format_trips()` instead of inline code; `format_trips` import
+  moved to function top (was inside the loop body).
+- **`_demo_data.py`** — HELCOM MPA cache replaced from `global` variable with
+  `@functools.lru_cache(maxsize=1)` for thread-safe, one-shot caching.
+- **Demo app Tab 12** — rewired to use `trips_animation_ui("seal_anim")` /
+  `trips_animation_server()`, removing ~40 lines of inline boilerplate.
+- **`app.py` module docstring** — now lists all 12 tabs (tabs 10–11 were
+  missing).
+- **`__init__.py`** — exports `format_trips`, `trips_animation_ui`,
+  `trips_animation_server`; removed premature "v1.1.0" comment label.
+
+---
 ## [1.0.1] â€” 2026-03-01
 
 ### Fixed
@@ -331,7 +367,8 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...HEAD
+[1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...HEAD
+[1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562
 [1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
 [0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1
 [0.8.0]: https://github.com/razinkele/shiny_deckgl/compare/d8a3b2e...f3c7340

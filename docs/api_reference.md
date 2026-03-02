@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.0.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.1.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -117,6 +117,11 @@ import shiny_deckgl as sdgl
   - [set\_cooperative\_gestures()](#set_cooperative_gestures)
 - [Controller (v1.0)](#controller-v10)
   - [set\_controller()](#set_controller)
+- [IBM Helpers (v1.1)](#ibm-helpers-v11)
+  - [format\_trips()](#format_trips)
+  - [trips\_animation\_ui()](#trips_animation_ui)
+  - [trips\_animation\_server()](#trips_animation_server)
+  - [Extension Type Alias](#extension-type-alias)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
@@ -1634,6 +1639,108 @@ Create an `H3HexagonLayer` for H3 index-based hexagons. Renders pre-computed H3 
 h3_hexagon_layer("h3-grid", data, extruded=True,
                  getElevation="@@d.count", elevationScale=100)
 ```
+
+---
+
+## IBM Helpers (v1.1)
+
+Individual-Based Model helpers for animal movement visualisation.
+
+Importable from the top-level package or directly from `shiny_deckgl.ibm`.
+
+```python
+from shiny_deckgl import format_trips, trips_animation_ui, trips_animation_server
+# or
+from shiny_deckgl.ibm import format_trips, trips_animation_ui, trips_animation_server
+```
+
+### `format_trips()`
+
+```python
+shiny_deckgl.ibm.format_trips(
+    paths: list[list[list[float]]],
+    *,
+    loop_length: int = 600,
+    timestamps: list[list[int | float]] | None = None,
+    properties: list[dict] | None = None,
+) -> list[dict]
+```
+
+Convert raw coordinate lists into the dict format `trips_layer()` expects.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `paths` | *(required)* | List of trips, each a list of `[lon, lat]` or `[lon, lat, time]` pairs. |
+| `loop_length` | `600` | Total animation loop duration for auto-generated timestamps. |
+| `timestamps` | `None` | Explicit per-trip timestamp arrays (overrides `loop_length`). |
+| `properties` | `None` | Per-trip metadata dicts merged into the output (e.g. `name`, `species`, `color`). |
+
+**Returns** a list of dicts, each with `path` (`[lon, lat, time]` triplets), `timestamps`, and any merged properties.
+
+```python
+trips = format_trips(
+    paths=[[[20.0, 57.0], [20.5, 57.2], [20.0, 57.0]]],
+    loop_length=100,
+    properties=[{"name": "Trip 1", "color": [255, 0, 0]}],
+)
+# trips[0]["path"][0] == [20.0, 57.0, 0]
+```
+
+### `trips_animation_ui()`
+
+```python
+shiny_deckgl.ibm.trips_animation_ui(
+    id: str,
+    *,
+    speed_default: float = 8.0,
+    speed_min: float = 0.5,
+    speed_max: float = 100.0,
+    speed_step: float = 0.5,
+    trail_default: int = 180,
+    trail_min: int = 20,
+    trail_max: int = 400,
+    trail_step: int = 10,
+) -> TagList
+```
+
+Drop-in Shiny module UI fragment with Play / Pause / Reset buttons (in a 4-4-4 column layout) plus speed and trail-length sliders.
+
+```python
+ui.accordion_panel(
+    "Animation Controls",
+    trips_animation_ui("seal_anim"),
+)
+```
+
+### `trips_animation_server()`
+
+```python
+shiny_deckgl.ibm.trips_animation_server(
+    id: str,
+    *,
+    widget: MapWidget,
+    session: Session,
+) -> SimpleNamespace
+```
+
+Companion server logic. Wires the Play / Pause / Reset buttons to `widget.trips_control(session, action)` and returns a `SimpleNamespace` with `.speed()` and `.trail()` reactive accessors.
+
+```python
+anim = trips_animation_server("seal_anim", widget=seal_widget, session=session)
+
+# inside reactive effects:
+speed = anim.speed()
+trail = anim.trail()
+```
+
+### Extension Type Alias
+
+```python
+from shiny_deckgl.extensions import Extension
+# Extension = str | list[str | dict]
+```
+
+All 8 extension helpers (`brushing_extension`, `data_filter_extension`, etc.) now return `Extension` instead of the previous mixed `str` / `list` annotations. This provides consistent typing for the `extensions` parameter of `layer()`.
 
 ---
 

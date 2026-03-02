@@ -138,6 +138,18 @@ browser, all without Java dependencies.
 | **Style diff** | `set_style(session, url, diff=True)` — preserves sources/layers across basemap changes. |
 | **Demo Tab 9** | Interactive showcase: BrushingExtension, DataFilterExtension, MapLibre clustering, cooperative gestures. |
 
+### v1.1.0 — IBM Helpers, Trips Animation Module & Audit Fixes
+
+| Capability | Details |
+| --- | --- |
+| **`format_trips()`** | Normalise raw `[lon, lat]` or `[lon, lat, time]` paths into `trips_layer()` dict format with auto-timestamps and per-trip property merge. |
+| **`trips_animation_ui()`** | Reusable Shiny module — Play/Pause/Reset buttons + speed & trail sliders, drop into any sidebar. |
+| **`trips_animation_server()`** | Wires animation buttons to `MapWidget.trips_control()`, exposes `speed` / `trail` reactive values. |
+| **`Extension` type alias** | Unified return type for all 8 extension helpers (`str \| list[str \| dict]`). |
+| **`wms_layer()` validation** | Now raises `ValueError` when the required `layers` kwarg is omitted. |
+| **Thread-safe MPA cache** | HELCOM GeoJSON loader switched to `@functools.lru_cache`. |
+| **Demo Tab 12 rewired** | Seal IBM tab now uses `trips_animation_ui/server` — ~40 lines of boilerplate removed. |
+
 ## Environment & Prerequisites
 
 - **Python ≥ 3.9** and **Shiny ≥ 1.0** are required.
@@ -296,17 +308,18 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/_data_utils.py` | DataFrame/GeoDataFrame serialisation, binary transport. |
 | `src/shiny_deckgl/_transitions.py` | `transition()` helper for layer property animations. |
 | `src/shiny_deckgl/components.py` | Backward-compatible re-export shim (imports from split modules). |
-| `src/shiny_deckgl/app.py` | Demo `app` instance — 9-tab sidebar UI showcasing all features. |
+| `src/shiny_deckgl/app.py` | Demo `app` instance — 12-tab sidebar UI showcasing all features. |
 | `src/shiny_deckgl/ui.py` | `head_includes()` — injects pinned CDN scripts and local JS/CSS. |
 | `src/shiny_deckgl/_cdn.py` | CDN URL constants — single source of truth for all external asset URLs. |
 | `src/shiny_deckgl/_version.py` | Package version — single source of truth. |
 | `src/shiny_deckgl/cli.py` | `shiny_deckgl-demo` CLI entry point. |
 | `src/shiny_deckgl/_demo_data.py` | Sample Baltic Sea data (ports, routes, MPA GeoJSON) for the demo app. |
 | `src/shiny_deckgl/_demo_css.py` | Marine-themed CSS and UI helpers for the demo app. |
+| `src/shiny_deckgl/ibm.py` | IBM (Individual-Based Model) visual assets, `format_trips()` data helper, and `trips_animation_ui/server` Shiny module. |
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 524 unit tests covering all features. |
+| `tests/test_basic.py` | 672 unit tests covering all features. |
 
 ## Running Tests
 

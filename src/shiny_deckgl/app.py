@@ -26,6 +26,8 @@ Tabs:
                          orthographic/first-person views
  12. Seal IBM          – Individual-Based Model of Baltic seal movement,
                          animated foraging trips from haul-out colonies
+ 13. Widgets Gallery   – Interactive showcase of all 17 deck.gl widgets,
+                         layer-widget combinations, preset bundles
 """
 
 from __future__ import annotations
@@ -72,11 +74,14 @@ from .components import (
     fps_widget,
     loading_widget,
     theme_widget,
+    timeline_widget,
+    geocoder_widget,
     # Experimental widgets (deck.gl >= 9.2)
     context_menu_widget,
     info_widget,
     splitter_widget,
     stats_widget,
+    view_selector_widget,
     # v0.8.0 transitions
     transition,
     # Views
@@ -258,6 +263,17 @@ three_d_widget = MapWidget(
         "style": TOOLTIP_STYLE,
     },
     view_state=BALTIC_VIEW_3D,
+)
+
+# Tab 13 — Widgets Gallery
+widgets_gallery_widget = MapWidget(
+    "widgets_gallery_map",
+    tooltip={
+        "html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt",
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW,
+    controls=[],
 )
 
 # Tab 12 — Seal IBM (Individual-Based Model)
@@ -1153,6 +1169,163 @@ app_ui = ui.page_navbar(
                     "\U0001F9AD Baltic Sea — Seal Movement (IBM Simulation)"
                 ),
                 seal_widget.ui(height="80vh"),
+            ),
+        ),
+    ),
+
+    # -- Tab 13: Widgets Gallery ------------------------------------------
+    ui.nav_panel(
+        "\U0001F9E9 Widgets",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.tags.small(
+                    "deck.gl widgets", class_="badge text-bg-primary mb-2",
+                ),
+                ui.accordion(
+                    # -- Standard widgets (v0.8.0) -------------------------
+                    ui.accordion_panel(
+                        "\U0001F527 Standard Widgets",
+                        sidebar_hint(
+                            "12 standard deck.gl widgets shipped "
+                            "since v0.8.0. Toggle each one to see it "
+                            "appear on the map."
+                        ),
+                        ui.tags.strong("Navigation"),
+                        ui.input_switch(
+                            "wg_zoom", "Zoom \u00B1", value=True,
+                        ),
+                        ui.input_switch(
+                            "wg_compass", "Compass", value=True,
+                        ),
+                        ui.input_switch(
+                            "wg_gimbal", "Gimbal (3-D)", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_reset_view", "Reset view", value=False,
+                        ),
+                        ui.tags.hr(),
+                        ui.tags.strong("Display"),
+                        ui.input_switch(
+                            "wg_fullscreen", "Fullscreen", value=True,
+                        ),
+                        ui.input_switch(
+                            "wg_scale", "Scale bar", value=True,
+                        ),
+                        ui.input_switch(
+                            "wg_screenshot", "Screenshot", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_fps", "FPS counter", value=False,
+                        ),
+                        ui.tags.hr(),
+                        ui.tags.strong("Behaviour"),
+                        ui.input_switch(
+                            "wg_loading", "Loading spinner", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_theme", "Theme toggle", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_timeline", "Timeline scrubber", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_geocoder", "Geocoder search", value=False,
+                        ),
+                    ),
+                    # -- Experimental widgets (v9.2+) ----------------------
+                    ui.accordion_panel(
+                        "\U0001F9EA Experimental (v9.2+)",
+                        sidebar_hint(
+                            "5 experimental widgets introduced in "
+                            "deck.gl 9.2. These require the CDN "
+                            "to serve deck.gl \u2265 9.2."
+                        ),
+                        ui.input_switch(
+                            "wg_context_menu", "Context menu", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_info", "Info panel", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_splitter", "Splitter", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_stats", "Stats (GPU/CPU)", value=False,
+                        ),
+                        ui.input_switch(
+                            "wg_view_selector", "View selector", value=False,
+                        ),
+                    ),
+                    # -- Preset bundles ------------------------------------
+                    ui.accordion_panel(
+                        "\U0001F4E6 Preset Bundles",
+                        sidebar_hint(
+                            "One-click presets that activate a sensible "
+                            "group of widgets for common scenarios."
+                        ),
+                        ui.input_action_button(
+                            "wg_preset_nav",
+                            "\U0001F9ED Navigation",
+                            class_="btn-sm btn-outline-primary mb-1 w-100",
+                        ),
+                        ui.input_action_button(
+                            "wg_preset_debug",
+                            "\U0001F41B Debug / Performance",
+                            class_="btn-sm btn-outline-warning mb-1 w-100",
+                        ),
+                        ui.input_action_button(
+                            "wg_preset_presentation",
+                            "\U0001F3AC Presentation",
+                            class_="btn-sm btn-outline-success mb-1 w-100",
+                        ),
+                        ui.input_action_button(
+                            "wg_preset_all",
+                            "\U0001F4A5 All 17 Widgets",
+                            class_="btn-sm btn-outline-danger mb-1 w-100",
+                        ),
+                        ui.input_action_button(
+                            "wg_preset_none",
+                            "\U0001F6AB Clear All",
+                            class_="btn-sm btn-outline-secondary mb-1 w-100",
+                        ),
+                    ),
+                    # -- Layer pairing ------------------------------------
+                    ui.accordion_panel(
+                        "\U0001F5FA Layer + Widget",
+                        sidebar_hint(
+                            "Choose a layer type to see it combined "
+                            "with contextually appropriate widgets "
+                            "on the map."
+                        ),
+                        ui.input_select(
+                            "wg_layer_combo",
+                            "Layer scenario",
+                            choices={
+                                "ports": "\u2693 Ports (ScatterplotLayer)",
+                                "heatmap": "\U0001F525 Heatmap (HeatmapLayer)",
+                                "arcs": "\U0001F308 Arcs (ArcLayer)",
+                                "routes": "\U0001F6A2 Routes (PathLayer)",
+                                "3d_columns": "\U0001F4CA 3-D Columns",
+                                "hexagons": "\U0001F4D0 Hexagons",
+                            },
+                            selected="ports",
+                        ),
+                    ),
+                    id="tab13_accordion",
+                    open=["\U0001F527 Standard Widgets"],
+                    multiple=True,
+                ),
+                width=300,
+            ),
+            ui.card(
+                ui.card_header(
+                    "\U0001F9E9 Widget Gallery — All 17 deck.gl Widgets"
+                ),
+                widgets_gallery_widget.ui(height="60vh"),
+            ),
+            ui.card(
+                ui.card_header("\U0001F4DF Active Widgets"),
+                ui.output_text_verbatim("wg_status"),
             ),
         ),
     ),
@@ -2736,6 +2909,258 @@ def server(input, output, session: Session):
             session, layers,
             widgets=[loading_widget()],
         )
+
+    # ===================================================================
+    # Tab 13: Widgets Gallery
+    # ===================================================================
+
+    _wg_log: reactive.Value[str] = reactive.Value("")
+
+    # -- Reactive: build widget list from toggles -----------------------
+
+    @reactive.Calc
+    def _wg_active_widgets() -> list[dict]:
+        """Assemble the active widget list from all toggle switches."""
+        widgets: list[dict] = []
+        # Standard widgets (v0.8.0)
+        if input.wg_zoom():
+            widgets.append(zoom_widget())
+        if input.wg_compass():
+            widgets.append(compass_widget())
+        if input.wg_gimbal():
+            widgets.append(gimbal_widget())
+        if input.wg_reset_view():
+            widgets.append(reset_view_widget())
+        if input.wg_fullscreen():
+            widgets.append(fullscreen_widget())
+        if input.wg_scale():
+            widgets.append(scale_widget())
+        if input.wg_screenshot():
+            widgets.append(screenshot_widget(filename="shiny-deckgl-capture"))
+        if input.wg_fps():
+            widgets.append(fps_widget())
+        if input.wg_loading():
+            widgets.append(loading_widget(label="Loading layers\u2026"))
+        if input.wg_theme():
+            widgets.append(theme_widget())
+        if input.wg_timeline():
+            widgets.append(timeline_widget(min=0, max=1000, step=10))
+        if input.wg_geocoder():
+            widgets.append(geocoder_widget(placeholder="Search location\u2026"))
+        # Experimental widgets (v9.2+)
+        if input.wg_context_menu():
+            widgets.append(context_menu_widget(items=[
+                {"label": "Copy coordinates"},
+                {"label": "Zoom to 100%"},
+                {"label": "Reset view"},
+            ]))
+        if input.wg_info():
+            widgets.append(info_widget(
+                placement="top-left",
+                text="Hover over features for details",
+            ))
+        if input.wg_splitter():
+            widgets.append(splitter_widget(orientation="vertical"))
+        if input.wg_stats():
+            widgets.append(stats_widget(
+                placement="bottom-left",
+                framesPerUpdate=60,
+            ))
+        if input.wg_view_selector():
+            widgets.append(view_selector_widget(initialViewMode="map"))
+        return widgets
+
+    # -- Reactive: build layer list from dropdown -----------------------
+
+    @reactive.Calc
+    def _wg_layers() -> list[dict]:
+        """Build layer for the selected scenario."""
+        choice = input.wg_layer_combo()
+        if choice == "ports":
+            return [scatterplot_layer(
+                "wg-ports",
+                _port_data_simple,
+                getPosition="@@=d.position",
+                getRadius="@@=d.cargo_mt * 80",
+                getFillColor=[20, 130, 180, 180],
+                radiusMinPixels=4,
+                radiusMaxPixels=30,
+                pickable=True,
+            )]
+        elif choice == "heatmap":
+            return [heatmap_layer(
+                "wg-heat",
+                _heatmap_points,
+                getPosition="@@=d.position",
+                getWeight="@@=d.weight || 1",
+                radiusPixels=40,
+                intensity=1.2,
+                threshold=0.05,
+            )]
+        elif choice == "arcs":
+            return [arc_layer(
+                "wg-arcs",
+                _arc_data,
+                getSourcePosition="@@=d.from",
+                getTargetPosition="@@=d.to",
+                getSourceColor=[0, 128, 255],
+                getTargetColor=[255, 100, 0],
+                getWidth=2,
+                pickable=True,
+            )]
+        elif choice == "routes":
+            return [path_layer(
+                "wg-routes",
+                _path_data,
+                getPath="@@=d.path",
+                getColor="@@=d.color",
+                widthMinPixels=2,
+                pickable=True,
+            )]
+        elif choice == "3d_columns":
+            return [column_layer(
+                "wg-columns",
+                _port_data_simple,
+                getPosition="@@=d.position",
+                getElevation="@@=d.cargo_mt * 500",
+                getFillColor=[14, 145, 155, 200],
+                radius=8000,
+                elevationScale=1,
+                extruded=True,
+                pickable=True,
+            )]
+        elif choice == "hexagons":
+            return [hexagon_layer(
+                "wg-hexagons",
+                _heatmap_points,
+                getPosition="@@=d.position",
+                radius=20000,
+                elevationScale=50,
+                extruded=True,
+                pickable=True,
+            )]
+        return []
+
+    # -- Push widgets + layers to the map --------------------------------
+
+    @reactive.Effect
+    @reactive.event(
+        input.wg_zoom, input.wg_compass, input.wg_gimbal,
+        input.wg_reset_view, input.wg_fullscreen, input.wg_scale,
+        input.wg_screenshot, input.wg_fps, input.wg_loading,
+        input.wg_theme, input.wg_timeline, input.wg_geocoder,
+        input.wg_context_menu, input.wg_info, input.wg_splitter,
+        input.wg_stats, input.wg_view_selector,
+        input.wg_layer_combo,
+    )
+    async def _wg_update_map():
+        widgets = _wg_active_widgets()
+        layers = _wg_layers()
+        await widgets_gallery_widget.update(
+            session, layers, widgets=widgets,
+        )
+        # Update status console
+        names = [w["@@widgetClass"] for w in widgets]
+        standard = [n for n in names if not n.startswith("_") or n in (
+            "_ScaleWidget", "_FpsWidget", "_LoadingWidget",
+            "_TimelineWidget", "_GeocoderWidget", "_ThemeWidget",
+        )]
+        experimental = [n for n in names if n in (
+            "_ContextMenuWidget", "_InfoWidget", "_SplitterWidget",
+            "_StatsWidget", "_ViewSelectorWidget",
+        )]
+        status_lines = [
+            f"Active widgets: {len(widgets)} / 17",
+            f"Layer: {input.wg_layer_combo()}",
+            "",
+        ]
+        if standard:
+            status_lines.append("Standard:")
+            status_lines.extend(f"  \u2022 {n}" for n in standard)
+        if experimental:
+            status_lines.append("Experimental (v9.2+):")
+            status_lines.extend(f"  \u2022 {n}" for n in experimental)
+        if not names:
+            status_lines.append("  (no widgets active)")
+        _wg_log.set("\n".join(status_lines))
+
+    @render.text
+    def wg_status():
+        return (
+            _wg_log.get()
+            or "Toggle widgets in the sidebar to see them on the map."
+        )
+
+    # -- Preset buttons --------------------------------------------------
+
+    @reactive.Effect
+    @reactive.event(input.wg_preset_nav)
+    async def _wg_preset_nav():
+        """Navigation preset: zoom, compass, scale, fullscreen, reset."""
+        await _wg_apply_preset(
+            zoom=True, compass=True, scale=True,
+            fullscreen=True, reset_view=True,
+        )
+
+    @reactive.Effect
+    @reactive.event(input.wg_preset_debug)
+    async def _wg_preset_debug():
+        """Debug preset: FPS, stats, info, loading."""
+        await _wg_apply_preset(
+            fps=True, stats=True, info=True, loading=True,
+        )
+
+    @reactive.Effect
+    @reactive.event(input.wg_preset_presentation)
+    async def _wg_preset_presentation():
+        """Presentation: fullscreen, screenshot, theme, scale."""
+        await _wg_apply_preset(
+            fullscreen=True, screenshot=True, theme=True, scale=True,
+        )
+
+    @reactive.Effect
+    @reactive.event(input.wg_preset_all)
+    async def _wg_preset_all():
+        """Turn on every widget."""
+        await _wg_apply_preset(
+            zoom=True, compass=True, gimbal=True, reset_view=True,
+            fullscreen=True, scale=True, screenshot=True, fps=True,
+            loading=True, theme=True, timeline=True, geocoder=True,
+            context_menu=True, info=True, splitter=True, stats=True,
+            view_selector=True,
+        )
+
+    @reactive.Effect
+    @reactive.event(input.wg_preset_none)
+    async def _wg_preset_none():
+        """Turn off all widgets."""
+        await _wg_apply_preset()
+
+    async def _wg_apply_preset(
+        zoom=False, compass=False, gimbal=False, reset_view=False,
+        fullscreen=False, scale=False, screenshot=False, fps=False,
+        loading=False, theme=False, timeline=False, geocoder=False,
+        context_menu=False, info=False, splitter=False, stats=False,
+        view_selector=False,
+    ):
+        """Set all widget toggles to the given preset values."""
+        ui.update_switch("wg_zoom", value=zoom)
+        ui.update_switch("wg_compass", value=compass)
+        ui.update_switch("wg_gimbal", value=gimbal)
+        ui.update_switch("wg_reset_view", value=reset_view)
+        ui.update_switch("wg_fullscreen", value=fullscreen)
+        ui.update_switch("wg_scale", value=scale)
+        ui.update_switch("wg_screenshot", value=screenshot)
+        ui.update_switch("wg_fps", value=fps)
+        ui.update_switch("wg_loading", value=loading)
+        ui.update_switch("wg_theme", value=theme)
+        ui.update_switch("wg_timeline", value=timeline)
+        ui.update_switch("wg_geocoder", value=geocoder)
+        ui.update_switch("wg_context_menu", value=context_menu)
+        ui.update_switch("wg_info", value=info)
+        ui.update_switch("wg_splitter", value=splitter)
+        ui.update_switch("wg_stats", value=stats)
+        ui.update_switch("wg_view_selector", value=view_selector)
 
 
 app = App(app_ui, server)

@@ -5902,3 +5902,878 @@ class TestTripsAnimationServer:
         assert "trips_animation_ui" in pkg_all
         assert "trips_animation_server" in pkg_all
 
+
+# ===========================================================================
+# Comprehensive widget test suite
+# ===========================================================================
+# Each widget gets thorough coverage:
+#   - default dict structure (@@widgetClass, type correctness)
+#   - default placement vs no-placement widgets
+#   - custom placement for all four positions
+#   - kwargs passthrough (single & multiple)
+#   - immutability (calling twice yields independent dicts)
+#   - JSON-serialisable output
+#   - integration with MapWidget.set_widgets / .update(widgets=)
+#   - inclusion in to_html CDN output
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_ALL_PLACEMENTS = ["top-right", "top-left", "bottom-right", "bottom-left"]
+
+_PLACED_WIDGETS = [
+    ("zoom_widget", zoom_widget, "ZoomWidget", "top-right"),
+    ("compass_widget", compass_widget, "CompassWidget", "top-right"),
+    ("fullscreen_widget", fullscreen_widget, "FullscreenWidget", "top-right"),
+    ("scale_widget", scale_widget, "_ScaleWidget", "bottom-left"),
+    ("gimbal_widget", gimbal_widget, "GimbalWidget", "top-right"),
+    ("reset_view_widget", reset_view_widget, "ResetViewWidget", "top-right"),
+    ("screenshot_widget", screenshot_widget, "ScreenshotWidget", "top-right"),
+    ("fps_widget", fps_widget, "_FpsWidget", "top-left"),
+    ("timeline_widget", timeline_widget, "_TimelineWidget", "bottom-left"),
+    ("geocoder_widget", geocoder_widget, "_GeocoderWidget", "top-left"),
+    ("info_widget", info_widget, "_InfoWidget", "top-left"),
+    ("stats_widget", stats_widget, "_StatsWidget", "top-left"),
+    ("view_selector_widget", view_selector_widget, "_ViewSelectorWidget", "top-left"),
+]
+
+_NO_PLACEMENT_WIDGETS = [
+    ("loading_widget", loading_widget, "_LoadingWidget"),
+    ("theme_widget", theme_widget, "_ThemeWidget"),
+    ("context_menu_widget", context_menu_widget, "_ContextMenuWidget"),
+    ("splitter_widget", splitter_widget, "_SplitterWidget"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Parametrised: placed widgets
+# ---------------------------------------------------------------------------
+
+class TestPlacedWidgetsComprehensive:
+    """Thorough tests for all widgets that accept a placement parameter."""
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_returns_dict(self, name, fn, cls, default_pos):
+        w = fn()
+        assert isinstance(w, dict)
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_widget_class_key(self, name, fn, cls, default_pos):
+        w = fn()
+        assert "@@widgetClass" in w
+        assert w["@@widgetClass"] == cls
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_default_placement(self, name, fn, cls, default_pos):
+        w = fn()
+        assert w["placement"] == default_pos
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    @pytest.mark.parametrize("pos", _ALL_PLACEMENTS)
+    def test_custom_placement(self, name, fn, cls, default_pos, pos):
+        w = fn(placement=pos)
+        assert w["placement"] == pos
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_single_kwarg(self, name, fn, cls, default_pos):
+        w = fn(transitionDuration=300)
+        assert w["transitionDuration"] == 300
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_multiple_kwargs(self, name, fn, cls, default_pos):
+        w = fn(alpha=0.8, label="test", size=42)
+        assert w["alpha"] == 0.8
+        assert w["label"] == "test"
+        assert w["size"] == 42
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_kwargs_do_not_override_class(self, name, fn, cls, default_pos):
+        """@@widgetClass is preserved even if someone tries to set it."""
+        w = fn()
+        assert w["@@widgetClass"] == cls
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_immutable_independent_dicts(self, name, fn, cls, default_pos):
+        w1 = fn()
+        w2 = fn(extraProp="hello")
+        assert "extraProp" not in w1
+        assert w2["extraProp"] == "hello"
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_json_serialisable(self, name, fn, cls, default_pos):
+        w = fn(custom_list=[1, 2], custom_dict={"a": True})
+        s = json.dumps(w)
+        parsed = json.loads(s)
+        assert parsed["@@widgetClass"] == cls
+        assert parsed["custom_list"] == [1, 2]
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_minimal_keys_default(self, name, fn, cls, default_pos):
+        """Default widget has exactly @@widgetClass and placement."""
+        w = fn()
+        assert set(w.keys()) == {"@@widgetClass", "placement"}
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_bool_kwarg(self, name, fn, cls, default_pos):
+        w = fn(visible=False)
+        assert w["visible"] is False
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_none_kwarg(self, name, fn, cls, default_pos):
+        w = fn(container=None)
+        assert w["container"] is None
+
+
+# ---------------------------------------------------------------------------
+# Parametrised: no-placement widgets
+# ---------------------------------------------------------------------------
+
+class TestNoPlacementWidgetsComprehensive:
+    """Thorough tests for all widgets that do NOT accept a placement parameter."""
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_returns_dict(self, name, fn, cls):
+        w = fn()
+        assert isinstance(w, dict)
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_widget_class_key(self, name, fn, cls):
+        w = fn()
+        assert w["@@widgetClass"] == cls
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_no_placement_in_default(self, name, fn, cls):
+        w = fn()
+        assert "placement" not in w
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_single_kwarg(self, name, fn, cls):
+        w = fn(label="hello")
+        assert w["label"] == "hello"
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_multiple_kwargs(self, name, fn, cls):
+        w = fn(alpha=0.5, title="Test", enabled=True)
+        assert w["alpha"] == 0.5
+        assert w["title"] == "Test"
+        assert w["enabled"] is True
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_immutable_independent(self, name, fn, cls):
+        w1 = fn()
+        w2 = fn(x=99)
+        assert "x" not in w1
+        assert w2["x"] == 99
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_json_serialisable(self, name, fn, cls):
+        w = fn(nested={"a": [1, 2, 3]})
+        s = json.dumps(w)
+        parsed = json.loads(s)
+        assert parsed["@@widgetClass"] == cls
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_minimal_keys_default(self, name, fn, cls):
+        """Default no-placement widget has exactly @@widgetClass."""
+        w = fn()
+        assert set(w.keys()) == {"@@widgetClass"}
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_list_kwarg(self, name, fn, cls):
+        w = fn(items=[{"label": "A"}, {"label": "B"}])
+        assert len(w["items"]) == 2
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_dict_kwarg(self, name, fn, cls):
+        w = fn(style={"color": "red"})
+        assert w["style"]["color"] == "red"
+
+
+# ---------------------------------------------------------------------------
+# Widget-specific realistic use-case tests
+# ---------------------------------------------------------------------------
+
+class TestZoomWidgetRealistic:
+    def test_transition_duration_kwarg(self):
+        w = zoom_widget(transitionDuration=500)
+        assert w["transitionDuration"] == 500
+
+    def test_zoom_speed(self):
+        w = zoom_widget(zoomInLabel="+", zoomOutLabel="-")
+        assert w["zoomInLabel"] == "+"
+        assert w["zoomOutLabel"] == "-"
+
+
+class TestCompassWidgetRealistic:
+    def test_viewport_sync(self):
+        w = compass_widget(viewportSync=True)
+        assert w["viewportSync"] is True
+
+
+class TestFullscreenWidgetRealistic:
+    def test_container_kwarg(self):
+        w = fullscreen_widget(container=None)
+        assert w["container"] is None
+
+    def test_enter_label(self):
+        w = fullscreen_widget(enterLabel="Go full")
+        assert w["enterLabel"] == "Go full"
+
+
+class TestScaleWidgetRealistic:
+    def test_unit_system(self):
+        w = scale_widget(unit="metric")
+        assert w["unit"] == "metric"
+        assert w["@@widgetClass"] == "_ScaleWidget"
+
+    def test_max_width(self):
+        w = scale_widget(maxWidth=200)
+        assert w["maxWidth"] == 200
+
+
+class TestGimbalWidgetRealistic:
+    def test_gimbal_defaults(self):
+        w = gimbal_widget()
+        assert w["@@widgetClass"] == "GimbalWidget"
+        assert w["placement"] == "top-right"
+
+
+class TestResetViewWidgetRealistic:
+    def test_reset_label(self):
+        w = reset_view_widget(label="Reset Map")
+        assert w["label"] == "Reset Map"
+
+    def test_initial_view_state(self):
+        vs = {"longitude": 21.0, "latitude": 56.0, "zoom": 8}
+        w = reset_view_widget(initialViewState=vs)
+        assert w["initialViewState"]["longitude"] == 21.0
+
+
+class TestScreenshotWidgetRealistic:
+    def test_filename(self):
+        w = screenshot_widget(filename="map-capture")
+        assert w["filename"] == "map-capture"
+
+    def test_format(self):
+        w = screenshot_widget(format="png", quality=0.95)
+        assert w["format"] == "png"
+        assert w["quality"] == 0.95
+
+
+class TestFpsWidgetRealistic:
+    def test_samples(self):
+        w = fps_widget(samples=120)
+        assert w["samples"] == 120
+
+    def test_placement_override(self):
+        w = fps_widget(placement="bottom-right")
+        assert w["placement"] == "bottom-right"
+
+
+class TestLoadingWidgetRealistic:
+    def test_custom_label(self):
+        w = loading_widget(label="Fetching bathymetry…")
+        assert w["label"] == "Fetching bathymetry…"
+
+    def test_show_spinner(self):
+        w = loading_widget(showSpinner=True)
+        assert w["showSpinner"] is True
+
+    def test_no_placement(self):
+        """Loading widget covers the whole deck — no placement."""
+        w = loading_widget(showSpinner=True, label="Please wait")
+        assert "placement" not in w
+
+
+class TestTimelineWidgetRealistic:
+    def test_min_max_time(self):
+        w = timeline_widget(min=0, max=3600)
+        assert w["min"] == 0
+        assert w["max"] == 3600
+
+    def test_step(self):
+        w = timeline_widget(step=10, speed=2.0)
+        assert w["step"] == 10
+        assert w["speed"] == 2.0
+
+
+class TestGeocoderWidgetRealistic:
+    def test_placeholder_text(self):
+        w = geocoder_widget(placeholder="Search location...")
+        assert w["placeholder"] == "Search location..."
+
+    def test_limit_results(self):
+        w = geocoder_widget(limit=5)
+        assert w["limit"] == 5
+
+
+class TestThemeWidgetRealistic:
+    def test_initial_theme(self):
+        w = theme_widget(initialTheme="dark")
+        assert w["initialTheme"] == "dark"
+
+    def test_light_theme(self):
+        w = theme_widget(initialTheme="light")
+        assert w["initialTheme"] == "light"
+
+    def test_no_placement(self):
+        w = theme_widget()
+        assert "placement" not in w
+
+
+class TestContextMenuWidgetRealistic:
+    def test_menu_items(self):
+        items = [
+            {"label": "Copy coordinates"},
+            {"label": "Zoom here"},
+            {"label": "Reset view", "separator": True},
+        ]
+        w = context_menu_widget(items=items)
+        assert len(w["items"]) == 3
+        assert w["items"][2]["separator"] is True
+
+    def test_empty_items(self):
+        w = context_menu_widget(items=[])
+        assert w["items"] == []
+
+
+class TestInfoWidgetRealistic:
+    def test_text_and_visible(self):
+        w = info_widget(text="Hover to see info", visible=True)
+        assert w["text"] == "Hover to see info"
+        assert w["visible"] is True
+
+    def test_mode(self):
+        w = info_widget(mode="hover")
+        assert w["mode"] == "hover"
+
+    def test_html_template(self):
+        w = info_widget(text="<b>{name}</b><br/>depth: {depth} m")
+        assert "<b>{name}</b>" in w["text"]
+
+
+class TestSplitterWidgetRealistic:
+    def test_orientation_horizontal(self):
+        w = splitter_widget(orientation="horizontal", initialSplit=0.5)
+        assert w["orientation"] == "horizontal"
+        assert w["initialSplit"] == 0.5
+
+    def test_orientation_vertical(self):
+        w = splitter_widget(orientation="vertical", initialSplit=0.3)
+        assert w["orientation"] == "vertical"
+        assert w["initialSplit"] == 0.3
+
+    def test_view_ids(self):
+        w = splitter_widget(viewId1="main", viewId2="compare")
+        assert w["viewId1"] == "main"
+        assert w["viewId2"] == "compare"
+
+
+class TestStatsWidgetRealistic:
+    def test_gpu_type(self):
+        w = stats_widget(type="gpu")
+        assert w["type"] == "gpu"
+
+    def test_frames_per_update(self):
+        w = stats_widget(framesPerUpdate=30, title="Performance")
+        assert w["framesPerUpdate"] == 30
+        assert w["title"] == "Performance"
+
+    def test_cpu_type(self):
+        w = stats_widget(type="cpu")
+        assert w["type"] == "cpu"
+
+
+class TestViewSelectorWidgetRealistic:
+    def test_globe_mode(self):
+        w = view_selector_widget(initialViewMode="globe")
+        assert w["initialViewMode"] == "globe"
+
+    def test_map_mode(self):
+        w = view_selector_widget(initialViewMode="map")
+        assert w["initialViewMode"] == "map"
+
+    def test_orbit_mode(self):
+        w = view_selector_widget(initialViewMode="orbit")
+        assert w["initialViewMode"] == "orbit"
+
+
+# ---------------------------------------------------------------------------
+# Widget + MapWidget integration tests
+# ---------------------------------------------------------------------------
+
+class TestWidgetSetWidgetsComprehensive:
+    """Tests for MapWidget.set_widgets() with all widget types."""
+
+    def test_set_all_placed_widgets(self):
+        """set_widgets handles all 13 placed widgets."""
+        m = MapWidget("w_all")
+        fake = _FakeSession()
+        all_w = [fn() for _, fn, _, _ in _PLACED_WIDGETS]
+        asyncio.run(m.set_widgets(fake, all_w))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_widgets"
+        assert len(payload["widgets"]) == 13
+
+    def test_set_all_no_placement_widgets(self):
+        """set_widgets handles all 4 no-placement widgets."""
+        m = MapWidget("w_np")
+        fake = _FakeSession()
+        all_w = [fn() for _, fn, _ in _NO_PLACEMENT_WIDGETS]
+        asyncio.run(m.set_widgets(fake, all_w))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_widgets"
+        assert len(payload["widgets"]) == 4
+
+    def test_set_all_17_widgets(self):
+        """set_widgets handles the full set of 17 widgets."""
+        m = MapWidget("w_17")
+        fake = _FakeSession()
+        all_w = (
+            [fn() for _, fn, _, _ in _PLACED_WIDGETS]
+            + [fn() for _, fn, _ in _NO_PLACEMENT_WIDGETS]
+        )
+        asyncio.run(m.set_widgets(fake, all_w))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_widgets"
+        assert len(payload["widgets"]) == 17
+
+    def test_widget_classes_preserved(self):
+        """All @@widgetClass values survive through set_widgets."""
+        m = MapWidget("w_cls")
+        fake = _FakeSession()
+        widgets = [zoom_widget(), loading_widget(), stats_widget()]
+        asyncio.run(m.set_widgets(fake, widgets))
+        classes = [w["@@widgetClass"] for w in fake.messages[0][1]["widgets"]]
+        assert classes == ["ZoomWidget", "_LoadingWidget", "_StatsWidget"]
+
+    def test_set_widgets_empty(self):
+        """Setting an empty widget list clears all widgets."""
+        m = MapWidget("w_empty")
+        fake = _FakeSession()
+        asyncio.run(m.set_widgets(fake, []))
+        handler, payload = fake.messages[0]
+        assert handler == "deck_set_widgets"
+        assert payload["widgets"] == []
+
+    def test_widget_kwargs_survive(self):
+        """Custom kwargs on widgets are preserved through set_widgets."""
+        m = MapWidget("w_kw")
+        fake = _FakeSession()
+        widgets = [zoom_widget(transitionDuration=250), fps_widget(samples=100)]
+        asyncio.run(m.set_widgets(fake, widgets))
+        w_list = fake.messages[0][1]["widgets"]
+        assert w_list[0]["transitionDuration"] == 250
+        assert w_list[1]["samples"] == 100
+
+
+class TestWidgetUpdatePayloadComprehensive:
+    """Tests for widgets passed through MapWidget.update(widgets=...)."""
+
+    def test_update_with_all_widgets(self):
+        """All 17 widgets pass through update()."""
+        m = MapWidget("u_all")
+        fake = _FakeSession()
+        all_w = (
+            [fn() for _, fn, _, _ in _PLACED_WIDGETS]
+            + [fn() for _, fn, _ in _NO_PLACEMENT_WIDGETS]
+        )
+        asyncio.run(m.update(fake, [], widgets=all_w))
+        payload = fake.messages[0][1]
+        assert "widgets" in payload
+        assert len(payload["widgets"]) == 17
+
+    def test_update_widgets_and_layers(self):
+        """Widgets and layers coexist in update payload."""
+        m = MapWidget("u_mix")
+        fake = _FakeSession()
+        layers = [scatterplot_layer("pts", [{"position": [0, 0]}])]
+        widgets = [zoom_widget(), compass_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        payload = fake.messages[0][1]
+        assert len(payload["layers"]) == 1
+        assert len(payload["widgets"]) == 2
+
+    def test_update_no_widgets_key_absent(self):
+        """When widgets=None, the 'widgets' key is absent from payload."""
+        m = MapWidget("u_none")
+        fake = _FakeSession()
+        asyncio.run(m.update(fake, []))
+        payload = fake.messages[0][1]
+        assert "widgets" not in payload
+
+    def test_update_empty_widgets_key_present(self):
+        """When widgets=[], the 'widgets' key IS present (clears widgets)."""
+        m = MapWidget("u_clear")
+        fake = _FakeSession()
+        asyncio.run(m.update(fake, [], widgets=[]))
+        payload = fake.messages[0][1]
+        assert "widgets" in payload
+        assert payload["widgets"] == []
+
+    def test_update_with_view_state_and_widgets(self):
+        """Widgets + view_state + layers all in one update."""
+        m = MapWidget("u_vs")
+        fake = _FakeSession()
+        vs = {"longitude": 24.0, "latitude": 56.0, "zoom": 10}
+        widgets = [fullscreen_widget(), scale_widget()]
+        asyncio.run(m.update(fake, [], view_state=vs, widgets=widgets))
+        payload = fake.messages[0][1]
+        assert payload["viewState"]["longitude"] == 24.0
+        assert len(payload["widgets"]) == 2
+
+    def test_update_with_effects_and_widgets(self):
+        """Widgets can coexist with effects."""
+        m = MapWidget("u_fx")
+        fake = _FakeSession()
+        effects = [{"type": "LightingEffect"}]
+        widgets = [theme_widget()]
+        asyncio.run(m.update(fake, [], effects=effects, widgets=widgets))
+        payload = fake.messages[0][1]
+        assert len(payload["effects"]) == 1
+        assert len(payload["widgets"]) == 1
+
+    def test_update_with_views_and_widgets(self):
+        """Widgets can coexist with views."""
+        m = MapWidget("u_vw")
+        fake = _FakeSession()
+        views = [map_view(id="main")]
+        widgets = [gimbal_widget()]
+        asyncio.run(m.update(fake, [], views=views, widgets=widgets))
+        payload = fake.messages[0][1]
+        assert len(payload["views"]) == 1
+        assert len(payload["widgets"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Widget JSON round-trip
+# ---------------------------------------------------------------------------
+
+class TestWidgetJsonRoundTrip:
+    """Ensure widget dicts survive JSON serialisation/deserialisation."""
+
+    @pytest.mark.parametrize("name,fn,cls,default_pos", _PLACED_WIDGETS)
+    def test_placed_roundtrip(self, name, fn, cls, default_pos):
+        original = fn(custom_prop="test_val", nested={"x": [1, 2]})
+        serialised = json.dumps(original)
+        restored = json.loads(serialised)
+        assert restored == original
+
+    @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
+    def test_no_placement_roundtrip(self, name, fn, cls):
+        original = fn(items=[{"a": 1}], flag=True)
+        serialised = json.dumps(original)
+        restored = json.loads(serialised)
+        assert restored == original
+
+    def test_mixed_widget_list_roundtrip(self):
+        """A list of mixed widgets survives JSON round-trip."""
+        widgets = [
+            zoom_widget(transitionDuration=300),
+            loading_widget(label="Loading..."),
+            context_menu_widget(items=[{"label": "Copy"}]),
+            info_widget(text="Info panel", placement="bottom-right"),
+            splitter_widget(orientation="vertical"),
+            stats_widget(type="gpu"),
+        ]
+        serialised = json.dumps(widgets)
+        restored = json.loads(serialised)
+        assert len(restored) == 6
+        assert restored[0]["@@widgetClass"] == "ZoomWidget"
+        assert restored[1]["label"] == "Loading..."
+        assert restored[2]["items"][0]["label"] == "Copy"
+        assert restored[3]["placement"] == "bottom-right"
+
+
+# ---------------------------------------------------------------------------
+# Widget CDN integration
+# ---------------------------------------------------------------------------
+
+class TestWidgetCdnInclusion:
+    """Verify that widget JS/CSS is included in HTML output."""
+
+    def test_to_html_includes_widgets_js_url(self):
+        m = MapWidget("cdn_w")
+        html = m.to_html([])
+        assert "@deck.gl/widgets" in html
+
+    def test_to_html_includes_widgets_css_url(self):
+        m = MapWidget("cdn_c")
+        html = m.to_html([])
+        assert "stylesheet.css" in html
+
+    def test_head_includes_both_js_and_css(self):
+        dep = head_includes()
+        html = str(dep)
+        assert "@deck.gl/widgets" in html
+        assert "stylesheet.css" in html
+
+    def test_to_html_with_layers_and_widgets_cdns(self):
+        """to_html includes both deck.gl and widget CDN resources."""
+        m = MapWidget("cdn_combo")
+        layers = [scatterplot_layer("pts", [{"position": [0, 0]}])]
+        html = m.to_html(layers)
+        assert "deck.gl" in html
+        assert "maplibre" in html.lower()
+        assert "@deck.gl/widgets" in html
+
+
+# ---------------------------------------------------------------------------
+# Widget __all__ exports
+# ---------------------------------------------------------------------------
+
+class TestWidgetExports:
+    """All 17 widget helpers are exported from the package."""
+
+    def test_widgets_in_package_all(self):
+        import shiny_deckgl
+        pkg_all = shiny_deckgl.__all__
+        expected = [
+            "zoom_widget", "compass_widget", "fullscreen_widget",
+            "scale_widget", "gimbal_widget", "reset_view_widget",
+            "screenshot_widget", "fps_widget", "loading_widget",
+            "timeline_widget", "geocoder_widget", "theme_widget",
+            "context_menu_widget", "info_widget", "splitter_widget",
+            "stats_widget", "view_selector_widget",
+        ]
+        for name in expected:
+            assert name in pkg_all, f"{name} missing from __all__"
+
+    def test_widgets_module_all(self):
+        from shiny_deckgl.widgets import __all__ as widgets_all
+        assert len(widgets_all) == 17
+
+    def test_widgets_importable_from_components(self):
+        """Backward-compat: widgets importable from components shim."""
+        from shiny_deckgl.components import (
+            zoom_widget as zw,
+            compass_widget as cw,
+            fullscreen_widget as fw,
+            scale_widget as sw,
+            gimbal_widget as gw,
+            reset_view_widget as rvw,
+            screenshot_widget as ssw,
+            fps_widget as fpsw,
+            loading_widget as lw,
+            timeline_widget as tw,
+            geocoder_widget as gcw,
+            theme_widget as thw,
+            context_menu_widget as cmw,
+            info_widget as iw,
+            splitter_widget as spw,
+            stats_widget as stw,
+            view_selector_widget as vsw,
+        )
+        assert callable(zw) and callable(cmw) and callable(vsw)
+
+
+# ---------------------------------------------------------------------------
+# Layer + widget combined scenarios (shiny-deckgl layer widget tests)
+# ---------------------------------------------------------------------------
+
+class TestLayerWidgetCombined:
+    """Scenarios combining layers with widgets in a single MapWidget."""
+
+    def test_scatterplot_with_zoom_and_fullscreen(self):
+        m = MapWidget("lw1")
+        fake = _FakeSession()
+        layers = [scatterplot_layer("pts", [{"position": [21.0, 55.7]}],
+                                    getRadius=100, getFillColor=[255, 0, 0])]
+        widgets = [zoom_widget(), fullscreen_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "ScatterplotLayer"
+        assert p["widgets"][0]["@@widgetClass"] == "ZoomWidget"
+        assert p["widgets"][1]["@@widgetClass"] == "FullscreenWidget"
+
+    def test_trips_layer_with_timeline_widget(self):
+        """TripsLayer naturally pairs with TimelineWidget for animation."""
+        m = MapWidget("lw2", animate=True)
+        fake = _FakeSession()
+        trip_data = [{"path": [[21, 55], [22, 56]], "timestamps": [0, 100]}]
+        layers = [trips_layer("trips", trip_data, getWidth=3, trailLength=50)]
+        widgets = [timeline_widget(min=0, max=100, step=1)]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "TripsLayer"
+        tl = p["widgets"][0]
+        assert tl["@@widgetClass"] == "_TimelineWidget"
+        assert tl["min"] == 0
+        assert tl["max"] == 100
+
+    def test_heatmap_with_info_and_scale(self):
+        """HeatmapLayer with InfoWidget and ScaleWidget."""
+        m = MapWidget("lw3")
+        fake = _FakeSession()
+        layers = [heatmap_layer("heat", [{"position": [21, 55], "weight": 5}])]
+        widgets = [info_widget(text="Heatmap density"), scale_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "HeatmapLayer"
+        assert len(p["widgets"]) == 2
+
+    def test_geojson_with_stats_and_fps(self):
+        """GeoJSON layer with performance monitoring widgets."""
+        m = MapWidget("lw4")
+        fake = _FakeSession()
+        geojson = {"type": "FeatureCollection", "features": []}
+        layers = [geojson_layer("geo", geojson)]
+        widgets = [stats_widget(type="gpu"), fps_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "GeoJsonLayer"
+        classes = [w["@@widgetClass"] for w in p["widgets"]]
+        assert "_StatsWidget" in classes
+        assert "_FpsWidget" in classes
+
+    def test_hexagon_with_compass_and_gimbal(self):
+        """3D HexagonLayer with navigation widgets."""
+        m = MapWidget("lw5")
+        fake = _FakeSession()
+        layers = [hexagon_layer("hex", [{"position": [21, 55]}],
+                                extruded=True, radius=5000)]
+        widgets = [compass_widget(), gimbal_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "HexagonLayer"
+        assert len(p["widgets"]) == 2
+
+    def test_wms_with_theme_and_loading(self):
+        """WMS layer with ThemeWidget and LoadingWidget."""
+        m = MapWidget("lw6")
+        fake = _FakeSession()
+        layers = [wms_layer("bathy", "https://ows.emodnet-bathymetry.eu/wms",
+                            serviceType="wms", layers=["emodnet:mean"])]
+        widgets = [theme_widget(), loading_widget(label="Loading WMS…")]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "WMSLayer"
+        classes = [w["@@widgetClass"] for w in p["widgets"]]
+        assert "_ThemeWidget" in classes
+        assert "_LoadingWidget" in classes
+
+    def test_arc_with_fullscreen_and_screenshot(self):
+        """ArcLayer with FullscreenWidget and ScreenshotWidget."""
+        m = MapWidget("lw7")
+        fake = _FakeSession()
+        layers = [arc_layer("arcs", [{"source": [21, 55], "target": [24, 56]}])]
+        widgets = [fullscreen_widget(), screenshot_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "ArcLayer"
+        assert len(p["widgets"]) == 2
+
+    def test_multiple_layers_with_splitter_widget(self):
+        """Two layers compared via SplitterWidget."""
+        m = MapWidget("lw8")
+        fake = _FakeSession()
+        layers = [
+            scatterplot_layer("left", [{"position": [21, 55]}]),
+            heatmap_layer("right", [{"position": [22, 56], "weight": 1}]),
+        ]
+        widgets = [splitter_widget(viewId1="left-view", viewId2="right-view")]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert len(p["layers"]) == 2
+        sp = p["widgets"][0]
+        assert sp["viewId1"] == "left-view"
+
+    def test_icon_layer_with_geocoder_and_reset(self):
+        """IconLayer with GeocoderWidget for search and ResetViewWidget."""
+        m = MapWidget("lw9")
+        fake = _FakeSession()
+        layers = [icon_layer("icons", [{"position": [21, 55], "icon": "marker"}])]
+        widgets = [geocoder_widget(), reset_view_widget()]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "IconLayer"
+        assert len(p["widgets"]) == 2
+
+    def test_context_menu_with_polygon_layer(self):
+        """PolygonLayer with ContextMenuWidget for right-click actions."""
+        m = MapWidget("lw10")
+        fake = _FakeSession()
+        poly = [{"polygon": [[21, 55], [22, 55], [22, 56], [21, 56]]}]
+        layers = [polygon_layer("polys", poly)]
+        widgets = [context_menu_widget(items=[
+            {"label": "Get area"},
+            {"label": "Copy polygon"},
+        ])]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "PolygonLayer"
+        cm = p["widgets"][0]
+        assert len(cm["items"]) == 2
+
+    def test_grid_layer_with_view_selector(self):
+        """GridLayer with ViewSelectorWidget for map/globe switching."""
+        m = MapWidget("lw11")
+        fake = _FakeSession()
+        layers = [grid_layer("grid", [{"position": [21, 55]}], cellSize=10000)]
+        widgets = [view_selector_widget(initialViewMode="map")]
+        asyncio.run(m.update(fake, layers, widgets=widgets))
+        p = fake.messages[0][1]
+        assert p["layers"][0]["type"] == "GridLayer"
+        vs_w = p["widgets"][0]
+        assert vs_w["initialViewMode"] == "map"
+
+    def test_set_widgets_then_update_layers(self):
+        """set_widgets and update are independent operations."""
+        m = MapWidget("lw12")
+        fake = _FakeSession()
+        asyncio.run(m.set_widgets(fake, [zoom_widget(), compass_widget()]))
+        asyncio.run(m.update(fake, [scatterplot_layer("pts", [])]))
+        assert fake.messages[0][0] == "deck_set_widgets"
+        assert fake.messages[1][0] == "deck_update"
+        assert "widgets" not in fake.messages[1][1]
+
+    def test_replace_widgets_via_set_widgets(self):
+        """set_widgets replaces the entire widget set."""
+        m = MapWidget("lw13")
+        fake = _FakeSession()
+        asyncio.run(m.set_widgets(fake, [zoom_widget()]))
+        asyncio.run(m.set_widgets(fake, [compass_widget(), fps_widget()]))
+        first_set = fake.messages[0][1]["widgets"]
+        second_set = fake.messages[1][1]["widgets"]
+        assert len(first_set) == 1
+        assert first_set[0]["@@widgetClass"] == "ZoomWidget"
+        assert len(second_set) == 2
+        assert second_set[0]["@@widgetClass"] == "CompassWidget"
+
+    def test_all_layer_types_with_widgets(self):
+        """Smoke test: each layer type works alongside a widget."""
+        m = MapWidget("lw_smoke")
+        fake = _FakeSession()
+        layer_fns = [
+            lambda: scatterplot_layer("sp", []),
+            lambda: geojson_layer("gj", {"type": "FeatureCollection", "features": []}),
+            lambda: tile_layer("tl", "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"),
+            lambda: arc_layer("ar", []),
+            lambda: icon_layer("ic", []),
+            lambda: path_layer("pa", []),
+            lambda: line_layer("ln", []),
+            lambda: text_layer("tx", []),
+            lambda: column_layer("co", []),
+            lambda: polygon_layer("po", []),
+            lambda: heatmap_layer("hm", []),
+            lambda: hexagon_layer("hx", []),
+            lambda: h3_hexagon_layer("h3", []),
+            lambda: trips_layer("tr", []),
+            lambda: great_circle_layer("gc", []),
+            lambda: contour_layer("ct", []),
+            lambda: grid_layer("gr", []),
+            lambda: screen_grid_layer("sg", []),
+            lambda: mvt_layer("mv", "https://example.com/{z}/{x}/{y}.mvt"),
+            lambda: wms_layer("wm", "https://example.com/wms", layers=["test"]),
+        ]
+        for i, make_layer in enumerate(layer_fns):
+            fake.messages.clear()
+            lyr = make_layer()
+            asyncio.run(m.update(fake, [lyr], widgets=[zoom_widget()]))
+            p = fake.messages[0][1]
+            assert len(p["layers"]) == 1, f"Layer {i} failed"
+            assert len(p["widgets"]) == 1, f"Widget on layer {i} failed"
+

@@ -590,6 +590,13 @@
         if (Array.isArray(spec.directionalLights)) {
           spec.directionalLights.forEach((dl, i) => { lights['dir' + i] = new deck.DirectionalLight(dl); });
         }
+        if (Array.isArray(spec.sunLights) && deck._SunLight) {
+          spec.sunLights.forEach((sl, i) => {
+            const slProps = Object.assign({}, sl);
+            delete slProps['@@sunLight'];
+            lights['sun' + i] = new deck._SunLight(slProps);
+          });
+        }
         return new deck.LightingEffect(lights);
       }
       // PostProcessEffect
@@ -748,6 +755,57 @@
       if (!LayerClass) {
         console.warn('[shiny_deckgl] Unknown layer type: ' + layerProps.type + ' — skipped');
         return null;
+      }
+
+      // SimpleMeshLayer: resolve @@CubeGeometry / @@SphereGeometry mesh
+      if (layerProps.type === 'SimpleMeshLayer' && typeof layerProps.mesh === 'string' && layerProps.mesh.startsWith('@@')) {
+        const geoName = layerProps.mesh.slice(2);
+        if (typeof luma !== 'undefined' && luma[geoName]) {
+          layerProps.mesh = new luma[geoName]();
+        } else {
+          console.warn('[shiny_deckgl] Unknown luma geometry: ' + geoName);
+        }
+      }
+
+      // SimpleMeshLayer: build mesh object from inline vertex data
+      // Expects: mesh = "@@CustomGeometry", _meshPositions, _meshIndices, _meshNormals, _meshColors
+      // Builds a loaders.gl-compatible plain mesh object that deck.gl
+      // internally wraps in a luma.Geometry — no global luma dependency.
+      if (layerProps.type === 'SimpleMeshLayer' && layerProps.mesh === '@@CustomGeometry') {
+        const pos = layerProps._meshPositions;
+        const idx = layerProps._meshIndices;
+        const nrm = layerProps._meshNormals;
+        const col = layerProps._meshColors;
+        if (pos && idx) {
+          try {
+            // Plain mesh object (loaders.gl format) — deck.gl
+            // SimpleMeshLayer.getModel() calls normalizeMeshToGeometry()
+            const meshObj = {
+              attributes: {
+                POSITION: {value: new Float32Array(pos), size: 3},
+              },
+              indices:  {value: new Uint32Array(idx)},
+            };
+            if (nrm && nrm.length > 0) {
+              meshObj.attributes.NORMAL = {value: new Float32Array(nrm), size: 3};
+            }
+            if (col && col.length > 0) {
+              meshObj.attributes.COLOR_0 = {value: new Float32Array(col), size: 3};
+            }
+            layerProps.mesh = meshObj;
+            console.log('[shiny_deckgl] Built custom mesh: ' +
+              (pos.length / 3) + ' vertices, ' + (idx.length / 3) + ' triangles');
+          } catch (e) {
+            console.error('[shiny_deckgl] Failed to build custom mesh:', e);
+          }
+        } else {
+          console.warn('[shiny_deckgl] CustomGeometry requires _meshPositions and _meshIndices');
+        }
+        // Clean up temporary props so deck.gl doesn't choke on them
+        delete layerProps._meshPositions;
+        delete layerProps._meshIndices;
+        delete layerProps._meshNormals;
+        delete layerProps._meshColors;
       }
 
       // TileLayer: resolve @@BitmapLayer renderSubLayers shorthand

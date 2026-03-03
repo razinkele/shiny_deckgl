@@ -7,6 +7,7 @@ __all__ = [
     "orthographic_view",
     "first_person_view",
     "globe_view",
+    "orbit_view",
 ]
 
 
@@ -41,3 +42,19 @@ def globe_view(**kwargs) -> dict:
     Renders the earth as a globe rather than a flat Mercator projection.
     """
     return {"@@type": "GlobeView", **kwargs}
+
+
+def orbit_view(**kwargs) -> dict:
+    """Create an ``OrbitView`` spec for orbiting around a 3D target.
+
+    Useful for inspecting 3-D objects (meshes, point clouds) from any
+    angle.  The camera orbits around a ``target`` point.
+
+    Parameters
+    ----------
+    **kwargs
+        View properties: ``target`` (``[x, y, z]``), ``rotationX``,
+        ``rotationOrbit``, ``zoom``, ``minZoom``, ``maxZoom``,
+        ``controller``, etc.
+    """
+    return {"@@type": "OrbitView", **kwargs}

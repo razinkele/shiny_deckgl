@@ -45,6 +45,7 @@ __all__ = [
     "terrain_extension",
     "fill_style_extension",
     "path_style_extension",
+    "fp64_extension",
 ]
 
 
@@ -163,3 +164,21 @@ def path_style_extension(dash: bool = False, high_precision: bool = False) -> Ex
     * ``getOffset`` — lateral offset accessor
     """
     return ["PathStyleExtension", {"dash": dash, "highPrecisionDash": high_precision}]
+
+
+def fp64_extension() -> Extension:
+    """``Fp64Extension`` — 64-bit floating point rendering.
+
+    Enables double-precision (fp64) calculations on the GPU for layers
+    that need extremely precise positioning.  Useful when visualising
+    data at very high zoom levels or with coordinates that span a wide
+    range of values.
+
+    This extension adds the ``fp64`` prop to the layer; set it to ``True``
+    to activate.
+
+    Layer props enabled:
+
+    * ``fp64`` — enable 64-bit mode (``True``/``False``)
+    """
+    return "Fp64Extension"

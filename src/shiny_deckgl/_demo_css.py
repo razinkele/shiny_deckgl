@@ -358,3 +358,17 @@ def sidebar_section(icon: str, title: str) -> ui.TagChild:
 def sidebar_hint(text: str) -> ui.TagChild:
     """Subtle descriptive text inside sidebar."""
     return ui.p(text, class_="sidebar-hint")
+
+
+def about_row(lib: str, ver: str) -> ui.Tag:
+    """One ``<tr>`` for the About version table in the navbar menu."""
+    return ui.tags.tr(
+        ui.tags.td(
+            lib,
+            style="padding:3px 12px 3px 0;color:#666;white-space:nowrap;",
+        ),
+        ui.tags.td(
+            ui.tags.code(ver),
+            style="padding:3px 0;font-weight:600;",
+        ),
+    )

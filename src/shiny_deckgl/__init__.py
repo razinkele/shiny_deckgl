@@ -24,6 +24,12 @@ from .components import (
     screen_grid_layer,
     mvt_layer,
     wms_layer,
+    point_cloud_layer,
+    simple_mesh_layer,
+    terrain_layer,
+    # Mesh geometry helpers (v1.3.0)
+    custom_geometry,
+    COORDINATE_SYSTEM,
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,
@@ -32,6 +38,7 @@ from .components import (
     color_range,
     color_bins,
     color_quantiles,
+    depth_color,
     PALETTE_VIRIDIS,
     PALETTE_PLASMA,
     PALETTE_OCEAN,
@@ -44,6 +51,7 @@ from .components import (
     orthographic_view,
     first_person_view,
     globe_view,
+    orbit_view,
     # Widget helpers (v0.8.0)
     zoom_widget,
     compass_widget,
@@ -86,8 +94,18 @@ from .components import (
     terrain_extension,
     fill_style_extension,
     path_style_extension,
+    fp64_extension,
 )
 from .extensions import Extension
+from .effects import (  # noqa: F401
+    ambient_light,
+    point_light,
+    directional_light,
+    sun_light,
+    lighting_effect,
+    post_process_effect,
+)
+from .parsers import parse_shyfem_grd, parse_shyfem_mesh  # noqa: F401
 from .ui import head_includes
 from .ibm import (
     SPECIES_COLORS,
@@ -96,6 +114,13 @@ from .ibm import (
     format_trips,
     trips_animation_ui,
     trips_animation_server,
+)
+from ._demo_data import (  # noqa: F401
+    SHYFEM_VIEW,
+    make_h3_data,
+    make_point_cloud_data,
+    make_shyfem_polygon_data,
+    make_shyfem_mesh_data,
 )
 from ._version import __version__
 
@@ -134,6 +159,13 @@ __all__ = [
     "screen_grid_layer",
     "mvt_layer",
     "wms_layer",
+    "point_cloud_layer",
+    "simple_mesh_layer",
+    "terrain_layer",
+    "custom_geometry",
+    "COORDINATE_SYSTEM",
+    "parse_shyfem_grd",
+    "parse_shyfem_mesh",
     "head_includes",
     "CARTO_POSITRON",
     "CARTO_DARK",
@@ -142,6 +174,7 @@ __all__ = [
     "color_range",
     "color_bins",
     "color_quantiles",
+    "depth_color",
     "PALETTE_VIRIDIS",
     "PALETTE_PLASMA",
     "PALETTE_OCEAN",
@@ -152,6 +185,7 @@ __all__ = [
     "orthographic_view",
     "first_person_view",
     "globe_view",
+    "orbit_view",
     "zoom_widget",
     "compass_widget",
     "fullscreen_widget",
@@ -187,6 +221,14 @@ __all__ = [
     "terrain_extension",
     "fill_style_extension",
     "path_style_extension",
+    "fp64_extension",
+    # Effect helpers
+    "ambient_light",
+    "point_light",
+    "directional_light",
+    "sun_light",
+    "lighting_effect",
+    "post_process_effect",
     # IBM visual assets & helpers
     "SPECIES_COLORS",
     "ICON_ATLAS",
@@ -194,5 +236,11 @@ __all__ = [
     "format_trips",
     "trips_animation_ui",
     "trips_animation_server",
+    # Demo data factories
+    "SHYFEM_VIEW",
+    "make_h3_data",
+    "make_point_cloud_data",
+    "make_shyfem_polygon_data",
+    "make_shyfem_mesh_data",
     "__version__",
 ]

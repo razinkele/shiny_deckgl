@@ -560,6 +560,118 @@ LIGHTING_EFFECT_3D = {
 
 
 # ---------------------------------------------------------------------------
+# Mesh view state (Curonian Lagoon, Lithuania)
+# ---------------------------------------------------------------------------
+
+SHYFEM_VIEW = {
+    "longitude": 21.07,
+    "latitude": 55.31,
+    "zoom": 9,
+    "pitch": 0,
+    "bearing": 0,
+}
+
+
+# ---------------------------------------------------------------------------
+# Layer gallery data factory helpers
+# ---------------------------------------------------------------------------
+
+def make_h3_data() -> list[dict]:
+    """Generate H3 hexagon demo data (7 resolution-3 cells in central Baltic)."""
+    _h3_palette = [
+        [255, 140, 0], [0, 200, 120], [200, 0, 100],
+        [60, 180, 220], [160, 80, 200], [80, 200, 160],
+    ]
+    _h3_hexes = [
+        "830892fffffffff", "831f74fffffffff", "831f75fffffffff",
+        "831f66fffffffff", "830893fffffffff", "830890fffffffff",
+        "830896fffffffff",
+    ]
+    random.seed(42)
+    return [
+        {
+            "hex": h,
+            "count": random.randint(3, 20),
+            "color": [*_h3_palette[i % len(_h3_palette)], 180],
+            "name": f"H3 cell {i + 1}",
+            "layerType": "H3HexagonLayer",
+        }
+        for i, h in enumerate(_h3_hexes)
+    ]
+
+
+def make_point_cloud_data() -> list[dict]:
+    """Generate synthetic 3-D point cloud around Baltic ports."""
+    import math as _math
+    pts: list[dict] = []
+    for _i, _p in enumerate(PORTS):
+        for _j in range(20):
+            _angle = _j * _math.pi * 2 / 20
+            pts.append({
+                "position": [
+                    _p["lon"] + 0.05 * _math.cos(_angle),
+                    _p["lat"] + 0.03 * _math.sin(_angle),
+                    _p["cargo_mt"] * 50 + _j * 100,
+                ],
+                "color": [200, 100 + _j * 5, 50],
+                "name": _p["name"],
+                "layerType": "PointCloudLayer",
+            })
+    return pts
+
+
+def make_shyfem_polygon_data(grd_path: str | None = None) -> list[dict]:
+    """Load SHYFEM .grd as PolygonLayer data (with fallback to port boxes).
+
+    Parameters
+    ----------
+    grd_path
+        Path to the ``.grd`` file.  When ``None`` or the file doesn't
+        exist, returns simple bounding-box polygons around Baltic ports.
+    """
+    from pathlib import Path
+    if grd_path is not None and Path(grd_path).exists():
+        from .parsers import parse_shyfem_grd
+        return parse_shyfem_grd(grd_path)
+    # Fallback
+    return [
+        {
+            "polygon": [
+                [p["lon"] - 0.3, p["lat"] - 0.15],
+                [p["lon"] + 0.3, p["lat"] - 0.15],
+                [p["lon"] + 0.3, p["lat"] + 0.15],
+                [p["lon"] - 0.3, p["lat"] + 0.15],
+            ],
+            "name": p["name"],
+            "depth": 0,
+            "layerType": "PolygonLayer",
+        }
+        for p in PORTS
+    ]
+
+
+def make_shyfem_mesh_data(
+    grd_path: str | None = None,
+    z_scale: float = 50.0,
+) -> dict | None:
+    """Load SHYFEM .grd as SimpleMeshLayer geometry arrays.
+
+    Parameters
+    ----------
+    grd_path
+        Path to the ``.grd`` file.  Returns ``None`` when the file
+        doesn't exist or ``grd_path`` is ``None``.
+    z_scale
+        Vertical exaggeration for depth visualisation.
+    """
+    from pathlib import Path
+    if grd_path is not None and Path(grd_path).exists():
+        from .parsers import parse_shyfem_mesh
+        return parse_shyfem_mesh(grd_path, z_scale=z_scale)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Seal IBM (Individual-Based Model) — movement simulation
 # ---------------------------------------------------------------------------
 # The visual assets (SVG sprites, icon mapping, colours) live in ibm.py
@@ -1247,3 +1359,178 @@ def make_seal_trips_ibm(
             trips.append(formatted[0])
 
     return trips
+
+
+# ---------------------------------------------------------------------------
+# .grd demo mesh paths (resolved relative to package root)
+# ---------------------------------------------------------------------------
+
+_EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples"
+
+_CURONIAN_GRD = _EXAMPLES_DIR / "curoninan.grd"
+CURONIAN_GRD_PATH: str | None = str(_CURONIAN_GRD) if _CURONIAN_GRD.exists() else None
+"""Absolute path to the Curonian Lagoon ``curoninan.grd`` demo mesh, or
+``None`` if the file is not present (e.g. installed without the examples)."""
+
+_POLYGON_GRD = _EXAMPLES_DIR / "MM_coarse_smooth.grd"
+POLYGON_GRD_PATH: str | None = str(_POLYGON_GRD) if _POLYGON_GRD.exists() else None
+"""Absolute path to the Mar Piccolo ``MM_coarse_smooth.grd`` demo mesh,
+or ``None`` if the file is not present."""
+
+
+# ---------------------------------------------------------------------------
+# Fish species colour map (used by Tab 8 — 3-D Visualisation)
+# ---------------------------------------------------------------------------
+
+FISH_SPECIES_COLORS: dict[str, list[int]] = {
+    "Atlantic cod":       [230, 25, 75, 200],
+    "Baltic herring":     [60, 180, 75, 200],
+    "European sprat":     [255, 225, 25, 200],
+    "Atlantic salmon":    [0, 130, 200, 200],
+    "European flounder":  [245, 130, 48, 200],
+    "Pike-perch":         [145, 30, 180, 200],
+    "Three-spined stickleback": [70, 240, 240, 200],
+    "Ringed seal":        [240, 50, 230, 200],
+}
+
+
+def fish_species_color(species: str) -> list[int]:
+    """Return an RGBA colour for a Baltic Sea fish species.
+
+    Falls back to grey ``[180, 180, 180, 200]`` for unknown species.
+    """
+    return FISH_SPECIES_COLORS.get(species, [180, 180, 180, 200])
+
+
+# ---------------------------------------------------------------------------
+# Gallery data factories (Tab 1 — all 24 layer helpers)
+# ---------------------------------------------------------------------------
+
+def make_gallery_port_data() -> list[dict]:
+    """Ports formatted for ScatterplotLayer (gallery)."""
+    return [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "country": p["country"],
+            "cargo_mt": p["cargo_mt"],
+            "layerType": "ScatterplotLayer",
+        }
+        for p in PORTS
+    ]
+
+
+def make_gallery_arc_data() -> list[dict]:
+    """Route endpoints for ArcLayer (gallery)."""
+    return [
+        {
+            "sourcePosition": r["waypoints"][0],
+            "targetPosition": r["waypoints"][-1],
+            "name": f"{r['from']} \u2192 {r['to']}",
+            "layerType": "ArcLayer",
+        }
+        for r in ROUTES
+    ]
+
+
+def make_gallery_line_data() -> list[dict]:
+    """Adjacent port pairs for LineLayer (gallery)."""
+    return [
+        {
+            "sourcePosition": [PORTS[i]["lon"], PORTS[i]["lat"]],
+            "targetPosition": [PORTS[(i + 1) % len(PORTS)]["lon"],
+                               PORTS[(i + 1) % len(PORTS)]["lat"]],
+            "name": (
+                f"{PORTS[i]['name']} \u2192 "
+                f"{PORTS[(i + 1) % len(PORTS)]['name']}"
+            ),
+            "layerType": "LineLayer",
+        }
+        for i in range(len(PORTS))
+    ]
+
+
+def make_gallery_path_data() -> list[dict]:
+    """Route waypoints for PathLayer (gallery)."""
+    return [
+        {
+            "path": r["waypoints"],
+            "name": f"{r['from']} \u2192 {r['to']}",
+            "color": r["color"],
+            "layerType": "PathLayer",
+        }
+        for r in ROUTES
+    ]
+
+
+def make_gallery_text_data() -> list[dict]:
+    """Port name labels for TextLayer (gallery)."""
+    return [
+        {
+            "position": [p["lon"], p["lat"]],
+            "text": p["name"],
+            "name": p["name"],
+            "layerType": "TextLayer",
+        }
+        for p in PORTS
+    ]
+
+
+def make_gallery_icon_data() -> list[dict]:
+    """Port positions for IconLayer (gallery)."""
+    return [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "layerType": "IconLayer",
+        }
+        for p in PORTS
+    ]
+
+
+def make_gallery_column_data() -> list[dict]:
+    """Port cargo as 3-D columns for ColumnLayer (gallery)."""
+    return [
+        {
+            "position": [p["lon"], p["lat"]],
+            "elevation": p["cargo_mt"] * 200,
+            "name": p["name"],
+            "cargo_mt": p["cargo_mt"],
+            "layerType": "ColumnLayer",
+        }
+        for p in PORTS
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Default legend metadata for layer gallery
+# ---------------------------------------------------------------------------
+
+LAYER_LEGEND_META: dict[str, tuple[list[int], str]] = {
+    "ScatterplotLayer": ([0, 180, 120], "circle"),
+    "GeoJsonLayer": ([0, 180, 120], "rect"),
+    "ArcLayer": ([200, 80, 80], "arc"),
+    "LineLayer": ([120, 120, 200], "line"),
+    "PathLayer": ([180, 100, 60], "line"),
+    "IconLayer": ([220, 150, 30], "circle"),
+    "TextLayer": ([100, 100, 100], "rect"),
+    "ColumnLayer": ([160, 80, 200], "rect"),
+    "PolygonLayer": ([0, 160, 180], "rect"),
+    "GreatCircleLayer": ([200, 60, 150], "arc"),
+    "HeatmapLayer": ([255, 80, 0], "gradient"),
+    "HexagonLayer": ([80, 160, 80], "rect"),
+    "GridLayer": ([0, 120, 200], "rect"),
+    "ScreenGridLayer": ([200, 200, 0], "rect"),
+    "ContourLayer": ([100, 0, 200], "line"),
+    "H3HexagonLayer": ([255, 140, 0], "rect"),
+    "TripsLayer": ([253, 128, 93], "line"),
+    "TileLayer": ([100, 140, 100], "rect"),
+    "BitmapLayer": ([180, 140, 100], "rect"),
+    "MVTLayer": ([0, 150, 136], "rect"),
+    "WMSLayer": ([70, 130, 180], "rect"),
+    "PointCloudLayer": ([200, 100, 50], "circle"),
+    "SimpleMeshLayer": ([80, 160, 220], "rect"),
+    "MeshNodes": ([255, 200, 60], "circle"),
+    "TerrainLayer": ([120, 160, 80], "rect"),
+}
+"""Layer-type → (colour, shape) mapping for ``deck_legend_control``."""

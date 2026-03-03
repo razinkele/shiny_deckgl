@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.1.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.2.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -110,6 +110,7 @@ import shiny_deckgl as sdgl
   - [terrain\_extension()](#terrain_extension)
   - [fill\_style\_extension()](#fill_style_extension)
   - [path\_style\_extension()](#path_style_extension)
+  - [fp64\_extension()](#fp64_extension)
 - [Cluster Layers (v1.0)](#cluster-layers-v10)
   - [add\_cluster\_layer()](#add_cluster_layer)
   - [remove\_cluster\_layer()](#remove_cluster_layer)
@@ -122,6 +123,17 @@ import shiny_deckgl as sdgl
   - [trips\_animation\_ui()](#trips_animation_ui)
   - [trips\_animation\_server()](#trips_animation_server)
   - [Extension Type Alias](#extension-type-alias)
+- [Effects Helpers (v1.2)](#effects-helpers-v12)
+  - [ambient\_light()](#ambient_light)
+  - [point\_light()](#point_light)
+  - [directional\_light()](#directional_light)
+  - [sun\_light()](#sun_light)
+  - [lighting\_effect()](#lighting_effect)
+  - [post\_process\_effect()](#post_process_effect)
+- [Layer Helpers (v1.2)](#layer-helpers-v12)
+  - [point\_cloud\_layer()](#point_cloud_layer)
+  - [simple\_mesh\_layer()](#simple_mesh_layer)
+  - [terrain\_layer()](#terrain_layer)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
@@ -135,6 +147,7 @@ import shiny_deckgl as sdgl
   - [orthographic\_view()](#orthographic_view)
   - [first\_person\_view()](#first_person_view)
   - [globe\_view()](#globe_view)
+  - [orbit\_view()](#orbit_view)
 - [Accessor Syntax](#accessor-syntax)
 - [WMS Tile Layers](#wms-tile-layers)
 - [Tooltip Configuration](#tooltip-configuration)
@@ -1744,6 +1757,204 @@ All 8 extension helpers (`brushing_extension`, `data_filter_extension`, etc.) no
 
 ---
 
+## Effects Helpers (v1.2)
+
+Typed helpers for deck.gl lighting and post-processing effects.  These replace
+the raw dict approach described in the [Lighting & Effects](#lighting--effects)
+section with convenience functions.
+
+```python
+from shiny_deckgl import (
+    lighting_effect, ambient_light, point_light,
+    directional_light, sun_light, post_process_effect,
+)
+
+effects = [
+    lighting_effect(
+        ambient_light(intensity=0.8),
+        point_light([20.0, 55.0, 80000], intensity=2.0),
+        directional_light([-1, -3, -1], intensity=0.6),
+    ),
+    post_process_effect("brightnessContrast", brightness=0.1, contrast=0.2),
+]
+
+await widget.update(session, layers=[...], effects=effects)
+```
+
+### `ambient_light()`
+
+```python
+shiny_deckgl.ambient_light(
+    color: list[int] | tuple[int, ...] = (255, 255, 255),
+    intensity: float = 1.0,
+) -> dict
+```
+
+Ambient light — illuminates all objects equally regardless of direction.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `color` | `list[int]` | `[255, 255, 255]` | RGB colour. |
+| `intensity` | `float` | `1.0` | Brightness multiplier. |
+
+### `point_light()`
+
+```python
+shiny_deckgl.point_light(
+    position: list[float],
+    color: list[int] | tuple[int, ...] = (255, 255, 255),
+    intensity: float = 1.0,
+    **kwargs,
+) -> dict
+```
+
+Point light — emits from a single position in all directions.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `position` | `list[float]` | *(required)* | `[longitude, latitude, altitude_metres]`. |
+| `color` | `list[int]` | `[255, 255, 255]` | RGB colour. |
+| `intensity` | `float` | `1.0` | Brightness multiplier. |
+
+### `directional_light()`
+
+```python
+shiny_deckgl.directional_light(
+    direction: list[float] = (-1, -3, -1),
+    color: list[int] | tuple[int, ...] = (255, 255, 255),
+    intensity: float = 1.0,
+    _shadow: bool = False,
+    **kwargs,
+) -> dict
+```
+
+Directional light — parallel rays from a distant source (like the sun).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `direction` | `list[float]` | `[-1, -3, -1]` | `[x, y, z]` direction vector. |
+| `color` | `list[int]` | `[255, 255, 255]` | RGB colour. |
+| `intensity` | `float` | `1.0` | Brightness multiplier. |
+| `_shadow` | `bool` | `False` | Enable experimental shadow rendering. |
+
+### `sun_light()`
+
+```python
+shiny_deckgl.sun_light(
+    timestamp: int | float,
+    color: list[int] | tuple[int, ...] = (255, 255, 255),
+    intensity: float = 1.0,
+    _shadow: bool = False,
+    **kwargs,
+) -> dict
+```
+
+Sun light — directional light whose direction is computed from the sun's position at a given time.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `timestamp` | `int \| float` | *(required)* | Unix timestamp in milliseconds. |
+| `color` | `list[int]` | `[255, 255, 255]` | RGB colour. |
+| `intensity` | `float` | `1.0` | Brightness multiplier. |
+| `_shadow` | `bool` | `False` | Enable experimental shadow rendering. |
+
+### `lighting_effect()`
+
+```python
+shiny_deckgl.lighting_effect(
+    ambient: dict | None = None,
+    *lights: dict,
+    **kwargs,
+) -> dict
+```
+
+Combine an optional ambient light with any number of point/directional/sun lights into a single `LightingEffect` spec.
+
+```python
+lighting_effect(
+    ambient_light(intensity=0.5),
+    point_light([20, 55, 80000], intensity=2.0),
+    directional_light([-1, -3, -1], intensity=0.8),
+)
+```
+
+### `post_process_effect()`
+
+```python
+shiny_deckgl.post_process_effect(
+    shader_module: str,
+    **kwargs,
+) -> dict
+```
+
+Screen-space pixel manipulation via a luma.gl shader module.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `shader_module` | `str` | Shader name: `"brightnessContrast"`, `"hueSaturation"`, `"noise"`, `"sepia"`, `"vibrance"`, `"vignette"`, `"tiltShift"`, `"triangleBlur"`, `"zoomBlur"`, etc. |
+| `**kwargs` | | Shader-specific parameters (e.g. `brightness=0.5`). |
+
+```python
+post_process_effect("brightnessContrast", brightness=0.1, contrast=0.3)
+post_process_effect("vignette", radius=0.5, amount=0.5)
+```
+
+---
+
+## Layer Helpers (v1.2)
+
+New typed layer helpers for 3-D content and terrain.
+
+### `point_cloud_layer()`
+
+```python
+shiny_deckgl.point_cloud_layer(id: str, data=None, **kwargs) -> dict
+```
+
+Render a cloud of 3-D points.  Each point is drawn as a circle in screen space.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `pickable` | `True` | Enable hover/click. |
+| `pointSize` | `2` | Point size. |
+| `sizeUnits` | `"pixels"` | Size units. |
+| `getPosition` | `"@@=position"` | Position accessor. |
+| `getColor` | `[255, 140, 0]` | Point colour. |
+| `getNormal` | `[0, 0, 1]` | Normal vector accessor. |
+
+### `simple_mesh_layer()`
+
+```python
+shiny_deckgl.simple_mesh_layer(id: str, data=None, **kwargs) -> dict
+```
+
+Place a 3-D mesh (OBJ, PLY, or programmatic geometry) at each data point.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `pickable` | `True` | Enable hover/click. |
+| `getPosition` | `"@@=position"` | Anchor-point accessor. |
+| `getColor` | `[140, 170, 200]` | Mesh colour. |
+| `sizeScale` | `1` | Scale multiplier. |
+
+Pass `mesh="https://example.com/model.obj"` for the 3-D model URL.
+
+### `terrain_layer()`
+
+```python
+shiny_deckgl.terrain_layer(id: str, data=None, **kwargs) -> dict
+```
+
+Reconstruct mesh surfaces from height-map images (e.g. Mapzen Terrain Tiles).
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `meshMaxError` | `4.0` | Max LOD simplification error in metres. |
+
+Key kwargs: `elevationData` (URL template), `texture` (satellite/map tile URL), `elevationDecoder` (RGB→elevation mapping), `bounds` (`[west, south, east, north]`).
+
+---
+
 ## Basemap & Control Constants
 
 ### Basemap Styles
@@ -2080,6 +2291,27 @@ await widget.update(session, layers=my_layers,
                     views=[globe_view(controller=True)])
 ```
 
+### `orbit_view()`
+
+```python
+orbit_view(**kwargs) -> dict
+```
+
+Create an `OrbitView` spec for orbiting around a 3-D target (meshes, point clouds).  The camera orbits around a `target` point rather than a geographic location.
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `target` | `list[float]` | `[x, y, z]` point to orbit around. |
+| `rotationX` | `float` | Rotation around the X axis (pitch). |
+| `rotationOrbit` | `float` | Rotation around the orbit axis (yaw). |
+| `zoom` | `float` | Zoom level. |
+| `controller` | `bool` | Enable user interaction (default `True`). |
+
+```python
+await widget.update(session, layers=my_layers,
+                    views=[orbit_view(target=[0, 0, 0], zoom=4, controller=True)])
+```
+
 **Multi-view example:**
 
 ```python
@@ -2224,7 +2456,24 @@ For GeoJSON features, properties are accessed from the `properties` object autom
 
 ## Lighting & Effects
 
-Pass an `effects` list to `widget.update()` for ambient/point lighting:
+Pass an `effects` list to `widget.update()` for ambient/point lighting.
+
+**Recommended (v1.2+):** use the typed [Effects Helpers](#effects-helpers-v12):
+
+```python
+from shiny_deckgl import lighting_effect, ambient_light, point_light
+
+effects = [
+    lighting_effect(
+        ambient_light(intensity=1.0),
+        point_light([21.1, 55.7, 8000], color=[255, 200, 150], intensity=2.0),
+    ),
+]
+
+await widget.update(session, layers=my_layers, effects=effects)
+```
+
+**Raw dict approach (still supported):**
 
 ```python
 effects = [{
@@ -2243,7 +2492,7 @@ effects = [{
 await widget.update(session, layers=my_layers, effects=effects)
 ```
 
-The JS client resolves `LightingEffect` specs into `deck.LightingEffect` instances with `deck.AmbientLight` and `deck.PointLight` sub-objects.
+The JS client resolves `LightingEffect` specs into `deck.LightingEffect` instances with `deck.AmbientLight`, `deck.PointLight`, `deck.DirectionalLight`, and `deck._SunLight` sub-objects.
 
 ---
 
@@ -2563,6 +2812,22 @@ Dashed/offset path rendering.
 
 **Layer props enabled:** `getDashArray`, `dashJustified`, `getOffset`.
 
+### `fp64_extension()`
+
+```python
+shiny_deckgl.fp64_extension() -> str
+```
+
+`Fp64Extension` — enable 64-bit floating-point rendering on the GPU for layers that need extremely precise positioning. Useful when visualising data at very high zoom levels or with coordinates that span a wide range.
+
+**Layer props enabled:** `fp64` — set to `True` to activate.
+
+```python
+layer("ScatterplotLayer", "pts", data,
+      extensions=[fp64_extension()],
+      fp64=True)
+```
+
 ---
 
 ## Cluster Layers (v1.0)
@@ -2697,9 +2962,10 @@ The package installs a `shiny_deckgl-demo` console script:
 shiny_deckgl-demo
 ```
 
-This launches the built-in demo app centred on the Baltic Sea with 9 tabs
+This launches the built-in demo app centred on the Baltic Sea with 11 tabs
 showcasing all features: scatter layers, WMS, controls, drawing tools,
-markers, popups, terrain, animation, extensions, and clustering.
+markers, popups, terrain, extensions, clustering, lighting, effects,
+IBM trips animation, and a Layer Gallery of all 24 layer helpers.
 
 ---
 

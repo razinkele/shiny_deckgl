@@ -53,4 +53,5 @@ desktop.ini
 *.cpg
 IMPLEMENTATION_PLAN*.md
 ROADMAP.md
+GAP_ANALYSIS.md
 ags_*/

@@ -84,6 +84,9 @@ from shiny_deckgl.components import (
     screen_grid_layer,
     mvt_layer,
     wms_layer,
+    point_cloud_layer,
+    simple_mesh_layer,
+    terrain_layer,
 )
 from shiny_deckgl.extensions import (
     brushing_extension,
@@ -94,6 +97,16 @@ from shiny_deckgl.extensions import (
     terrain_extension,
     fill_style_extension,
     path_style_extension,
+    fp64_extension,
+)
+from shiny_deckgl.views import orbit_view
+from shiny_deckgl.effects import (
+    ambient_light,
+    point_light,
+    directional_light,
+    sun_light,
+    lighting_effect,
+    post_process_effect,
 )
 
 
@@ -133,10 +146,17 @@ def test_public_api_exports():
         # v0.9.0
         "trips_layer", "great_circle_layer", "contour_layer",
         "grid_layer", "screen_grid_layer", "mvt_layer", "wms_layer",
+        "point_cloud_layer", "simple_mesh_layer", "terrain_layer",
         # v1.0.0 extension helpers
         "brushing_extension", "collision_filter_extension",
         "data_filter_extension", "mask_extension", "clip_extension",
         "terrain_extension", "fill_style_extension", "path_style_extension",
+        "fp64_extension",
+        # v1.2.0 effects
+        "ambient_light", "point_light", "directional_light",
+        "sun_light", "lighting_effect", "post_process_effect",
+        # v1.2.0 views
+        "orbit_view",
         "__version__",
     }
     assert expected.issubset(set(dir(m)))
@@ -3125,13 +3145,14 @@ class TestAppFactory:
         """app should be a direct App instance (not a factory)."""
         assert isinstance(app, App)
 
-    def test_v1_widget_exists(self):
-        """Tab 9/10 v1.0.0 widgets should be importable from app module."""
-        from shiny_deckgl.app import v1_deck_widget, v1_ml_widget
-        assert isinstance(v1_deck_widget, MapWidget)
-        assert v1_deck_widget.id == "v1_deck_map"
-        assert isinstance(v1_ml_widget, MapWidget)
-        assert v1_ml_widget.id == "v1_ml_map"
+    def test_v1_widgets_merged(self):
+        """Former Tab 9/10 widgets were merged into existing tabs."""
+        # v1_deck_widget and v1_ml_widget no longer exist as separate widgets
+        # Their functionality was merged into adv_widget (Tab 5) and
+        # maplibre_widget (Tab 2) respectively.
+        from shiny_deckgl.app import adv_widget, maplibre_widget
+        assert isinstance(adv_widget, MapWidget)
+        assert isinstance(maplibre_widget, MapWidget)
 
 
 # ==========================================================================
@@ -3847,7 +3868,7 @@ class TestV080Version:
     """Version bump verification."""
 
     def test_version_is_100(self):
-        assert m.__version__ == "1.1.1"
+        assert m.__version__ == "1.2.0"
 
 
 # ===========================================================================
@@ -6768,6 +6789,9 @@ class TestLayerWidgetCombined:
             lambda: screen_grid_layer("sg", []),
             lambda: mvt_layer("mv", "https://example.com/{z}/{x}/{y}.mvt"),
             lambda: wms_layer("wm", "https://example.com/wms", layers=["test"]),
+            lambda: point_cloud_layer("pcl", []),
+            lambda: simple_mesh_layer("sml", []),
+            lambda: terrain_layer("tml", "https://example.com/{z}/{x}/{y}.png"),
         ]
         for i, make_layer in enumerate(layer_fns):
             fake.messages.clear()
@@ -6776,4 +6800,365 @@ class TestLayerWidgetCombined:
             p = fake.messages[0][1]
             assert len(p["layers"]) == 1, f"Layer {i} failed"
             assert len(p["widgets"]) == 1, f"Widget on layer {i} failed"
+
+
+# ===========================================================================
+# v1.2.0 — Effects module
+# ===========================================================================
+
+class TestAmbientLight:
+    """Tests for ambient_light() helper."""
+
+    def test_defaults(self):
+        result = ambient_light()
+        assert result == {"color": [255, 255, 255], "intensity": 1.0}
+
+    def test_custom_values(self):
+        result = ambient_light(color=(200, 200, 200), intensity=0.5)
+        assert result["color"] == [200, 200, 200]
+        assert result["intensity"] == 0.5
+
+    def test_color_tuple_converted_to_list(self):
+        result = ambient_light(color=(128, 64, 32))
+        assert isinstance(result["color"], list)
+
+
+class TestPointLight:
+    """Tests for point_light() helper."""
+
+    def test_defaults(self):
+        result = point_light(position=[20.0, 55.0, 80000])
+        assert result["color"] == [255, 255, 255]
+        assert result["intensity"] == 1.0
+        assert result["position"] == [20.0, 55.0, 80000]
+
+    def test_custom_values(self):
+        result = point_light(
+            position=[10.0, 50.0, 40000],
+            color=(255, 0, 0),
+            intensity=2.5,
+        )
+        assert result["color"] == [255, 0, 0]
+        assert result["intensity"] == 2.5
+
+    def test_extra_kwargs(self):
+        result = point_light(position=[0, 0, 1000], attenuation=[1, 0, 0])
+        assert result["attenuation"] == [1, 0, 0]
+
+    def test_position_tuple_converted_to_list(self):
+        result = point_light(position=(1.0, 2.0, 3.0))
+        assert isinstance(result["position"], list)
+
+
+class TestDirectionalLight:
+    """Tests for directional_light() helper."""
+
+    def test_defaults(self):
+        result = directional_light()
+        assert result["direction"] == [-1, -3, -1]
+        assert result["color"] == [255, 255, 255]
+        assert result["intensity"] == 1.0
+        assert "_shadow" not in result
+
+    def test_custom_direction(self):
+        result = directional_light(direction=[0, -1, 0], intensity=0.5)
+        assert result["direction"] == [0, -1, 0]
+        assert result["intensity"] == 0.5
+
+    def test_shadow_flag(self):
+        result = directional_light(_shadow=True)
+        assert result["_shadow"] is True
+
+    def test_no_shadow_by_default(self):
+        result = directional_light()
+        assert "_shadow" not in result
+
+
+class TestSunLight:
+    """Tests for sun_light() helper."""
+
+    def test_basic(self):
+        result = sun_light(timestamp=1700000000000)
+        assert result["@@sunLight"] is True
+        assert result["timestamp"] == 1700000000000
+        assert result["color"] == [255, 255, 255]
+        assert result["intensity"] == 1.0
+
+    def test_custom_values(self):
+        result = sun_light(
+            timestamp=1700000000000,
+            color=(255, 200, 150),
+            intensity=0.8,
+            _shadow=True,
+        )
+        assert result["color"] == [255, 200, 150]
+        assert result["intensity"] == 0.8
+        assert result["_shadow"] is True
+
+    def test_marker_for_classification(self):
+        """@@sunLight marker distinguishes sun lights from directional lights."""
+        result = sun_light(timestamp=0)
+        assert result.get("@@sunLight") is True
+
+    def test_no_shadow_by_default(self):
+        result = sun_light(timestamp=0)
+        assert "_shadow" not in result
+
+
+class TestLightingEffect:
+    """Tests for lighting_effect() helper."""
+
+    def test_type(self):
+        result = lighting_effect()
+        assert result["type"] == "LightingEffect"
+
+    def test_ambient_only(self):
+        amb = ambient_light(intensity=0.5)
+        result = lighting_effect(amb)
+        assert result["ambientLight"] == amb
+        assert "pointLights" not in result
+
+    def test_with_point_lights(self):
+        pl = point_light(position=[10, 20, 30000])
+        result = lighting_effect(None, pl)
+        assert "ambientLight" not in result
+        assert len(result["pointLights"]) == 1
+
+    def test_with_directional_lights(self):
+        dl = directional_light(direction=[0, -1, 0])
+        result = lighting_effect(None, dl)
+        assert len(result["directionalLights"]) == 1
+
+    def test_with_sun_lights(self):
+        sl = sun_light(timestamp=1700000000000)
+        result = lighting_effect(None, sl)
+        assert len(result["sunLights"]) == 1
+
+    def test_combined(self):
+        amb = ambient_light(intensity=0.3)
+        pl = point_light(position=[10, 20, 30000])
+        dl = directional_light(direction=[0, -1, 0])
+        sl = sun_light(timestamp=1700000000000)
+        result = lighting_effect(amb, pl, dl, sl)
+        assert result["ambientLight"] == amb
+        assert len(result["pointLights"]) == 1
+        assert len(result["directionalLights"]) == 1
+        assert len(result["sunLights"]) == 1
+
+    def test_multiple_point_lights(self):
+        pl1 = point_light(position=[10, 20, 30000])
+        pl2 = point_light(position=[20, 30, 40000])
+        result = lighting_effect(None, pl1, pl2)
+        assert len(result["pointLights"]) == 2
+
+    def test_no_ambient_no_key(self):
+        result = lighting_effect()
+        assert "ambientLight" not in result
+
+
+class TestPostProcessEffect:
+    """Tests for post_process_effect() helper."""
+
+    def test_basic(self):
+        result = post_process_effect("brightnessContrast", brightness=0.1)
+        assert result["type"] == "PostProcessEffect"
+        assert result["shaderModule"] == "brightnessContrast"
+        assert result["brightness"] == 0.1
+
+    def test_no_extra_kwargs(self):
+        result = post_process_effect("sepia")
+        assert result == {
+            "type": "PostProcessEffect",
+            "shaderModule": "sepia",
+        }
+
+    def test_multiple_kwargs(self):
+        result = post_process_effect(
+            "tiltShift", start=[0, 0], end=[1, 1], blurRadius=15,
+        )
+        assert result["start"] == [0, 0]
+        assert result["blurRadius"] == 15
+
+
+class TestEffectsReexported:
+    """Tests that effect helpers are re-exported from the top-level package."""
+
+    def test_ambient_light(self):
+        assert callable(m.ambient_light)
+
+    def test_point_light(self):
+        assert callable(m.point_light)
+
+    def test_directional_light(self):
+        assert callable(m.directional_light)
+
+    def test_sun_light(self):
+        assert callable(m.sun_light)
+
+    def test_lighting_effect(self):
+        assert callable(m.lighting_effect)
+
+    def test_post_process_effect(self):
+        assert callable(m.post_process_effect)
+
+
+class TestEffectsIntegration:
+    """Test effects dicts work with MapWidget.to_json()."""
+
+    def test_lighting_effect_in_json(self):
+        w = MapWidget("efx_int")
+        effects = [lighting_effect(
+            ambient_light(intensity=0.5),
+            point_light(position=[20, 55, 80000], intensity=2.0),
+        )]
+        j = w.to_json([], effects=effects)
+        spec = json.loads(j)
+        assert spec["effects"][0]["type"] == "LightingEffect"
+        assert spec["effects"][0]["ambientLight"]["intensity"] == 0.5
+
+    def test_post_process_effect_in_json(self):
+        w = MapWidget("efx_pp")
+        effects = [post_process_effect("brightnessContrast", brightness=0.1)]
+        j = w.to_json([], effects=effects)
+        spec = json.loads(j)
+        assert spec["effects"][0]["type"] == "PostProcessEffect"
+
+    def test_combined_effects_in_json(self):
+        w = MapWidget("efx_comb")
+        effects = [
+            lighting_effect(ambient_light()),
+            post_process_effect("vignette", radius=0.5),
+        ]
+        j = w.to_json([], effects=effects)
+        spec = json.loads(j)
+        assert len(spec["effects"]) == 2
+
+
+# ===========================================================================
+# v1.2.0 — New typed layer helpers
+# ===========================================================================
+
+class TestPointCloudLayer:
+    """Tests for point_cloud_layer() helper."""
+
+    def test_defaults(self):
+        spec = point_cloud_layer("pc1", data=[])
+        assert spec["type"] == "PointCloudLayer"
+        assert spec["id"] == "pc1"
+        assert spec["pickable"] is True
+        assert spec["pointSize"] == 2
+        assert spec["sizeUnits"] == "pixels"
+
+    def test_kwargs_override(self):
+        spec = point_cloud_layer("pc2", data=[], pointSize=10, getColor=[0, 0, 255])
+        assert spec["pointSize"] == 10
+        assert spec["getColor"] == [0, 0, 255]
+
+    def test_reexported(self):
+        assert callable(m.point_cloud_layer)
+
+
+class TestSimpleMeshLayer:
+    """Tests for simple_mesh_layer() helper."""
+
+    def test_defaults(self):
+        spec = simple_mesh_layer("sm1", data=[])
+        assert spec["type"] == "SimpleMeshLayer"
+        assert spec["id"] == "sm1"
+        assert spec["pickable"] is True
+        assert spec["sizeScale"] == 1
+
+    def test_kwargs_override(self):
+        spec = simple_mesh_layer(
+            "sm2", data=[],
+            mesh="https://example.com/model.obj",
+            sizeScale=100,
+        )
+        assert spec["mesh"] == "https://example.com/model.obj"
+        assert spec["sizeScale"] == 100
+
+    def test_reexported(self):
+        assert callable(m.simple_mesh_layer)
+
+
+class TestTerrainLayer:
+    """Tests for terrain_layer() helper."""
+
+    def test_defaults(self):
+        spec = terrain_layer("tl1", data="https://example.com/terrain/{z}/{x}/{y}.png")
+        assert spec["type"] == "TerrainLayer"
+        assert spec["id"] == "tl1"
+        assert spec["meshMaxError"] == 4.0
+
+    def test_elevation_data_copied(self):
+        url = "https://example.com/terrain/{z}/{x}/{y}.png"
+        spec = terrain_layer("tl2", data=url)
+        assert spec["elevationData"] == url
+
+    def test_explicit_elevation_data(self):
+        spec = terrain_layer(
+            "tl3", data=None,
+            elevationData="https://example.com/elev/{z}/{x}/{y}.png",
+            texture="https://example.com/sat/{z}/{x}/{y}.jpg",
+        )
+        assert spec["elevationData"] == "https://example.com/elev/{z}/{x}/{y}.png"
+        assert spec["texture"] == "https://example.com/sat/{z}/{x}/{y}.jpg"
+
+    def test_kwargs_override(self):
+        spec = terrain_layer("tl4", data="https://example.com/{z}/{x}/{y}.png",
+                             meshMaxError=10.0)
+        assert spec["meshMaxError"] == 10.0
+
+    def test_reexported(self):
+        assert callable(m.terrain_layer)
+
+
+# ===========================================================================
+# v1.2.0 — Fp64Extension helper
+# ===========================================================================
+
+class TestFp64Extension:
+    """Tests for fp64_extension() helper."""
+
+    def test_returns_string(self):
+        assert fp64_extension() == "Fp64Extension"
+
+    def test_in_layer(self):
+        spec = layer("ScatterplotLayer", "fp1", data=[],
+                      extensions=[fp64_extension()], fp64=True)
+        assert spec["@@extensions"] == ["Fp64Extension"]
+        assert spec["fp64"] is True
+
+    def test_reexported(self):
+        assert callable(m.fp64_extension)
+
+    def test_in_extensions_all(self):
+        from shiny_deckgl.extensions import __all__ as ext_all
+        assert "fp64_extension" in ext_all
+
+
+# ===========================================================================
+# v1.2.0 — OrbitView helper
+# ===========================================================================
+
+class TestOrbitView:
+    """Tests for orbit_view() helper."""
+
+    def test_type(self):
+        v = orbit_view()
+        assert v["@@type"] == "OrbitView"
+
+    def test_with_kwargs(self):
+        v = orbit_view(target=[0, 0, 0], rotationX=30, zoom=5)
+        assert v["@@type"] == "OrbitView"
+        assert v["target"] == [0, 0, 0]
+        assert v["rotationX"] == 30
+        assert v["zoom"] == 5
+
+    def test_reexported(self):
+        assert callable(m.orbit_view)
+
+    def test_in_views_all(self):
+        from shiny_deckgl.views import __all__ as views_all
+        assert "orbit_view" in views_all
 

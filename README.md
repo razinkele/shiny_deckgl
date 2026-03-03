@@ -150,6 +150,19 @@ browser, all without Java dependencies.
 | **Thread-safe MPA cache** | HELCOM GeoJSON loader switched to `@functools.lru_cache`. |
 | **Demo Tab 12 rewired** | Seal IBM tab now uses `trips_animation_ui/server` — ~40 lines of boilerplate removed. |
 
+### v1.2.0 — Effects Module, New Layers & Demo Consolidation
+
+| Capability | Details |
+| --- | --- |
+| **`effects.py` module** | 6 helpers for deck.gl lighting & post-processing: `ambient_light()`, `point_light()`, `directional_light()`, `sun_light()`, `lighting_effect()`, `post_process_effect()`. |
+| **`point_cloud_layer()`** | Typed helper for 3-D point cloud rendering. |
+| **`simple_mesh_layer()`** | Place 3-D OBJ/PLY models on the map. |
+| **`terrain_layer()`** | Reconstruct mesh from Terrain-RGB height-map tiles. |
+| **`fp64_extension()`** | Double-precision GPU rendering for extreme zoom levels. |
+| **`orbit_view()`** | `OrbitView` — orbit a camera around a 3-D target. |
+| **Demo refactored** | 14 → 11 tabs: Effects merged into 3D Visualisation, Clusters into MapLibre Controls, Extensions into Advanced, Animation into Seal IBM; new Layer Gallery tab (all 24 layer helpers). |
+| **JS `buildEffects`** | Updated for `SunLight` support via `@@sunLight` marker. |
+
 ## Environment & Prerequisites
 
 - **Python ≥ 3.9** and **Shiny ≥ 1.0** are required.
@@ -299,16 +312,17 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | File | Purpose |
 | --- | --- |
 | `src/shiny_deckgl/map_widget.py` | `MapWidget` class — core widget with session methods, HTML export, JSON serialisation. |
-| `src/shiny_deckgl/layers.py` | Generic `layer()` + 21 typed layer helpers (scatter, arc, trips, grid, …). |
+| `src/shiny_deckgl/layers.py` | Generic `layer()` + 24 typed layer helpers (scatter, arc, trips, grid, point cloud, mesh, terrain, …). |
 | `src/shiny_deckgl/colors.py` | Color scales (`color_range`, `color_bins`, `color_quantiles`), palettes, basemap constants. |
-| `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`). |
+| `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`, `orbit_view`). |
 | `src/shiny_deckgl/widgets.py` | 17 deck.gl widget helpers (zoom, compass, fullscreen, timeline, …). |
 | `src/shiny_deckgl/controls.py` | MapLibre control helpers, legend, opacity, deck.gl legend. |
-| `src/shiny_deckgl/extensions.py` | 8 extension helpers (brushing, collision filter, data filter, mask, …). |
+| `src/shiny_deckgl/extensions.py` | 9 extension helpers (brushing, collision filter, data filter, mask, fp64, …). |
 | `src/shiny_deckgl/_data_utils.py` | DataFrame/GeoDataFrame serialisation, binary transport. |
 | `src/shiny_deckgl/_transitions.py` | `transition()` helper for layer property animations. |
 | `src/shiny_deckgl/components.py` | Backward-compatible re-export shim (imports from split modules). |
-| `src/shiny_deckgl/app.py` | Demo `app` instance — 12-tab sidebar UI showcasing all features. |
+| `src/shiny_deckgl/effects.py` | Effect helpers: `lighting_effect()`, `post_process_effect()`, and 4 light-source factories. |
+| `src/shiny_deckgl/app.py` | Demo `app` instance — 11-tab sidebar UI showcasing all features. |
 | `src/shiny_deckgl/ui.py` | `head_includes()` — injects pinned CDN scripts and local JS/CSS. |
 | `src/shiny_deckgl/_cdn.py` | CDN URL constants — single source of truth for all external asset URLs. |
 | `src/shiny_deckgl/_version.py` | Package version — single source of truth. |
@@ -319,7 +333,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `tests/test_basic.py` | 672 unit tests covering all features. |
+| `tests/test_basic.py` | 1 051 unit tests covering all features. |
 
 ## Running Tests
 

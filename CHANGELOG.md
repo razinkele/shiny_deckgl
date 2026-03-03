@@ -5,6 +5,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.2.0] — 2026-03-03
+
+### Added
+
+- **`effects.py` module** — 6 new helpers for deck.gl lighting and
+  post-processing effects:
+  - `ambient_light()` — uniform, direction-independent illumination.
+  - `point_light()` — positional light source (like a light bulb).
+  - `directional_light()` — parallel rays from a distant source.
+  - `sun_light()` — directional light based on real sun position at a
+    given timestamp.
+  - `lighting_effect()` — combines ambient + point/directional/sun lights
+    into a single `LightingEffect` spec.
+  - `post_process_effect()` — screen-space pixel manipulation
+    (brightness, contrast, vignette, blur, etc.).
+- **`point_cloud_layer()`** — typed helper for deck.gl `PointCloudLayer`
+  (3-D point clouds).
+- **`simple_mesh_layer()`** — typed helper for `SimpleMeshLayer` (place
+  3-D OBJ/PLY models on the map).
+- **`terrain_layer()`** — typed helper for `TerrainLayer` (reconstruct 3-D
+  mesh from Terrain-RGB height-map tiles).
+- **`fp64_extension()`** — `Fp64Extension` for double-precision GPU
+  rendering at extreme zoom levels.
+- **`orbit_view()`** — `OrbitView` for orbiting around a 3-D target
+  (meshes, point clouds).
+- **54 new tests** — test suite now 1 051 tests total (was 997).
+
+### Changed
+
+- **Demo app refactored** from 14 → 11 tabs (10 refactored + 1 new Layer Gallery):
+  - Tab 14 (Effects standalone) merged into Tab 11 (3D Visualisation) —
+    directional light and post-processing now demonstrated alongside
+    terrain and 3-D column layers.
+  - Tab 10 (Clusters standalone) merged into Tab 2 (MapLibre Controls) —
+    clustering is now a section in the controls tab.
+  - Tab 9 (Extensions standalone) merged into Tab 5 (Advanced) —
+    BrushingExtension and DataFilterExtension sit beside cooperative
+    gestures.
+  - Tab 8 (Animation) merged into Tab 9 (Seal IBM) — TripsLayer
+    animation method documentation, GreatCircleLayer route arcs, and
+    GridLayer haulout density added to the IBM tab.
+- **4 `MapWidget` instances removed** — `effects_widget`, `v1_ml_widget`,
+  `v1_deck_widget`, `anim_widget` eliminated during tab merges.
+- **`_make_lighting_effects` helper removed** — replaced by the new
+  `effects` module helpers (`lighting_effect`, `ambient_light`, etc.).
+- **JS `buildEffects`** updated to support `SunLight` via `@@sunLight`
+  marker in light specs.
+- **Layer Gallery tab (Tab 11)** — new tab showcasing all 24 typed layer
+  helpers with Baltic Sea sample data and per-layer toggle switches.
+- **`app.py` docstring** updated to list 11 tabs.
+
+---
 ## [1.1.0] — 2026-03-02
 
 ### Added
@@ -367,7 +419,8 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...HEAD
+[1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...HEAD
+[1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...3980562
 [1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562
 [1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
 [0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1

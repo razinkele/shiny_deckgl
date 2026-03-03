@@ -30,6 +30,7 @@ from .colors import (  # noqa: F401
     color_range,
     color_bins,
     color_quantiles,
+    depth_color,
 )
 
 # --- _data_utils ---
@@ -44,6 +45,7 @@ from .views import (  # noqa: F401
     orthographic_view,
     first_person_view,
     globe_view,
+    orbit_view,
 )
 
 # --- widgets ---
@@ -106,6 +108,11 @@ from .layers import (  # noqa: F401
     screen_grid_layer,
     mvt_layer,
     wms_layer,
+    point_cloud_layer,
+    simple_mesh_layer,
+    terrain_layer,
+    custom_geometry,
+    COORDINATE_SYSTEM,
 )
 
 # --- extensions ---
@@ -118,6 +125,7 @@ from .extensions import (  # noqa: F401
     terrain_extension,
     fill_style_extension,
     path_style_extension,
+    fp64_extension,
 )
 
 # --- map_widget ---

@@ -3,31 +3,31 @@
 Run with:
     shiny run shiny_deckgl.app:app --port 19876
 
-Tabs:
-  1. deck.gl Layers   – palettes, color modes, layer visibility,
-                         WMS (EMODnet), fly-to / ease-to, drag marker,
-                         deck.gl widgets
-  2. MapLibre Controls – basemap switching, navigation, geolocate,
-                         globe, terrain, legend, opacity controls
-  3. Events & Tooltips – live click/hover/viewport readback, drag marker,
-                         dynamic tooltip customisation
-  4. Colour Scales     – palette swatches, color_bins, color_quantiles
-  5. Advanced          – 3-D column map with lighting, binary transport,
-                         DataFilterExtension, widget toggles, transitions
-  6. Export            – standalone HTML export, JSON round-trip
-  7. Drawing           – MapboxDraw tools (point/line/polygon), markers
-                         with popups, spatial query, interaction logging
-  8. Animation         – TripsLayer animated vessel tracks, GreatCircleLayer,
-                         GridLayer, combined overlays with speed/trail controls
-  9. v1.0 Features     – BrushingExtension, DataFilterExtension, MapLibre
-                         GeoJSON clustering, cooperative gestures
- 10. Extensions        – BrushingExtension, DataFilterExtension demos
- 11. 3-D Column        – 3-D column map with terrain, lighting, and
-                         orthographic/first-person views
- 12. Seal IBM          – Individual-Based Model of Baltic seal movement,
-                         animated foraging trips from haul-out colonies
- 13. Widgets Gallery   – Interactive showcase of all 17 deck.gl widgets,
-                         layer-widget combinations, preset bundles
+Tabs (10):
+  1. deck.gl Layers    – all 24 typed layer helpers with Baltic Sea sample
+                          data, toggle each on/off, basemap + navigation
+  2. MapLibre Controls  – basemap switching, navigation, geolocate,
+                          globe, terrain, legend, opacity controls,
+                          GeoJSON clustering, cooperative gestures
+  3. Events & Tooltips  – live click/hover/viewport readback, drag marker,
+                          dynamic tooltip customisation
+  4. Colour Scales      – palette swatches, color_range, color_bins,
+                          color_quantiles, interactive colour-mapped
+                          bathymetry columns / scatter / heatmap
+  5. Advanced           – 3-D column map with lighting, binary transport,
+                          DataFilterExtension, BrushingExtension, transitions
+  6. Export             – standalone HTML export, JSON round-trip
+  7. Drawing            – MapboxDraw tools (point/line/polygon), markers
+                          with popups, spatial query, interaction logging
+  8. 3-D Visualisation  – bathymetry columns, fish observations, 3-D arcs,
+                          lighting (ambient, point, directional),
+                          post-processing (brightness/contrast),
+                          camera pitch/bearing
+  9. Seal IBM           – Individual-Based Model of Baltic seal movement,
+                          animated foraging trips from haul-out colonies,
+                          TripsLayer animation, GreatCircleLayer, GridLayer
+ 10. Widgets Gallery    – Interactive showcase of all 17 deck.gl widgets,
+                          layer-widget combinations, preset bundles
 """
 
 from __future__ import annotations
@@ -46,21 +46,31 @@ from .components import (
     scatterplot_layer,
     geojson_layer,
     tile_layer,
+    bitmap_layer,
     wms_layer,
+    point_cloud_layer,
+    simple_mesh_layer,
+    terrain_layer,
     # v0.7.0 layer helpers
     arc_layer,
+    icon_layer,
     column_layer,
     heatmap_layer,
     path_layer,
+    line_layer,
+    text_layer,
+    polygon_layer,
     # v0.9.0 layer helpers
     trips_layer,
     great_circle_layer,
+    contour_layer,
     grid_layer,
+    screen_grid_layer,
     hexagon_layer,
+    h3_hexagon_layer,
+    mvt_layer,
     # Color utilities
-    color_range,
-    color_bins,
-    color_quantiles,
+    # (color_range, color_bins, color_quantiles available in library)
     # Binary transport
     encode_binary_attribute,
     # v0.8.0 widgets
@@ -97,8 +107,29 @@ from .components import (
     deck_legend_control,
 )
 
+from .effects import (
+    ambient_light,
+    point_light,
+    directional_light,
+    sun_light,
+    lighting_effect,
+    post_process_effect,
+)
+
+from .colors import (
+    color_range,
+    color_bins,
+    color_quantiles,
+    PALETTE_VIRIDIS,
+    PALETTE_PLASMA,
+    PALETTE_OCEAN,
+    PALETTE_THERMAL,
+    PALETTE_CHLOROPHYLL,
+)
+
 from ._demo_data import (
     PORTS,
+    ROUTES,
     MPA_GEOJSON,
     EMODNET_WMS_URL,
     WMS_LAYER_CHOICES,
@@ -117,22 +148,45 @@ from ._demo_data import (
     make_fish_observations,
     make_3d_arc_data,
     BALTIC_VIEW_3D,
-)
-from ._demo_data import (
+    SHYFEM_VIEW,
+    make_h3_data,
+    make_point_cloud_data,
+    make_shyfem_polygon_data,
+    make_shyfem_mesh_data,
+    # Mesh file paths
+    CURONIAN_GRD_PATH as _CURONIAN_GRD_STR,
+    POLYGON_GRD_PATH as _POLYGON_GRD_STR,
+    # Fish species colours
+    fish_species_color as _species_color,
+    # Gallery data factories
+    make_gallery_port_data,
+    make_gallery_arc_data,
+    make_gallery_line_data,
+    make_gallery_path_data,
+    make_gallery_text_data,
+    make_gallery_icon_data,
+    make_gallery_column_data,
+    # Legend metadata
+    LAYER_LEGEND_META,
+    # Seal IBM
     make_seal_trips,
     make_seal_trips_ibm,
     make_seal_haulout_data,
     make_seal_foraging_areas,
 )
 from .ibm import ICON_ATLAS, ICON_MAPPING, trips_animation_ui, trips_animation_server
-from ._demo_css import MARINE_CSS, sidebar_hint
+from .colors import depth_color as _bathy_color
+from ._demo_css import MARINE_CSS, sidebar_hint, about_row as _about_row
 
-from .components import CARTO_POSITRON, PALETTE_OCEAN
+from .components import CARTO_POSITRON
+from .layers import custom_geometry
 from .extensions import (
     brushing_extension,
     data_filter_extension,
 )
 from ._version import __version__ as SHINY_DECKGL_VERSION
+from ._version import python_version as _python_version
+from ._version import shiny_version as _shiny_version
 from ._cdn import (
     DECKGL_VERSION,
     MAPLIBRE_VERSION,
@@ -143,54 +197,8 @@ from ._cdn import (
 
 
 # ---------------------------------------------------------------------------
-# About-panel helpers
-# ---------------------------------------------------------------------------
-
-def _python_version() -> str:
-    import sys
-    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-
-
-def _shiny_version() -> str:
-    try:
-        from importlib.metadata import version
-        return version("shiny")
-    except Exception:
-        return "unknown"
-
-
-def _about_row(lib: str, ver: str) -> ui.Tag:
-    """One <tr> for the About version table."""
-    return ui.tags.tr(
-        ui.tags.td(
-            lib,
-            style="padding:3px 12px 3px 0;color:#666;white-space:nowrap;",
-        ),
-        ui.tags.td(
-            ui.tags.code(ver),
-            style="padding:3px 0;font-weight:600;",
-        ),
-    )
-
-
-# ---------------------------------------------------------------------------
 # Map widget instances — one per tab that needs a map
 # ---------------------------------------------------------------------------
-
-# Tab 1 — deck.gl Layers (deck.gl widgets, no MapLibre controls)
-map_widget = MapWidget(
-    "demo_map",
-    tooltip={"html": "<b>{name}</b>", "style": TOOLTIP_STYLE},
-    view_state=BALTIC_VIEW,
-    controls=[],
-)
-
-MAP_WIDGETS = [
-    zoom_widget(),
-    compass_widget(),
-    fullscreen_widget(),
-    scale_widget(),
-]
 
 # Tab 2 — MapLibre Controls
 maplibre_widget = MapWidget(
@@ -224,34 +232,7 @@ draw_widget = MapWidget(
     view_state=BALTIC_VIEW,
 )
 
-# Tab 8 — Animation (TripsLayer)
-anim_widget = MapWidget(
-    "anim_map",
-    tooltip={
-        "html": "<b>{name}</b><br/>Operator: {operator}<br/>Type: {type}",
-        "style": TOOLTIP_STYLE,
-    },
-    view_state=BALTIC_VIEW,
-    animate=True,
-)
-
-# Tab 9 — v1.0.0 deck.gl Extensions
-v1_deck_widget = MapWidget(
-    "v1_deck_map",
-    tooltip={"html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt", "style": TOOLTIP_STYLE},
-    view_state=BALTIC_VIEW,
-    controls=[],
-)
-
-# Tab 10 — v1.0.0 MapLibre Features (Clusters, Cooperative Gestures)
-v1_ml_widget = MapWidget(
-    "v1_ml_map",
-    tooltip={"html": "<b>{name}</b><br/>Cargo: {cargo_mt} Mt", "style": TOOLTIP_STYLE},
-    view_state=BALTIC_VIEW,
-    controls=[],
-)
-
-# Tab 11 — 3D Visualization
+# Tab 8 — 3D Visualization
 three_d_widget = MapWidget(
     "three_d_map",
     tooltip={
@@ -265,7 +246,7 @@ three_d_widget = MapWidget(
     view_state=BALTIC_VIEW_3D,
 )
 
-# Tab 13 — Widgets Gallery
+# Tab 10 — Widgets Gallery
 widgets_gallery_widget = MapWidget(
     "widgets_gallery_map",
     tooltip={
@@ -276,7 +257,7 @@ widgets_gallery_widget = MapWidget(
     controls=[],
 )
 
-# Tab 12 — Seal IBM (Individual-Based Model)
+# Tab 9 — Seal IBM (Individual-Based Model)
 seal_widget = MapWidget(
     "seal_map",
     tooltip={
@@ -291,6 +272,33 @@ seal_widget = MapWidget(
     animate=True,
 )
 
+# Tab 4 — Colour Scales
+palette_widget = MapWidget(
+    "palette_map",
+    tooltip={
+        "html": (
+            "<b>{name}</b><br/>"
+            "Depth: {depth_m} m<br/>"
+            "Bin: {bin_label}"
+        ),
+        "style": TOOLTIP_STYLE,
+    },
+    view_state={**BALTIC_VIEW, "pitch": 45, "bearing": -15},
+)
+
+# Tab 1 — deck.gl Layers / Layer Gallery (all 24 layer helpers)
+gallery_widget = MapWidget(
+    "gallery_map",
+    tooltip={
+        "html": (
+            "<b>{name}</b><br/>"
+            "Type: {layerType}"
+        ),
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW,
+    controls=[],
+)
 
 # ===========================================================================
 # UI layout
@@ -299,13 +307,23 @@ seal_widget = MapWidget(
 app_ui = ui.page_navbar(
     head_includes(),
 
-    # -- Tab 1: deck.gl Layers --------------------------------------------
+    # -- Tab 1: deck.gl Layers (gallery — all 24 layer helpers) ---------
     ui.nav_panel(
         "\U0001F30A deck.gl Layers",
         ui.layout_sidebar(
             ui.sidebar(
-                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
+                ui.tags.small(
+                    "24 layer helpers",
+                    class_="badge text-bg-success mb-2",
+                ),
+                sidebar_hint(
+                    "Toggle each layer type to see it on the map. "
+                    "All 24 typed helper functions from "
+                    "shiny_deckgl.layers are demonstrated here "
+                    "with Baltic Sea sample data."
+                ),
                 ui.accordion(
+                    # -- Basemap ------------------------------------------
                     ui.accordion_panel(
                         "\u2693 Basemap",
                         ui.input_select(
@@ -313,41 +331,257 @@ app_ui = ui.page_navbar(
                             choices=list(BASEMAP_CHOICES.keys()),
                         ),
                     ),
+                    # -- Core layers --------------------------------------
                     ui.accordion_panel(
-                        "\u2728 Symbology",
-                        ui.input_select(
-                            "palette", "Port colour palette",
-                            choices=list(PALETTE_CHOICES.keys()),
-                            selected="Ocean",
+                        "\U0001F7E2 Core Layers",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_scatterplot", "ScatterplotLayer",
+                                value=True,
+                            ),
+                            "deck.gl \u2014 Renders circles at geographic "
+                            "positions. Use for: sensor stations, port "
+                            "locations, point observations. "
+                            "\U0001F4E6 Data: generated (Baltic ports).",
                         ),
-                        ui.input_radio_buttons(
-                            "color_mode", "Colour mode",
-                            choices=[
-                                "Equal-width bins",
-                                "Quantile bins",
-                                "Fixed range",
-                            ],
-                            selected="Equal-width bins",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_geojson", "GeoJsonLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders GeoJSON Features "
+                            "(points, lines, polygons). Use for: EEZ "
+                            "boundaries, coastline outlines, survey areas. "
+                            "\U0001F30A Source: HELCOM Marine Protected Areas "
+                            "(bundled GeoJSON).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_arc", "ArcLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Draws raised arcs between "
+                            "origin/destination pairs. Use for: ship "
+                            "routes, trade flows, migration paths. "
+                            "\U0001F4E6 Data: generated (shipping routes).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_line", "LineLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Draws flat straight lines "
+                            "between two points. Use for: simple "
+                            "connections, distance indicators. "
+                            "\U0001F4E6 Data: generated (port pairs).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_path", "PathLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders polylines from lists "
+                            "of coordinates. Use for: vessel tracks, "
+                            "survey transects, pipeline routes. "
+                            "\U0001F4E6 Data: generated (route waypoints).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_icon", "IconLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Places raster icons at "
+                            "positions. Use for: port markers, buoy "
+                            "symbols, categorical map pins. "
+                            "\U0001F4E6 Data: generated (port locations).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_text", "TextLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders text labels at "
+                            "positions. Use for: port names, station "
+                            "IDs, annotation overlays. "
+                            "\U0001F4E6 Data: generated (port names).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_column", "ColumnLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Draws extruded cylinders at "
+                            "positions. Use for: cargo volumes, depth "
+                            "values, 3-D bar charts on a map. "
+                            "\U0001F4E6 Data: generated (cargo tonnage).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_polygon", "PolygonLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Fills and strokes arbitrary "
+                            "polygons. Use for: finite-element model grids, "
+                            "habitat zones, administrative regions. "
+                            "\U0001F30A Source: SHYFEM model grid "
+                            "(MM_coarse_smooth.grd \u2014 Mar Piccolo) / "
+                            "generated (port bounding boxes).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_great_circle", "GreatCircleLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Draws great-circle arcs "
+                            "following Earth curvature. Use for: "
+                            "intercontinental routes, long-range links. "
+                            "\U0001F4E6 Data: generated (route endpoints).",
                         ),
                     ),
+                    # -- Aggregation layers --------------------------------
                     ui.accordion_panel(
-                        "\u2630 Layers",
-                        ui.input_switch("show_ports", "Ports (scatter)",
-                                        value=True),
-                        ui.input_switch("show_mpa", "Marine Protected Areas",
-                                        value=True),
-                        ui.input_switch("show_routes", "Shipping routes (arcs)",
-                                        value=True),
-                        ui.input_switch("show_paths", "Route paths",
-                                        value=False),
-                        ui.input_select(
-                            "wms_layer", "EMODnet WMS overlay",
-                            choices=WMS_LAYER_CHOICES,
-                            selected="emodnet:mean_atlas_land",
+                        "\U0001F4CA Aggregation Layers",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_heatmap", "HeatmapLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Gaussian kernel density "
+                            "heatmap. Use for: AIS density, species "
+                            "sighting hotspots, pollution intensity. "
+                            "\U0001F4E6 Data: generated (random points).",
                         ),
-                        ui.input_switch("show_heatmap", "Observation heatmap",
-                                        value=False),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_hexagon", "HexagonLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Aggregates points into "
+                            "hexagonal bins (3-D). Use for: catch "
+                            "statistics, traffic density, spatial binning. "
+                            "\U0001F4E6 Data: generated (random points).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_grid", "GridLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Aggregates points into a "
+                            "regular grid. Use for: trawl density, "
+                            "sampling grid, rectangular spatial stats. "
+                            "\U0001F4E6 Data: generated (random points).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_screen_grid", "ScreenGridLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Screen-space grid heatmap "
+                            "(bins resize on zoom). Use for: real-time "
+                            "density overview, quick point clustering. "
+                            "\U0001F4E6 Data: generated (random points).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_contour", "ContourLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Generates contour lines / "
+                            "filled bands from point data. Use for: "
+                            "isotherms, depth contours, isobars. "
+                            "\U0001F4E6 Data: generated (random points).",
+                        ),
                     ),
+                    # -- Geo-spatial layers --------------------------------
+                    ui.accordion_panel(
+                        "\U0001F30D Geo-spatial Layers",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_h3_hexagon", "H3HexagonLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders Uber\u2019s H3 "
+                            "hexagonal cells by index. Use for: H3-"
+                            "indexed oceanographic grids, spatial "
+                            "aggregation at multiple resolutions. "
+                            "\U0001F4E6 Data: generated (H3 res-5 cells, Klaip\u0117da).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_trips", "TripsLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Animates timestamped paths "
+                            "with a fading trail. Use for: vessel track "
+                            "playback, drifter trajectories, AIS replay. "
+                            "\U0001F4E6 Data: generated (synthetic tracks).",
+                        ),
+                    ),
+                    # -- Tile / raster layers ------------------------------
+                    ui.accordion_panel(
+                        "\U0001F5FA Tile & Raster Layers",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_tile", "TileLayer (OSM)", value=False,
+                            ),
+                            "deck.gl \u2014 Loads XYZ / TMS raster tiles "
+                            "on demand. Use for: custom basemaps, "
+                            "satellite imagery, cached tile services. "
+                            "\U0001F310 Source: OpenStreetMap tile server.",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_bitmap", "BitmapLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders a single image "
+                            "anchored to geo bounds. Use for: charts, "
+                            "georeferenced photos, static overlays. "
+                            "\U0001F310 Source: Wikimedia (Baltic Sea map).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_mvt", "MVTLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders Mapbox Vector Tiles "
+                            "from a tile endpoint. Use for: large "
+                            "vector datasets, OpenMapTiles, Tippecanoe. "
+                            "\U0001F310 Source: Stadia Maps (OpenMapTiles).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_wms", "WMSLayer (EMODnet)",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Fetches OGC WMS GetMap "
+                            "images as map tiles. Use for: EMODnet "
+                            "bathymetry, HELCOM layers, INSPIRE services. "
+                            "\U0001F310 Source: EMODnet WMS service.",
+                        ),
+                    ),
+                    # -- 3D / mesh layers ----------------------------------
+                    ui.accordion_panel(
+                        "\U0001F4D0 3-D / Mesh Layers",
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_point_cloud", "PointCloudLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders a cloud of 3-D "
+                            "points. Use for: LiDAR scans, multibeam "
+                            "sonar, 3-D scatter data. "
+                            "\U0001F4E6 Data: generated (synthetic rings).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_simple_mesh", "SimpleMeshLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders the mesh surface "
+                            "with depth-coloured vertex nodes overlaid. "
+                            "Use for: bathymetric surfaces, finite-element "
+                            "model results, engineering meshes. "
+                            "\U0001F30A Mesh: Curonian Lagoon "
+                            "(curoninan.grd \u2014 98\u202Fk nodes, "
+                            "143\u202Fk triangles).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_terrain", "TerrainLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Reconstructs mesh surfaces "
+                            "from raster elevation tiles. Use for: "
+                            "seabed bathymetry, terrain visualization. "
+                            "\U0001F310 Source: AWS Terrain Tiles + OSM.",
+                        ),
+                    ),
+                    # -- Navigation ---------------------------------------
                     ui.accordion_panel(
                         "\u2708 Navigation",
                         ui.input_action_button("fly_klaipeda",
@@ -356,20 +590,23 @@ app_ui = ui.page_navbar(
                                                "\u27A1 Ease to Stockholm"),
                         ui.input_action_button("fly_baltic",
                                                "\U0001F30D Reset Baltic view"),
-                        ui.input_action_button("place_marker",
-                                               "\U0001F4CD Place drag marker"),
                     ),
-                    ui.accordion_panel(
-                        "\U0001F4CD Drag Marker",
-                        ui.output_text_verbatim("drag_info"),
-                    ),
-                    id="tab1_accordion",
-                    open=False,
+                    id="gallery_accordion",
+                    open=["\U0001F7E2 Core Layers"],
                     multiple=True,
                 ),
-                width=310,
+                width=300,
             ),
-            map_widget.ui(height="85vh"),
+            ui.card(
+                ui.card_header(
+                    "\U0001F30A deck.gl Layer Gallery \u2014 24 Helpers"
+                ),
+                gallery_widget.ui(height="65vh"),
+            ),
+            ui.card(
+                ui.card_header("\U0001F4CB Active Layers"),
+                ui.output_text_verbatim("gl_status"),
+            ),
         ),
     ),
 
@@ -444,6 +681,34 @@ app_ui = ui.page_navbar(
                                                "\U0001F4CD Place drag marker"),
                         ui.output_text_verbatim("ml_drag_info"),
                     ),
+                    ui.accordion_panel(
+                        "\U0001F4CD Clusters",
+                        sidebar_hint(
+                            "MapLibre GeoJSON clustering groups nearby points "
+                            "into circles sized by point count. "
+                            "Click a cluster to zoom in and expand it."
+                        ),
+                        ui.input_switch(
+                            "v1_show_clusters", "Show clusters",
+                            value=True,
+                        ),
+                        ui.input_slider(
+                            "v1_cluster_radius", "Cluster radius (px)",
+                            min=20, max=100, value=50, step=10,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F91D Cooperative Gestures",
+                        sidebar_hint(
+                            "Require Ctrl+scroll to zoom the map. "
+                            "Useful when the map is embedded in a "
+                            "scrollable page."
+                        ),
+                        ui.input_switch(
+                            "v1_cooperative", "Cooperative gestures",
+                            value=False,
+                        ),
+                    ),
                     id="tab2_ml_accordion",
                     open=False,
                     multiple=True,
@@ -515,27 +780,90 @@ app_ui = ui.page_navbar(
     # -- Tab 4: Colour Scales ---------------------------------------------
     ui.nav_panel(
         "\U0001F3A8 Colour Scales",
-        ui.layout_columns(
-            ui.card(
-                ui.card_header(
-                    "\U0001F308 color_range() \u2014 Palette Preview"
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.tags.small(
+                    "color utilities",
+                    class_="badge text-bg-info mb-2",
                 ),
-                ui.output_ui("palette_preview"),
+                sidebar_hint(
+                    "Demonstrates the three palette mapping functions "
+                    "shipped with shiny_deckgl: color_range (linear "
+                    "interpolation), color_bins (equal-width bins), "
+                    "and color_quantiles (equal-count bins). Choose "
+                    "a palette and mode, then observe how Baltic "
+                    "Sea bathymetry columns change colour."
+                ),
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F3A8 Palette",
+                        ui.input_select(
+                            "pal_name", "Palette",
+                            choices=list(PALETTE_CHOICES.keys()),
+                            selected="Ocean",
+                        ),
+                        ui.input_select(
+                            "pal_mode", "Colour mode",
+                            choices={
+                                "bins": "color_bins (equal-width)",
+                                "quantiles": "color_quantiles (equal-count)",
+                                "range": "color_range (linear N colours)",
+                            },
+                            selected="bins",
+                        ),
+                        ui.input_slider(
+                            "pal_nbins", "Number of bins / stops",
+                            min=3, max=12, value=6, step=1,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CA Swatch Preview",
+                        ui.output_ui("pal_swatch"),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CF Layer Type",
+                        ui.input_select(
+                            "pal_layer",
+                            "Visualise as",
+                            choices={
+                                "columns": "\U0001F4CA 3-D Columns",
+                                "scatter": "\u26AB Scatterplot",
+                                "heatmap": "\U0001F525 Heatmap (fixed palette)",
+                            },
+                            selected="columns",
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F5FA Basemap",
+                        ui.input_select(
+                            "pal_basemap", "Basemap style",
+                            choices=list(BASEMAP_CHOICES.keys()),
+                            selected="Dark Matter",
+                        ),
+                    ),
+                    id="pal_accordion",
+                    open=["\U0001F3A8 Palette", "\U0001F4CA Swatch Preview"],
+                    multiple=True,
+                ),
+                width=300,
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F4CA color_bins() \u2014 Equal-Width Classification"
+                    "\U0001F3A8 Colour Scales \u2014 Baltic Sea Bathymetry"
                 ),
-                ui.output_ui("bins_preview"),
+                palette_widget.ui(height="60vh"),
             ),
-            ui.card(
-                ui.card_header(
-                    "\U0001F4C8 color_quantiles() \u2014 Quantile "
-                    "Classification"
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("\U0001F4CB Colour Statistics"),
+                    ui.output_text_verbatim("pal_stats"),
                 ),
-                ui.output_ui("quantiles_preview"),
+                ui.card(
+                    ui.card_header("\U0001F4DD Code Example"),
+                    ui.output_text_verbatim("pal_code"),
+                ),
+                col_widths=[6, 6],
             ),
-            col_widths=[12, 6, 6],
         ),
     ),
 
@@ -590,86 +918,6 @@ app_ui = ui.page_navbar(
                         ),
                     ),
                     ui.accordion_panel(
-                        "\U0001F9E9 Widgets (v0.8.0)",
-                        sidebar_hint(
-                            "Toggle deck.gl widgets on the Advanced map. "
-                            "Widgets are added/removed via set_widgets()."
-                        ),
-                        ui.tags.strong("Standard"),
-                        ui.tooltip(
-                            ui.input_switch("adv_zoom_widget",
-                                            "Zoom", value=False),
-                            "Zoom in/out buttons (ZoomWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_compass_widget",
-                                            "Compass", value=False),
-                            "Bearing indicator; click to reset north (CompassWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_fps_widget",
-                                            "FPS counter", value=False),
-                            "Real-time frames-per-second counter (FpsWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_fullscreen_widget",
-                                            "Fullscreen", value=False),
-                            "Toggle browser fullscreen mode (FullscreenWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_scale_widget",
-                                            "Scale bar", value=False),
-                            "Distance scale bar in metric units (ScaleWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_gimbal_widget",
-                                            "Gimbal (3-D)", value=False),
-                            "3-D camera gimbal for pitch & bearing (GimbalWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_reset_view_widget",
-                                            "Reset view", value=False),
-                            "Reset camera to the initial view state (ResetViewWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_screenshot_widget",
-                                            "Screenshot", value=False),
-                            "Capture a PNG screenshot of the map (ScreenshotWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_loading_widget",
-                                            "Loading spinner", value=False),
-                            "Spinner displayed while layers are loading (LoadingWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_theme_widget",
-                                            "Theme toggle", value=False),
-                            "Switch between light and dark deck.gl theme (ThemeWidget)",
-                        ),
-                        ui.tags.hr(),
-                        ui.tags.strong("Experimental (deck.gl \u2265 9.2)"),
-                        ui.tooltip(
-                            ui.input_switch("adv_context_menu_widget",
-                                            "Context menu", value=False),
-                            "Right-click context menu on the map (ContextMenuWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_info_widget",
-                                            "Info display", value=False),
-                            "Layer hover/pick information panel (InfoWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_splitter_widget",
-                                            "Splitter", value=False),
-                            "Split-screen view divider to compare layers (SplitterWidget)",
-                        ),
-                        ui.tooltip(
-                            ui.input_switch("adv_stats_widget",
-                                            "Stats (GPU/CPU)", value=False),
-                            "GPU/CPU performance statistics overlay (StatsWidget)",
-                        ),
-                    ),
-                    ui.accordion_panel(
                         "\U0001F3AC Transitions (v0.8.0)",
                         sidebar_hint(
                             "Push a layer with animated radius transitions."
@@ -677,6 +925,38 @@ app_ui = ui.page_navbar(
                         ui.input_action_button(
                             "push_transitions",
                             "\U0001F3AC Push Animated Layer",
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F9E9 BrushingExtension",
+                        sidebar_hint(
+                            "Highlights features near the cursor. "
+                            "Move your mouse over the map to see the "
+                            "brushing radius in action."
+                        ),
+                        ui.input_switch(
+                            "v1_brushing", "Enable brushing",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "v1_brush_radius", "Brush radius (m)",
+                            min=5000, max=200000, value=50000, step=5000,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F50D DataFilter (Interactive)",
+                        sidebar_hint(
+                            "GPU-based numeric filtering. Only ports "
+                            "within the cargo range are rendered — "
+                            "filtering happens entirely on the GPU."
+                        ),
+                        ui.input_switch(
+                            "v1_data_filter", "Enable data filter",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "v1_filter_range", "Filter cargo (Mt)",
+                            min=0, max=100, value=[10, 80], step=5,
                         ),
                     ),
                     id="tab5_accordion",
@@ -800,172 +1080,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 8: Animation (TripsLayer) ------------------------------------
-    ui.nav_panel(
-        "\U0001F6A2 Animation",
-        ui.layout_sidebar(
-            ui.sidebar(
-                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
-                ui.accordion(
-                    ui.accordion_panel(
-                        "\U0001F6A2 TripsLayer Animation",
-                        sidebar_hint(
-                            "Animated vessel tracks using deck.gl TripsLayer. "
-                            "Routes are rendered as trails that advance over "
-                            "time, simulating real-time vessel movement."
-                        ),
-                        ui.input_switch(
-                            "anim_show_trips", "Show animated tracks",
-                            value=True,
-                        ),
-                        ui.input_slider(
-                            "anim_trail_length", "Trail length",
-                            min=50, max=500, value=200, step=25,
-                        ),
-                        ui.input_slider(
-                            "anim_speed", "Animation speed",
-                            min=0.1, max=20.0, value=1.0, step=0.1,
-                        ),
-                    ),
-                    ui.accordion_panel(
-                        "\U0001F4CA Additional Layers",
-                        sidebar_hint(
-                            "Toggle background layers shown alongside "
-                            "the animated tracks."
-                        ),
-                        ui.input_switch(
-                            "anim_show_ports", "Show ports",
-                            value=True,
-                        ),
-                        ui.input_switch(
-                            "anim_show_routes", "Show static routes",
-                            value=False,
-                        ),
-                        ui.input_switch(
-                            "anim_show_grid", "Show observation grid",
-                            value=False,
-                        ),
-                    ),
-                    id="tab8_accordion",
-                    open=False,
-                    multiple=True,
-                ),
-                width=280,
-            ),
-            ui.card(
-                ui.card_header(
-                    "\U0001F30A Baltic Sea — Animated Shipping Tracks"
-                ),
-                anim_widget.ui(height="75vh"),
-            ),
-        ),
-    ),
-
-    # -- Tab 9: v1.0 deck.gl Extensions -----------------------------------
-    ui.nav_panel(
-        "\u2728 v1.0 Extensions",
-        ui.layout_sidebar(
-            ui.sidebar(
-                ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
-                ui.accordion(
-                    ui.accordion_panel(
-                        "\U0001F9E9 BrushingExtension",
-                        sidebar_hint(
-                            "Highlights features near the cursor. "
-                            "Move your mouse over the map to see the "
-                            "brushing radius in action."
-                        ),
-                        ui.input_switch(
-                            "v1_brushing", "Enable brushing",
-                            value=True,
-                        ),
-                        ui.input_slider(
-                            "v1_brush_radius", "Brush radius (m)",
-                            min=5000, max=200000, value=50000, step=5000,
-                        ),
-                    ),
-                    ui.accordion_panel(
-                        "\U0001F50D DataFilterExtension",
-                        sidebar_hint(
-                            "GPU-based numeric filtering. Only ports "
-                            "within the cargo range are rendered \u2014 "
-                            "filtering happens entirely on the GPU."
-                        ),
-                        ui.input_switch(
-                            "v1_data_filter", "Enable data filter",
-                            value=False,
-                        ),
-                        ui.input_slider(
-                            "v1_filter_range", "Filter cargo (Mt)",
-                            min=0, max=100, value=[10, 80], step=5,
-                        ),
-                    ),
-                    id="tab9_accordion",
-                    open=False,
-                    multiple=True,
-                ),
-                width=280,
-            ),
-            ui.card(
-                ui.card_header(
-                    "\u2728 v1.0.0 deck.gl Extensions — Brushing & Data Filter"
-                ),
-                v1_deck_widget.ui(height="75vh"),
-            ),
-        ),
-    ),
-
-    # -- Tab 10: v1.0 MapLibre Features ------------------------------------
-    ui.nav_panel(
-        "\u2728 v1.0 Clusters",
-        ui.layout_sidebar(
-            ui.sidebar(
-                ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
-                ui.accordion(
-                    ui.accordion_panel(
-                        "\U0001F4CD Clusters",
-                        sidebar_hint(
-                            "MapLibre GeoJSON clustering groups nearby points "
-                            "into circles sized by point count. "
-                            "Click a cluster to zoom in and expand it."
-                        ),
-                        ui.input_switch(
-                            "v1_show_clusters", "Show clusters",
-                            value=True,
-                        ),
-                        ui.input_slider(
-                            "v1_cluster_radius", "Cluster radius (px)",
-                            min=20, max=100, value=50, step=10,
-                        ),
-                    ),
-                    ui.accordion_panel(
-                        "\U0001F91D Cooperative Gestures",
-                        sidebar_hint(
-                            "Require Ctrl+scroll to zoom the map. "
-                            "Useful when the map is embedded in a "
-                            "scrollable page."
-                        ),
-                        ui.input_switch(
-                            "v1_cooperative", "Cooperative gestures",
-                            value=False,
-                        ),
-                    ),
-                    id="tab10_accordion",
-                    open=["\U0001F4CD Clusters"],
-                    multiple=True,
-                ),
-                width=280,
-            ),
-            ui.card(
-                ui.card_header(
-                    "\u2728 v1.0.0 MapLibre Features — Clusters & Gestures"
-                ),
-                v1_ml_widget.ui(height="75vh"),
-            ),
-        ),
-    ),
-
-    # -- Tab 11: 3-D Visualization -----------------------------------------
+    # -- Tab 8: 3-D Visualization -----------------------------------------
     ui.nav_panel(
         "\U0001F30D 3D Visualisation",
         ui.layout_sidebar(
@@ -1048,6 +1163,16 @@ app_ui = ui.page_navbar(
                             "td_point_light", "Point-light intensity",
                             min=0.0, max=5.0, value=2.0, step=0.1,
                         ),
+                        ui.input_switch(
+                            "td_directional", "Directional light",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "td_dir_intensity", "Directional intensity",
+                            min=0.0, max=3.0, value=0.6, step=0.1,
+                        ),
+                        ui.tags.hr(),
+                        ui.tags.strong("Camera"),
                         ui.input_slider(
                             "td_pitch", "Camera pitch (\u00b0)",
                             min=0, max=85, value=45, step=5,
@@ -1055,6 +1180,25 @@ app_ui = ui.page_navbar(
                         ui.input_slider(
                             "td_bearing", "Camera bearing (\u00b0)",
                             min=-180, max=180, value=-15, step=5,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F3A8 Post-Processing",
+                        sidebar_hint(
+                            "Apply screen-space effects using the "
+                            "effects module (PostProcessEffect)."
+                        ),
+                        ui.input_switch(
+                            "td_pp_brightness", "Brightness/Contrast",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "td_brightness", "Brightness",
+                            min=-1, max=1, step=0.05, value=0.0,
+                        ),
+                        ui.input_slider(
+                            "td_contrast", "Contrast",
+                            min=-1, max=1, step=0.05, value=0.0,
                         ),
                     ),
                     id="tab11_accordion",
@@ -1072,7 +1216,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 12: Seal IBM (Individual-Based Model) -------------------------
+    # -- Tab 9: Seal IBM (Individual-Based Model) -------------------------
     ui.nav_panel(
         "\U0001F9AD Seal IBM",
         ui.layout_sidebar(
@@ -1157,6 +1301,57 @@ app_ui = ui.page_navbar(
                             "seal_foraging", "Show foraging areas",
                             value=True,
                         ),
+                        ui.input_switch(
+                            "seal_routes", "Colony route arcs",
+                            value=False,
+                        ),
+                        ui.input_switch(
+                            "seal_grid", "Haulout density grid",
+                            value=False,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4D6 Animation Method",
+                        sidebar_hint(
+                            "This tab demonstrates deck.gl TripsLayer "
+                            "animation \u2014 the core technique used for "
+                            "all temporal track visualisations."
+                        ),
+                        ui.tags.p(
+                            ui.tags.strong("trips_layer()"),
+                            " renders animated trails that advance "
+                            "over time. Each trip is a list of "
+                            "[lon, lat, timestamp] waypoints.",
+                            class_="small mb-2",
+                        ),
+                        ui.tags.p(
+                            ui.tags.strong("_tripsAnimation"),
+                            " config enables client-side "
+                            "requestAnimationFrame looping: "
+                            "loopLength (time units) and speed.",
+                            class_="small mb-2",
+                        ),
+                        ui.tags.p(
+                            ui.tags.strong("format_trips()"),
+                            " normalises raw coordinate lists into "
+                            "the dict format trips_layer() expects, "
+                            "with auto-generated timestamps.",
+                            class_="small mb-2",
+                        ),
+                        ui.tags.p(
+                            ui.tags.strong("trips_animation_ui/server"),
+                            " \u2014 reusable Shiny module providing "
+                            "Play/Pause/Reset + speed & trail sliders "
+                            "(used in the Animation Controls above).",
+                            class_="small mb-2",
+                        ),
+                        ui.tags.p(
+                            "Toggle \u201cColony route arcs\u201d above to "
+                            "see GreatCircleLayer (geodesic arcs) and "
+                            "\u201cHaulout density grid\u201d for GridLayer "
+                            "(3-D extruded spatial binning).",
+                            class_="small text-muted",
+                        ),
                     ),
                     id="tab12_accordion",
                     open=["\U0001F9AD Species & Individuals"],
@@ -1173,7 +1368,7 @@ app_ui = ui.page_navbar(
         ),
     ),
 
-    # -- Tab 13: Widgets Gallery ------------------------------------------
+    # -- Tab 10: Widgets Gallery -----------------------------------------
     ui.nav_panel(
         "\U0001F9E9 Widgets",
         ui.layout_sidebar(
@@ -1381,7 +1576,6 @@ app_ui = ui.page_navbar(
 
 def server(input, output, session: Session):
     # Shared reactive stores
-    _main_layers: reactive.Value[list[dict]] = reactive.Value([])
     _adv_layers: reactive.Value[list[dict]] = reactive.Value([])
     _export_log: reactive.Value[str] = reactive.Value("")
     _advanced_log: reactive.Value[str] = reactive.Value("")
@@ -1395,237 +1589,35 @@ def server(input, output, session: Session):
 
     # -- Shared helpers ---------------------------------------------------
 
-    def _make_lighting_effects(
-        ambient: float, point_intensity: float,
-    ) -> list[dict]:
-        """Build a standard Baltic-centered LightingEffect spec."""
-        return [{
-            "type": "LightingEffect",
-            "ambientLight": {
-                "color": [255, 255, 255],
-                "intensity": ambient,
-            },
-            "pointLights": [{
-                "color": [255, 255, 220],
-                "intensity": point_intensity,
-                "position": [19.5, 57.0, 80000],
-            }],
-        }]
-
     # =================================================================
-    # Tab 1 — deck.gl Layers
+    # Tab 1 — deck.gl Layers  (gallery — basemap + navigation)
     # =================================================================
 
-    def _build_main_layers() -> list[dict]:
-        """Build the layer stack for the main interactive map."""
-        layers: list[dict] = []
-        palette = PALETTE_CHOICES.get(input.palette(), PALETTE_OCEAN)
-
-        mode = input.color_mode()
-        if mode == "Equal-width bins":
-            port_colors = color_bins(_cargo_values, 6, palette)
-        elif mode == "Quantile bins":
-            port_colors = color_quantiles(_cargo_values, 6, palette)
-        else:
-            port_colors = color_range(len(PORTS), palette)
-
-        # WMS layer (EMODnet bathymetry via OWSLib-validated service)
-        wms_layer_name = input.wms_layer()
-        if wms_layer_name:
-            safe_id = wms_layer_name.replace(":", "_")
-            layers.append(wms_layer(
-                f"wms-{safe_id}",
-                EMODNET_WMS_URL,
-                layers=[wms_layer_name],
-            ))
-
-        # GeoJSON — Marine Protected Areas (HELCOM)
-        if input.show_mpa():
-            layers.append(geojson_layer(
-                "mpa-zones", MPA_GEOJSON,
-                getFillColor=[0, 180, 120, 60],
-                getLineColor=[0, 180, 120, 200],
-                lineWidthMinPixels=2,
-                pickable=True,
-            ))
-
-        # Heatmap — random observation density
-        if input.show_heatmap():
-            layers.append(heatmap_layer(
-                "observation-heat",
-                data=_heatmap_points,
-                getPosition="@@d",
-                getWeight="@@=d[2]",
-                radiusPixels=40, intensity=1.5, threshold=0.1,
-            ))
-
-        # Paths — shipping routes as polylines
-        if input.show_paths():
-            layers.append(path_layer(
-                "route-paths",
-                data=_path_data,
-                getPath="@@=d.path",
-                getColor="@@=d.color",
-                getWidth=3, widthMinPixels=2, pickable=True,
-            ))
-
-        # Arcs — connections between ports
-        if input.show_routes():
-            layers.append(arc_layer(
-                "port-arcs",
-                data=_arc_data,
-                getSourcePosition="@@=d.sourcePosition",
-                getTargetPosition="@@=d.targetPosition",
-                getSourceColor="@@=d.sourceColor",
-                getTargetColor="@@=d.targetColor",
-                getWidth=2, pickable=True,
-            ))
-
-        # Scatterplot — ports with dynamic palette colours
-        if input.show_ports():
-            port_data = []
-            for i, p in enumerate(PORTS):
-                port_data.append({
-                    "position": [p["lon"], p["lat"]],
-                    "name": p["name"],
-                    "country": p["country"],
-                    "cargo_mt": p["cargo_mt"],
-                    "color": port_colors[i],
-                    "radius": max(5, p["cargo_mt"] / 3),
-                })
-            layers.append(scatterplot_layer(
-                "ports", port_data,
-                getPosition="@@=d.position",
-                getFillColor="@@=d.color",
-                getRadius="@@=d.radius",
-                radiusScale=1000,
-                radiusMinPixels=6,
-                radiusMaxPixels=30,
-                pickable=True,
-            ))
-
-        return layers
-
-    def _build_deck_legend() -> dict:
-        """Build the deck.gl legend control spec for Tab 1."""
-        entries: list[dict] = []
-        if input.wms_layer():
-            safe_id = input.wms_layer().replace(":", "_")
-            entries.append({
-                "layer_id": f"wms-{safe_id}",
-                "label": f"WMS: {input.wms_layer()}",
-                "color": [70, 130, 180],
-                "shape": "rect",
-            })
-        if input.show_mpa():
-            entries.append({
-                "layer_id": "mpa-zones",
-                "label": "Marine Protected Areas",
-                "color": [0, 128, 0, 100],
-                "shape": "rect",
-            })
-        if input.show_heatmap():
-            entries.append({
-                "layer_id": "observation-heat",
-                "label": "Observation heatmap",
-                "colors": [
-                    [0, 25, 0, 25], [0, 85, 0, 85],
-                    [0, 170, 0, 170], [0, 255, 0],
-                    [255, 255, 0], [255, 0, 0],
-                ],
-                "shape": "gradient",
-            })
-        if input.show_paths():
-            entries.append({
-                "layer_id": "route-paths",
-                "label": "Route paths",
-                "color": [100, 100, 200],
-                "shape": "line",
-            })
-        if input.show_routes():
-            entries.append({
-                "layer_id": "port-arcs",
-                "label": "Shipping routes",
-                "color": [255, 140, 0],
-                "color2": [200, 0, 80],
-                "shape": "arc",
-            })
-        if input.show_ports():
-            entries.append({
-                "layer_id": "ports",
-                "label": "Baltic Ports",
-                "color": [65, 182, 196],
-                "shape": "circle",
-            })
-        return deck_legend_control(
-            entries=entries,
-            position="bottom-right",
-            title="Deck.gl Layers",
-        )
-
-    # Initial push (with widgets)
-    @reactive.Effect
-    async def _main_init():
-        layers = _build_main_layers()
-        _main_layers.set(layers)
-        await map_widget.update(session, layers, widgets=MAP_WIDGETS)
-        # Push deck.gl legend
-        await map_widget.set_controls(session, [_build_deck_legend()])
-
-    # Reactive rebuild on control change
-    @reactive.Effect
-    @reactive.event(
-        input.palette, input.color_mode,
-        input.show_ports, input.show_mpa, input.show_routes,
-        input.show_paths, input.wms_layer, input.show_heatmap,
-    )
-    async def _main_rebuild():
-        layers = _build_main_layers()
-        _main_layers.set(layers)
-        await map_widget.update(session, layers)
-        await map_widget.set_controls(session, [_build_deck_legend()])
-
-    # Basemap switching (Tab 1)
+    # Basemap switching (gallery widget on Tab 1)
     @reactive.Effect
     @reactive.event(input.basemap)
     async def _switch_basemap():
         style_url = BASEMAP_CHOICES.get(input.basemap(), CARTO_POSITRON)
-        await map_widget.set_style(session, style_url)
+        await gallery_widget.set_style(session, style_url)
 
-    # Fly-to / ease-to transitions
+    # Fly-to / ease-to transitions (gallery widget on Tab 1)
     @reactive.Effect
     @reactive.event(input.fly_klaipeda)
     async def _fly_klaipeda():
-        await map_widget.fly_to(session, 21.13, 55.71, zoom=10, speed=1.5)
+        await gallery_widget.fly_to(session, 21.13, 55.71, zoom=10, speed=1.5)
 
     @reactive.Effect
     @reactive.event(input.ease_stockholm)
     async def _ease_stockholm():
-        await map_widget.ease_to(
+        await gallery_widget.ease_to(
             session, 18.07, 59.33, zoom=10, duration=2000,
         )
 
     @reactive.Effect
     @reactive.event(input.fly_baltic)
     async def _fly_baltic():
-        await map_widget.fly_to(
+        await gallery_widget.fly_to(
             session, 19.5, 57.0, zoom=5, pitch=0, bearing=0,
-        )
-
-    # Drag marker (main map)
-    @reactive.Effect
-    @reactive.event(input.place_marker)
-    async def _place_drag():
-        await map_widget.add_drag_marker(session)
-
-    @render.text
-    def drag_info():
-        pos = input[map_widget.drag_input_id]()
-        if pos is None:
-            return "Place a marker first\u2026"
-        return (
-            f"lon: {pos.get('longitude', 0):.6f}\n"
-            f"lat: {pos.get('latitude', 0):.6f}"
         )
 
     # =================================================================
@@ -1769,6 +1761,30 @@ def server(input, output, session: Session):
             f"lat: {pos.get('latitude', 0):.6f}"
         )
 
+    # Clusters (merged from former Tab 10)
+    @reactive.Effect
+    @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
+    async def _v1_clusters():
+        if input.v1_show_clusters():
+            await maplibre_widget.add_cluster_layer(
+                session,
+                "v1-clusters",
+                make_port_geojson(),
+                cluster_radius=input.v1_cluster_radius(),
+                cluster_color="#14919b",
+                point_color="#e65100",
+                point_radius=6,
+            )
+        else:
+            await maplibre_widget.remove_cluster_layer(session, "v1-clusters")
+
+    @reactive.Effect
+    @reactive.event(input.v1_cooperative)
+    async def _v1_cooperative():
+        await maplibre_widget.set_cooperative_gestures(
+            session, input.v1_cooperative()
+        )
+
     # =================================================================
     # Tab 3 — Events & Tooltips
     # =================================================================
@@ -1903,65 +1919,203 @@ def server(input, output, session: Session):
     # Tab 4 — Colour Scales
     # =================================================================
 
-    @render.ui
-    def palette_preview():
-        """Show all 5 palettes with 10-stop color_range swatches."""
-        html_parts = []
-        for pal_name, pal in PALETTE_CHOICES.items():
-            stops = color_range(10, pal)
-            swatches = "".join(
-                f'<span class="palette-swatch-block" '
-                f'style="background:rgb({c[0]},{c[1]},{c[2]});"></span>'
-                for c in stops
-            )
-            html_parts.append(
-                f'<div style="margin-bottom:10px;">'
-                f'<strong style="font-size:0.9rem;color:#0d3158;">'
-                f'{pal_name}</strong>'
-                f'<br/><div style="margin-top:4px;">{swatches}</div></div>'
-            )
-        return ui.HTML("".join(html_parts))
+    # Pre-compute bathymetry grid once per session
+    _pal_bathy = make_bathymetry_grid(cols=25, rows=15)
+    _pal_depths = [pt["depth_m"] for pt in _pal_bathy]
 
+    # Basemap switching for palette tab
+    @reactive.Effect
+    @reactive.event(input.pal_basemap)
+    async def _pal_switch_basemap():
+        style_url = BASEMAP_CHOICES.get(input.pal_basemap(), CARTO_POSITRON)
+        await palette_widget.set_style(session, style_url)
+
+    @reactive.Calc
+    def _pal_colors() -> list[list[int]]:
+        """Compute per-point colours from current palette settings."""
+        pal = PALETTE_CHOICES.get(input.pal_name(), PALETTE_VIRIDIS)
+        n = input.pal_nbins()
+        mode = input.pal_mode()
+        if mode == "bins":
+            return color_bins(_pal_depths, n_bins=n, palette=pal)
+        elif mode == "quantiles":
+            return color_quantiles(_pal_depths, n_bins=n, palette=pal)
+        else:  # "range" — assign N-colour linear ramp via bins
+            return color_bins(_pal_depths, n_bins=n, palette=pal)
+
+    @reactive.Calc
+    def _pal_range_colors() -> list[list[int]]:
+        """Compute the swatch colours (N evenly-spaced stops)."""
+        pal = PALETTE_CHOICES.get(input.pal_name(), PALETTE_VIRIDIS)
+        return color_range(input.pal_nbins(), palette=pal)
+
+    # Swatch preview
     @render.ui
-    def bins_preview():
-        """Show color_bins classification of port cargo values."""
-        cargo = [p["cargo_mt"] for p in PORTS]
-        palette = PALETTE_CHOICES.get(input.palette(), PALETTE_OCEAN)
-        colors = color_bins(cargo, 6, palette)
-        rows = "".join(
-            f'<tr>'
-            f'<td>{PORTS[i]["name"]}</td>'
-            f'<td>{cargo[i]} Mt</td>'
-            f'<td><span class="colour-swatch" '
-            f'style="background:rgb({c[0]},{c[1]},{c[2]});"></span></td>'
-            f'</tr>'
-            for i, c in enumerate(colors)
-        )
-        return ui.HTML(
-            f'<table class="colour-table">'
-            f'<tr><th>Port</th><th>Cargo</th><th>Bin Colour</th></tr>'
-            f'{rows}</table>'
+    def pal_swatch():
+        colours = _pal_range_colors()
+        cells = []
+        for i, c in enumerate(colours):
+            hex_col = f"#{c[0]:02x}{c[1]:02x}{c[2]:02x}"
+            cells.append(
+                ui.tags.div(
+                    style=(
+                        f"display:inline-block;width:32px;height:24px;"
+                        f"background:{hex_col};border:1px solid #666;"
+                        f"border-radius:3px;margin:1px;"
+                    ),
+                    title=f"Stop {i+1}: rgb({c[0]}, {c[1]}, {c[2]})",
+                )
+            )
+        return ui.div(
+            ui.tags.div(
+                *cells,
+                style="display:flex;flex-wrap:wrap;gap:2px;margin-bottom:6px;",
+            ),
+            ui.tags.small(
+                f"{len(colours)} stops from {input.pal_name()} palette",
+                style="color:#888;",
+            ),
         )
 
-    @render.ui
-    def quantiles_preview():
-        """Show color_quantiles classification of port cargo values."""
-        cargo = [p["cargo_mt"] for p in PORTS]
-        palette = PALETTE_CHOICES.get(input.palette(), PALETTE_OCEAN)
-        colors = color_quantiles(cargo, 6, palette)
-        rows = "".join(
-            f'<tr>'
-            f'<td>{PORTS[i]["name"]}</td>'
-            f'<td>{cargo[i]} Mt</td>'
-            f'<td><span class="colour-swatch" '
-            f'style="background:rgb({c[0]},{c[1]},{c[2]});"></span></td>'
-            f'</tr>'
-            for i, c in enumerate(colors)
+    # Stats output
+    @render.text
+    def pal_stats():
+        colours = _pal_colors()
+        n = input.pal_nbins()
+        mode_label = {
+            "bins": "color_bins (equal-width)",
+            "quantiles": "color_quantiles (equal-count)",
+            "range": "color_range (linear interpolation)",
+        }.get(input.pal_mode(), input.pal_mode())
+
+        lo, hi = min(_pal_depths), max(_pal_depths)
+        unique_cols = len(set(tuple(c) for c in colours))
+        return (
+            f"Palette:    {input.pal_name()}\n"
+            f"Mode:       {mode_label}\n"
+            f"Bins/stops: {n}\n"
+            f"Data range: {lo:.1f} \u2013 {hi:.1f} m\n"
+            f"Points:     {len(_pal_bathy)}\n"
+            f"Unique colours assigned: {unique_cols}"
         )
-        return ui.HTML(
-            f'<table class="colour-table">'
-            f'<tr><th>Port</th><th>Cargo</th><th>Quantile Colour</th></tr>'
-            f'{rows}</table>'
+
+    # Code example output
+    @render.text
+    def pal_code():
+        mode = input.pal_mode()
+        pal_name = input.pal_name().upper()
+        pal_const = f"PALETTE_{pal_name}" if pal_name != "CHLOROPHYLL" else "PALETTE_CHLOROPHYLL"
+        n = input.pal_nbins()
+        if mode == "bins":
+            return (
+                f"from shiny_deckgl import color_bins, {pal_const}\n\n"
+                f"depths = [10.5, 45.2, 120.0, 250.3, \u2026]\n"
+                f"colors = color_bins(depths, n_bins={n}, palette={pal_const})\n"
+                f"# \u2192 one [R, G, B, A] per depth value"
+            )
+        elif mode == "quantiles":
+            return (
+                f"from shiny_deckgl import color_quantiles, {pal_const}\n\n"
+                f"depths = [10.5, 45.2, 120.0, 250.3, \u2026]\n"
+                f"colors = color_quantiles(depths, n_bins={n}, palette={pal_const})\n"
+                f"# \u2192 one [R, G, B, A] per value (equal-count bins)"
+            )
+        else:
+            return (
+                f"from shiny_deckgl import color_range, {pal_const}\n\n"
+                f"colors = color_range(n={n}, palette={pal_const})\n"
+                f"# \u2192 {n} evenly-spaced [R, G, B, A] colours"
+            )
+
+    # Push palette-coloured layers to the palette map
+    @reactive.Effect
+    @reactive.event(
+        input.pal_name, input.pal_mode, input.pal_nbins,
+        input.pal_layer,
+    )
+    async def _pal_update_map():
+        colours = _pal_colors()
+        lo, hi = min(_pal_depths), max(_pal_depths)
+        layer_type = input.pal_layer()
+
+        # Build coloured data
+        coloured_data = []
+        for pt, c in zip(_pal_bathy, colours):
+            bin_idx = int((pt["depth_m"] - lo) / max(hi - lo, 1) * (input.pal_nbins() - 1))
+            bin_idx = max(0, min(bin_idx, input.pal_nbins() - 1))
+            coloured_data.append({
+                **pt,
+                "color": c,
+                "bin_label": f"Bin {bin_idx + 1}/{input.pal_nbins()}",
+            })
+
+        layers: list[dict] = []
+
+        if layer_type == "columns":
+            layers.append(column_layer(
+                "pal-columns", coloured_data,
+                getPosition="@@=d.position",
+                getElevation="@@=d.elevation",
+                getFillColor="@@=d.color",
+                radius=20000,
+                elevationScale=1,
+                extruded=True,
+                pickable=True,
+            ))
+        elif layer_type == "scatter":
+            layers.append(scatterplot_layer(
+                "pal-scatter", coloured_data,
+                getPosition="@@=d.position",
+                getFillColor="@@=d.color",
+                getRadius="@@=d.depth_m * 5",
+                radiusMinPixels=4,
+                radiusMaxPixels=25,
+                pickable=True,
+            ))
+        else:  # heatmap (ignores palette — uses its own gradient)
+            layers.append(layer(
+                "HeatmapLayer", "pal-heat",
+                data=coloured_data,
+                getPosition="@@=d.position",
+                getWeight="@@=d.depth_m",
+                radiusPixels=40,
+                intensity=1,
+                threshold=0.05,
+                pickable=False,
+            ))
+
+        # Build legend entries from swatch colours
+        swatch = _pal_range_colors()
+        legend_entries = []
+        for i, c in enumerate(swatch):
+            # Compute approximate depth range for label
+            bin_lo = lo + (hi - lo) * i / len(swatch)
+            bin_hi = lo + (hi - lo) * (i + 1) / len(swatch)
+            legend_entries.append({
+                "layer_id": f"pal-bin-{i}",
+                "label": f"{bin_lo:.0f}\u2013{bin_hi:.0f} m",
+                "color": c[:3],
+                "shape": "rect",
+            })
+
+        widgets = [
+            zoom_widget(), compass_widget(),
+            fullscreen_widget(), scale_widget(),
+        ]
+
+        await palette_widget.update(
+            session, layers, widgets=widgets,
+            transition_duration=600,
+        )
+        await palette_widget.set_controls(
+            session,
+            [deck_legend_control(
+                entries=legend_entries,
+                position="bottom-right",
+                title=f"{input.pal_name()} \u2014 {input.pal_mode()}",
+                show_checkbox=False,
+                collapsed=False,
+            )],
         )
 
     # =================================================================
@@ -2018,9 +2172,14 @@ def server(input, output, session: Session):
         layers = _adv_layers.get()
         effects = None
         if input.enable_lighting():
-            effects = _make_lighting_effects(
-                input.ambient(), input.point_intensity(),
+            amb = ambient_light(intensity=input.ambient())
+            pl = point_light(
+                position=[19.5, 57.0, 80000],
+                color=(255, 255, 220),
+                intensity=input.point_intensity(),
             )
+            le = lighting_effect(amb, pl)
+            effects = [le]
             _advanced_log.set(
                 f"Lighting ON\n"
                 f"  Ambient intensity: {input.ambient()}\n"
@@ -2142,62 +2301,6 @@ def server(input, output, session: Session):
             or "Use the controls to test advanced features\u2026"
         )
 
-    # Widgets toggle (v0.8.0 + experimental v9.2)
-    @reactive.Effect
-    @reactive.event(
-        input.adv_zoom_widget, input.adv_compass_widget,
-        input.adv_fps_widget, input.adv_fullscreen_widget,
-        input.adv_scale_widget, input.adv_gimbal_widget,
-        input.adv_reset_view_widget, input.adv_screenshot_widget,
-        input.adv_loading_widget, input.adv_theme_widget,
-        input.adv_context_menu_widget, input.adv_info_widget,
-        input.adv_splitter_widget, input.adv_stats_widget,
-    )
-    async def _toggle_adv_widgets():
-        widgets: list[dict] = []
-        # Standard widgets
-        if input.adv_zoom_widget():
-            widgets.append(zoom_widget())
-        if input.adv_compass_widget():
-            widgets.append(compass_widget())
-        if input.adv_fps_widget():
-            widgets.append(fps_widget())
-        if input.adv_fullscreen_widget():
-            widgets.append(fullscreen_widget())
-        if input.adv_scale_widget():
-            widgets.append(scale_widget())
-        if input.adv_gimbal_widget():
-            widgets.append(gimbal_widget())
-        if input.adv_reset_view_widget():
-            widgets.append(reset_view_widget())
-        if input.adv_screenshot_widget():
-            widgets.append(screenshot_widget())
-        if input.adv_loading_widget():
-            widgets.append(loading_widget())
-        if input.adv_theme_widget():
-            widgets.append(theme_widget())
-        # Experimental widgets (deck.gl >= 9.2)
-        if input.adv_context_menu_widget():
-            widgets.append(context_menu_widget())
-        if input.adv_info_widget():
-            widgets.append(info_widget(placement="top-left"))
-        if input.adv_splitter_widget():
-            widgets.append(splitter_widget(
-                orientation="vertical",
-            ))
-        if input.adv_stats_widget():
-            widgets.append(stats_widget(placement="bottom-left"))
-        await adv_widget.set_widgets(session, widgets)
-        names = [w["@@widgetClass"] for w in widgets]
-        _advanced_log.set(
-            f"Widgets updated: {len(widgets)} active\n"
-            + (
-                "\n".join(f"  \u2022 {n}" for n in names)
-                if names
-                else "  (none)"
-            )
-        )
-
     # Transition demo (v0.8.0)
     @reactive.Effect
     @reactive.event(input.push_transitions)
@@ -2254,11 +2357,11 @@ def server(input, output, session: Session):
     @reactive.Effect
     @reactive.event(input.export_html)
     async def _do_export_html():
-        layers = _main_layers.get()
+        layers, _names = _gl_layers()
         path = os.path.join(
             tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
         )
-        map_widget.to_html(layers, path=path, title="shiny_deckgl Export")
+        gallery_widget.to_html(layers, path=path, title="shiny_deckgl Export")
         fsize = os.path.getsize(path)
         _export_log.set(
             f"HTML exported successfully!\n"
@@ -2271,8 +2374,8 @@ def server(input, output, session: Session):
     @reactive.Effect
     @reactive.event(input.export_json)
     async def _do_export_json():
-        layers = _main_layers.get()
-        spec = map_widget.to_json(layers)
+        layers, _names = _gl_layers()
+        spec = gallery_widget.to_json(layers)
         ellip = "\u2026" if len(spec) > 2000 else ""
         _export_log.set(
             f"JSON spec ({len(spec):,} chars):\n\n{spec[:2000]}{ellip}"
@@ -2281,18 +2384,18 @@ def server(input, output, session: Session):
     @reactive.Effect
     @reactive.event(input.roundtrip_json)
     async def _do_roundtrip():
-        layers = _main_layers.get()
-        spec_json = map_widget.to_json(layers)
+        layers, _names = _gl_layers()
+        spec_json = gallery_widget.to_json(layers)
         w2, layers2 = MapWidget.from_json(spec_json)
         checks = [
-            f"Original widget id:     {map_widget.id}",
+            f"Original widget id:     {gallery_widget.id}",
             f"Restored widget id:     {w2.id}",
-            f"IDs match:              {map_widget.id == w2.id}",
-            f"Style match:            {map_widget.style == w2.style}",
+            f"IDs match:              {gallery_widget.id == w2.id}",
+            f"Style match:            {gallery_widget.style == w2.style}",
             f"View state match:       "
-            f"{map_widget.view_state == w2.view_state}",
+            f"{gallery_widget.view_state == w2.view_state}",
             f"Tooltip match:          "
-            f"{map_widget.tooltip == w2.tooltip}",
+            f"{gallery_widget.tooltip == w2.tooltip}",
             f"Layer count match:      "
             f"{len(layers)} == {len(layers2)}",
             f"Layer IDs (original):   "
@@ -2446,109 +2549,7 @@ def server(input, output, session: Session):
     def draw_log():
         return _draw_log.get() or "Interaction log will appear here…"
 
-    # =================================================================
-    # Tab 8 — Animation (TripsLayer)
-    # =================================================================
-
-    _trips_data = make_trips_data(loop_length=1800)
-
-    @reactive.Effect
-    @reactive.event(
-        input.anim_show_trips,
-        input.anim_trail_length,
-        input.anim_speed,
-        input.anim_show_ports,
-        input.anim_show_routes,
-        input.anim_show_grid,
-    )
-    async def _anim_layers():
-        layers: list[dict] = []
-
-        # TripsLayer (animated)
-        if input.anim_show_trips():
-            layers.append(
-                trips_layer(
-                    "animated_trips",
-                    _trips_data,
-                    trailLength=input.anim_trail_length(),
-                    getColor="@@d.color",
-                    widthMinPixels=3,
-                    _tripsAnimation={
-                        "loopLength": 1800,
-                        "speed": input.anim_speed(),
-                    },
-                )
-            )
-
-        # GreatCircleLayer (static route arcs)
-        if input.anim_show_routes():
-            gc_data = []
-            for t in _trips_data:
-                wps = [p[:2] for p in t["path"]]
-                if len(wps) >= 2:
-                    gc_data.append({
-                        "sourcePosition": wps[0],
-                        "targetPosition": wps[-1],
-                        "name": t["name"],
-                    })
-            layers.append(
-                great_circle_layer(
-                    "gc_routes",
-                    gc_data,
-                    getSourceColor=[100, 100, 200, 120],
-                    getTargetColor=[100, 100, 200, 120],
-                    getWidth=1,
-                )
-            )
-
-        # Ports ScatterplotLayer
-        if input.anim_show_ports():
-            port_data = [
-                {
-                    "position": [p["lon"], p["lat"]],
-                    "name": p["name"],
-                    "cargo_mt": p["cargo_mt"],
-                }
-                for p in PORTS
-            ]
-            layers.append(
-                scatterplot_layer(
-                    "anim_ports",
-                    port_data,
-                    getPosition="@@=d.position",
-                    getRadius=6000,
-                    getFillColor=[20, 145, 155, 200],
-                    getLineColor=[255, 255, 255, 200],
-                    lineWidthMinPixels=1,
-                    stroked=True,
-                    pickable=True,
-                )
-            )
-
-        # Observation grid (GridLayer)
-        if input.anim_show_grid():
-            grid_points = [
-                [p["lon"], p["lat"]]
-                for p in PORTS
-                for _ in range(int(p["cargo_mt"]))
-            ]
-            layers.append(
-                grid_layer(
-                    "anim_grid",
-                    grid_points,
-                    cellSize=30000,
-                    elevationScale=200,
-                    extruded=True,
-                    pickable=False,
-                    opacity=0.4,
-                )
-            )
-
-        await anim_widget.update(session, layers)
-
-    # =================================================================
-    # Tab 9: v1.0.0 deck.gl Extensions
-    # =================================================================
+    # Brushing & DataFilter extensions (merged from former Tab 9)
 
     _v1_port_data = [
         {
@@ -2596,37 +2597,10 @@ def server(input, output, session: Session):
                 **extra,
             ),
         ]
-        await v1_deck_widget.update(session, layers)
+        await adv_widget.update(session, layers)
 
     # =================================================================
-    # Tab 10: v1.0.0 MapLibre Features
-    # =================================================================
-
-    @reactive.Effect
-    @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
-    async def _v1_clusters():
-        if input.v1_show_clusters():
-            await v1_ml_widget.add_cluster_layer(
-                session,
-                "v1-clusters",
-                make_port_geojson(),
-                cluster_radius=input.v1_cluster_radius(),
-                cluster_color="#14919b",
-                point_color="#e65100",
-                point_radius=6,
-            )
-        else:
-            await v1_ml_widget.remove_cluster_layer(session, "v1-clusters")
-
-    @reactive.Effect
-    @reactive.event(input.v1_cooperative)
-    async def _v1_cooperative():
-        await v1_ml_widget.set_cooperative_gestures(
-            session, input.v1_cooperative()
-        )
-
-    # =================================================================
-    # Tab 11: 3-D Visualisation
+    # Tab 7: 3-D Visualisation
     # =================================================================
 
     # Pre-generate data (constant for the session)
@@ -2640,6 +2614,8 @@ def server(input, output, session: Session):
         input.td_fish, input.td_fish_mode, input.td_fish_elev,
         input.td_arcs, input.td_arc_width,
         input.td_lighting, input.td_ambient, input.td_point_light,
+        input.td_directional, input.td_dir_intensity,
+        input.td_pp_brightness, input.td_brightness, input.td_contrast,
         input.td_pitch, input.td_bearing,
     )
     async def _td_rebuild():
@@ -2740,9 +2716,29 @@ def server(input, output, session: Session):
         # --- Lighting ---
         effects = None
         if input.td_lighting():
-            effects = _make_lighting_effects(
-                input.td_ambient(), input.td_point_light(),
+            amb = ambient_light(intensity=input.td_ambient())
+            pl = point_light(
+                position=[19.5, 57.0, 80000],
+                color=(255, 255, 220),
+                intensity=input.td_point_light(),
             )
+            lights = [pl]
+            if input.td_directional():
+                dl = directional_light(
+                    direction=[-1, -3, -1],
+                    intensity=input.td_dir_intensity(),
+                )
+                lights.append(dl)
+            le = lighting_effect(amb, *lights)
+            effects = [le]
+        if input.td_pp_brightness():
+            pp = post_process_effect(
+                "brightnessContrast",
+                brightness=input.td_brightness(),
+                contrast=input.td_contrast(),
+            )
+            effects = effects or []
+            effects.append(pp)
 
         await three_d_widget.update(session, layers, effects=effects)
 
@@ -2756,32 +2752,8 @@ def server(input, output, session: Session):
             bearing=input.td_bearing(),
         )
 
-    # -- colour helpers (pure functions, no I/O) --
-
-    def _bathy_color(elevation: float) -> list[int]:
-        """Map depth (0–459 m) to a blue-gradient RGBA."""
-        t = min(elevation / 459.0, 1.0)
-        r = int(10 + 40 * (1 - t))
-        g = int(60 + 120 * (1 - t))
-        b = int(120 + 135 * t)
-        return [r, g, b, 210]
-
-    _SPECIES_COLORS: dict[str, list[int]] = {
-        "Atlantic cod":       [230, 25, 75, 200],
-        "Baltic herring":     [60, 180, 75, 200],
-        "European sprat":     [255, 225, 25, 200],
-        "Atlantic salmon":    [0, 130, 200, 200],
-        "European flounder":  [245, 130, 48, 200],
-        "Pike-perch":         [145, 30, 180, 200],
-        "Three-spined stickleback": [70, 240, 240, 200],
-        "Ringed seal":        [240, 50, 230, 200],
-    }
-
-    def _species_color(species: str) -> list[int]:
-        return _SPECIES_COLORS.get(species, [180, 180, 180, 200])
-
     # =================================================================
-    # Tab 12 — Seal IBM (Individual-Based Model)
+    # Tab 8 — Seal IBM (Individual-Based Model)
     # =================================================================
 
     _SEAL_LOOP = 600
@@ -2821,6 +2793,8 @@ def server(input, output, session: Session):
         input.seal_bathymetry,
         input.seal_haulouts,
         input.seal_foraging,
+        input.seal_routes,
+        input.seal_grid,
     )
     async def _seal_layers():
         selected = set(input.seal_species())
@@ -2905,13 +2879,56 @@ def server(input, output, session: Session):
                     )
                 )
 
+        # GreatCircleLayer — geodesic arcs between haulout colonies
+        if input.seal_routes():
+            gc_data = []
+            for t in filtered_trips:
+                wps = [p[:2] for p in t["path"]]
+                if len(wps) >= 2:
+                    gc_data.append({
+                        "sourcePosition": wps[0],
+                        "targetPosition": wps[-1],
+                        "name": t.get("name", ""),
+                    })
+            if gc_data:
+                layers.append(
+                    great_circle_layer(
+                        "seal_gc_routes",
+                        gc_data,
+                        getSourceColor=[100, 180, 220, 120],
+                        getTargetColor=[100, 180, 220, 120],
+                        getWidth=1,
+                    )
+                )
+
+        # GridLayer — 3-D extruded density grid from haulout positions
+        if input.seal_grid():
+            grid_pts = [
+                h["position"]
+                for h in _seal_haulout_data
+                if h["species"] in selected
+                for _ in range(int(h.get("radius", 5)))
+            ]
+            if grid_pts:
+                layers.append(
+                    grid_layer(
+                        "seal_density_grid",
+                        grid_pts,
+                        cellSize=30000,
+                        elevationScale=200,
+                        extruded=True,
+                        pickable=False,
+                        opacity=0.4,
+                    )
+                )
+
         await seal_widget.update(
             session, layers,
             widgets=[loading_widget()],
         )
 
     # ===================================================================
-    # Tab 13: Widgets Gallery
+    # Tab 9: Widgets Gallery
     # ===================================================================
 
     _wg_log: reactive.Value[str] = reactive.Value("")
@@ -3162,5 +3179,470 @@ def server(input, output, session: Session):
         ui.update_switch("wg_stats", value=stats)
         ui.update_switch("wg_view_selector", value=view_selector)
 
+    # ===================================================================
+    # Tab 1: Layer Gallery — all 24 layer helpers
+    # ===================================================================
+
+    # -- Pre-computed gallery data (generated once per session) ----------
+    _gl_port_data = make_gallery_port_data()
+    _gl_arc_data = make_gallery_arc_data()
+    _gl_line_data = make_gallery_line_data()
+    _gl_path_data = make_gallery_path_data()
+    _gl_text_data = make_gallery_text_data()
+    _gl_icon_data = make_gallery_icon_data()
+    _gl_column_data = make_gallery_column_data()
+
+    _gl_polygon_data = make_shyfem_polygon_data(_POLYGON_GRD_STR)
+    _gl_shyfem_mesh = make_shyfem_mesh_data(_CURONIAN_GRD_STR, z_scale=500.0)
+
+    # Pre-compute mesh node points for the "Show mesh nodes" overlay
+    _gl_mesh_node_data: list[dict] | None = None
+    if _gl_shyfem_mesh is not None:
+        _pos = _gl_shyfem_mesh["positions"]
+        _col = _gl_shyfem_mesh.get("colors", [])
+        _n = _gl_shyfem_mesh["n_vertices"]
+        _gl_mesh_node_data = []
+        for _i in range(_n):
+            _r = round(_col[_i * 3] * 255) if _col else 120
+            _g = round(_col[_i * 3 + 1] * 255) if _col else 170
+            _b = round(_col[_i * 3 + 2] * 255) if _col else 210
+            _gl_mesh_node_data.append({
+                "position": [
+                    _pos[_i * 3],
+                    _pos[_i * 3 + 1],
+                    _pos[_i * 3 + 2],
+                ],
+                "color": [_r, _g, _b, 220],
+                "name": f"Node {_i}",
+                "layerType": "MeshNode",
+            })
+        del _pos, _col, _n, _i, _r, _g, _b
+
+    _gl_great_circle_data = [
+        {
+            "sourcePosition": r["waypoints"][0],
+            "targetPosition": r["waypoints"][-1],
+            "name": f"{r['from']} \u2192 {r['to']} (geodesic)",
+            "layerType": "GreatCircleLayer",
+        }
+        for r in ROUTES
+    ]
+
+    _gl_heatmap_pts = make_heatmap_points(400)
+    _gl_trips_data = make_trips_data(1800)
+
+    _gl_h3_data = make_h3_data()
+
+    _gl_point_cloud = make_point_cloud_data()
+
+    # GeoJSON for gallery — HELCOM Marine Protected Areas
+    _gl_geojson = MPA_GEOJSON
+
+    # -- Reactive: build layer list from toggles -------------------------
+
+    @reactive.Calc
+    def _gl_layers() -> tuple[list[dict], list[str]]:
+        """Build layers from toggle switches. Returns (layers, names)."""
+        layers: list[dict] = []
+        names: list[str] = []
+
+        if input.gl_scatterplot():
+            layers.append(scatterplot_layer(
+                "gl-scatter", _gl_port_data,
+                getPosition="@@=d.position",
+                getRadius="@@=d.cargo_mt * 80",
+                getFillColor=[20, 130, 180, 200],
+                radiusMinPixels=4,
+                radiusMaxPixels=30,
+                pickable=True,
+            ))
+            names.append("ScatterplotLayer")
+
+        if input.gl_geojson():
+            layers.append(geojson_layer(
+                "gl-geojson", _gl_geojson,
+                getFillColor=[0, 180, 120, 60],
+                getLineColor=[0, 180, 120, 200],
+                lineWidthMinPixels=2,
+                pickable=True,
+            ))
+            names.append("GeoJsonLayer")
+
+        if input.gl_arc():
+            layers.append(arc_layer(
+                "gl-arcs", _gl_arc_data,
+                getSourceColor=[0, 128, 255],
+                getTargetColor=[255, 80, 80],
+                getWidth=2,
+                pickable=True,
+            ))
+            names.append("ArcLayer")
+
+        if input.gl_line():
+            layers.append(line_layer(
+                "gl-lines", _gl_line_data,
+                getColor=[80, 80, 80, 180],
+                getWidth=2,
+                pickable=True,
+            ))
+            names.append("LineLayer")
+
+        if input.gl_path():
+            layers.append(path_layer(
+                "gl-paths", _gl_path_data,
+                getPath="@@=d.path",
+                getColor="@@=d.color",
+                widthMinPixels=2,
+                pickable=True,
+            ))
+            names.append("PathLayer")
+
+        if input.gl_icon():
+            layers.append(icon_layer(
+                "gl-icons", _gl_icon_data,
+                getPosition="@@=d.position",
+                iconAtlas="https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
+                iconMapping={
+                    "marker": {"x": 0, "y": 0, "width": 128,
+                               "height": 128, "anchorY": 128},
+                },
+                getIcon="marker",
+                getSize=32,
+                pickable=True,
+            ))
+            names.append("IconLayer")
+
+        if input.gl_text():
+            layers.append(text_layer(
+                "gl-text", _gl_text_data,
+                getPosition="@@=d.position",
+                getText="@@=d.text",
+                getSize=14,
+                getColor=[0, 0, 0, 255],
+                getTextAnchor="middle",
+                getAlignmentBaseline="center",
+                fontWeight="bold",
+                pickable=True,
+            ))
+            names.append("TextLayer")
+
+        if input.gl_column():
+            layers.append(column_layer(
+                "gl-columns", _gl_column_data,
+                getPosition="@@=d.position",
+                getElevation="@@=d.elevation",
+                getFillColor=[14, 145, 155, 200],
+                radius=8000,
+                elevationScale=1,
+                extruded=True,
+                pickable=True,
+            ))
+            names.append("ColumnLayer")
+
+        if input.gl_polygon():
+            layers.append(polygon_layer(
+                "gl-polygons", _gl_polygon_data,
+                getPolygon="@@=d.polygon",
+                getFillColor="@@=d.color",
+                getLineColor=[40, 80, 120, 200],
+                getLineWidth=1,
+                lineWidthMinPixels=1,
+                pickable=True,
+            ))
+            names.append("PolygonLayer")
+
+        if input.gl_great_circle():
+            layers.append(great_circle_layer(
+                "gl-gc", _gl_great_circle_data,
+                getSourceColor=[0, 200, 80],
+                getTargetColor=[200, 0, 180],
+                getWidth=2,
+                pickable=True,
+            ))
+            names.append("GreatCircleLayer")
+
+        # -- Aggregation layers ---
+        if input.gl_heatmap():
+            layers.append(heatmap_layer(
+                "gl-heatmap", _gl_heatmap_pts,
+                radiusPixels=40,
+                intensity=1.2,
+                threshold=0.05,
+            ))
+            names.append("HeatmapLayer")
+
+        if input.gl_hexagon():
+            layers.append(hexagon_layer(
+                "gl-hexagons", _gl_heatmap_pts,
+                radius=20000,
+                elevationScale=50,
+                extruded=True,
+                pickable=True,
+            ))
+            names.append("HexagonLayer")
+
+        if input.gl_grid():
+            layers.append(grid_layer(
+                "gl-grid", _gl_heatmap_pts,
+                cellSize=20000,
+                elevationScale=50,
+                extruded=True,
+                pickable=True,
+            ))
+            names.append("GridLayer")
+
+        if input.gl_screen_grid():
+            layers.append(screen_grid_layer(
+                "gl-screen-grid", _gl_heatmap_pts,
+                cellSizePixels=20,
+            ))
+            names.append("ScreenGridLayer")
+
+        if input.gl_contour():
+            layers.append(contour_layer(
+                "gl-contour", _gl_heatmap_pts,
+                cellSize=20000,
+                contours=[
+                    {"threshold": 1, "color": [255, 0, 0],
+                     "strokeWidth": 2},
+                    {"threshold": 5, "color": [0, 200, 0],
+                     "strokeWidth": 3},
+                    {"threshold": [6, 100], "color": [0, 100, 255, 128]},
+                ],
+            ))
+            names.append("ContourLayer")
+
+        # -- Geo-spatial layers ---
+        if input.gl_h3_hexagon():
+            layers.append(h3_hexagon_layer(
+                "gl-h3", _gl_h3_data,
+                getHexagon="@@=d.hex",
+                getFillColor="@@=d.color",
+                extruded=False,
+                pickable=True,
+            ))
+            names.append("H3HexagonLayer")
+
+        if input.gl_trips():
+            layers.append(trips_layer(
+                "gl-trips", _gl_trips_data,
+                getPath="@@=d.path",
+                getTimestamps="@@=d.timestamps",
+                getColor=[253, 128, 93],
+                widthMinPixels=3,
+                trailLength=300,
+                currentTime=500,
+            ))
+            names.append("TripsLayer")
+
+        # -- Tile / raster layers ---
+        if input.gl_tile():
+            layers.append(tile_layer(
+                "gl-tiles",
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                minZoom=0,
+                maxZoom=19,
+                tileSize=256,
+                opacity=0.6,
+            ))
+            names.append("TileLayer")
+
+        if input.gl_bitmap():
+            layers.append(bitmap_layer(
+                "gl-bitmap",
+                image=(
+                    "https://ows.emodnet-bathymetry.eu/wms"
+                    "?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1"
+                    "&LAYERS=emodnet:mean_atlas_land"
+                    "&STYLES=&SRS=EPSG:4326"
+                    "&BBOX=9.0,53.0,30.5,66.0"
+                    "&WIDTH=1024&HEIGHT=768"
+                    "&FORMAT=image/png&TRANSPARENT=true"
+                ),
+                bounds=[9.0, 53.0, 30.5, 66.0],
+                opacity=0.7,
+            ))
+            names.append("BitmapLayer")
+
+        if input.gl_mvt():
+            layers.append(mvt_layer(
+                "gl-mvt",
+                "https://tiles.stadiamaps.com/data/openmaptiles/{z}/{x}/{y}.pbf",
+                minZoom=0,
+                maxZoom=14,
+                getFillColor=[140, 170, 200, 100],
+                getLineColor=[0, 0, 0, 80],
+                lineWidthMinPixels=1,
+                pickable=True,
+            ))
+            names.append("MVTLayer")
+
+        if input.gl_wms():
+            layers.append(wms_layer(
+                "gl-wms",
+                EMODNET_WMS_URL,
+                layers=["emodnet:mean_atlas_land"],
+                transparent=True,
+                opacity=0.6,
+            ))
+            names.append("WMSLayer")
+
+        # -- 3-D / mesh layers ---
+        if input.gl_point_cloud():
+            layers.append(point_cloud_layer(
+                "gl-pointcloud", _gl_point_cloud,
+                getPosition="@@=d.position",
+                getColor="@@=d.color",
+                pointSize=4,
+                pickable=True,
+            ))
+            names.append("PointCloudLayer")
+
+        if input.gl_simple_mesh():
+            if _gl_shyfem_mesh is not None:
+                layers.append(simple_mesh_layer(
+                    "gl-mesh",
+                    **custom_geometry(_gl_shyfem_mesh),
+                    pickable=True,
+                    wireframe=False,
+                ))
+            else:
+                # Fallback: cubes at port locations
+                _mesh_data = [
+                    {
+                        "position": [p["lon"], p["lat"], 500],
+                        "name": p["name"],
+                        "layerType": "SimpleMeshLayer",
+                    }
+                    for p in PORTS
+                ]
+                layers.append(simple_mesh_layer(
+                    "gl-mesh", _mesh_data,
+                    getPosition="@@=d.position",
+                    getColor=[255, 180, 60, 220],
+                    mesh="@@CubeGeometry",
+                    sizeScale=20000,
+                    pickable=True,
+                ))
+            # Always show node overlay alongside mesh surface
+            if _gl_mesh_node_data is not None:
+                ctr = _gl_shyfem_mesh["center"]
+                layers.append(scatterplot_layer(
+                    "gl-mesh-nodes",
+                    _gl_mesh_node_data,
+                    getPosition="@@=d.position",
+                    getFillColor="@@=d.color",
+                    getRadius=30,
+                    radiusMinPixels=1,
+                    radiusMaxPixels=4,
+                    coordinateSystem=2,
+                    coordinateOrigin=[ctr[0], ctr[1]],
+                    pickable=True,
+                ))
+                names.append("MeshNodes")
+            names.append("SimpleMeshLayer")
+
+        if input.gl_terrain():
+            layers.append(terrain_layer(
+                "gl-terrain",
+                elevationData="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+                texture="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                elevationDecoder={
+                    "rScaler": 25600, "gScaler": 100,
+                    "bScaler": 100 / 256, "offset": -3276800,
+                },
+                meshMaxError=4.0,
+            ))
+            names.append("TerrainLayer")
+
+        return layers, names
+
+    # -- Legend colour map for gallery layers ------------------------------
+    _GL_LEGEND_META = LAYER_LEGEND_META
+
+    # -- Push layers to the gallery map ----------------------------------
+
+    @reactive.Effect
+    @reactive.event(
+        input.gl_scatterplot, input.gl_geojson, input.gl_arc,
+        input.gl_line, input.gl_path, input.gl_icon, input.gl_text,
+        input.gl_column, input.gl_polygon, input.gl_great_circle,
+        input.gl_heatmap, input.gl_hexagon, input.gl_grid,
+        input.gl_screen_grid, input.gl_contour,
+        input.gl_h3_hexagon, input.gl_trips,
+        input.gl_tile, input.gl_bitmap, input.gl_mvt, input.gl_wms,
+        input.gl_point_cloud, input.gl_simple_mesh, input.gl_terrain,
+    )
+    async def _gl_update_map():
+        layers, names = _gl_layers()
+
+        # Build dynamic legend entries for active layers
+        legend_entries = []
+        for name in names:
+            meta = _GL_LEGEND_META.get(name, ([128, 128, 128], "circle"))
+            legend_entries.append({
+                "layer_id": name,
+                "label": name,
+                "color": meta[0],
+                "shape": meta[1],
+            })
+
+        widgets = [
+            zoom_widget(), compass_widget(),
+            fullscreen_widget(), scale_widget(),
+            loading_widget(label="Loading layers\u2026"),
+        ]
+
+        # Switch to a pitched 3-D view when 3-D layers are active
+        _3d_layers = {
+            "TerrainLayer", "PointCloudLayer", "SimpleMeshLayer",
+            "ColumnLayer", "HexagonLayer", "GridLayer",
+        }
+        needs_3d = bool(_3d_layers & set(names))
+
+        # Curonian Lagoon mesh — fly there when SimpleMeshLayer is active
+        _mesh_layers = {"SimpleMeshLayer"}
+        if (_mesh_layers & set(names)) and _CURONIAN_GRD_STR:
+            vs = {**SHYFEM_VIEW, "pitch": 50, "bearing": -15} if needs_3d else SHYFEM_VIEW
+        elif needs_3d:
+            vs = {**BALTIC_VIEW, "pitch": 50, "bearing": -15, "zoom": 6}
+        else:
+            vs = BALTIC_VIEW
+
+        await gallery_widget.update(
+            session, layers, widgets=widgets,
+            view_state=vs, transition_duration=800,
+        )
+        # Push deck_legend_control via set_controls (MapLibre control)
+        if legend_entries:
+            await gallery_widget.set_controls(
+                session,
+                [deck_legend_control(
+                    entries=legend_entries,
+                    position="bottom-right",
+                    title="Active Layers",
+                    show_checkbox=False,
+                    collapsed=False,
+                )],
+            )
+        else:
+            await gallery_widget.set_controls(session, [])
+        # Build status text
+        lines = [f"Active layers: {len(names)} / 24", ""]
+        if names:
+            for n in names:
+                lines.append(f"  \u2022 {n}")
+        else:
+            lines.append("  (no layers active)")
+        _gl_log.set("\n".join(lines))
+
+    _gl_log: reactive.Value[str] = reactive.Value("")
+
+    @render.text
+    def gl_status():
+        return (
+            _gl_log.get()
+            or "Toggle layers in the sidebar to see them on the map."
+        )
 
 app = App(app_ui, server)

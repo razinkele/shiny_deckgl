@@ -29,6 +29,11 @@ __all__ = [
     "screen_grid_layer",
     "mvt_layer",
     "wms_layer",
+    "point_cloud_layer",
+    "simple_mesh_layer",
+    "terrain_layer",
+    "custom_geometry",
+    "COORDINATE_SYSTEM",
 ]
 
 
@@ -640,3 +645,198 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
     }
     defaults.update(kwargs)
     return layer("WMSLayer", id, data, **defaults)
+
+
+def point_cloud_layer(id: str, data=None, **kwargs) -> dict:
+    """Create a deck.gl ``PointCloudLayer``.
+
+    Renders a cloud of 3-D points.  Each point is positioned at
+    ``[longitude, latitude, altitude]`` and drawn as a circle in
+    screen space.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Point-cloud data (list of dicts, URL, etc.).
+    **kwargs
+        Extra properties (``getPosition``, ``getColor``, ``getNormal``,
+        ``pointSize``, ``sizeUnits``, etc.).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "pointSize": 2,
+        "sizeUnits": "pixels",
+        "getPosition": "@@=position",
+        "getColor": [255, 140, 0],
+        "getNormal": [0, 0, 1],
+    }
+    defaults.update(kwargs)
+    return layer("PointCloudLayer", id, data, **defaults)
+
+
+def simple_mesh_layer(id: str, data=None, **kwargs) -> dict:
+    """Create a deck.gl ``SimpleMeshLayer``.
+
+    Renders a 3-D mesh (OBJ, PLY, or programmatic geometry) at each
+    data point.  Useful for placing 3-D models on a map.
+
+    Built-in mesh shorthands (resolved by the JS runtime):
+
+    - ``"@@CubeGeometry"`` — luma.gl cube
+    - ``"@@SphereGeometry"`` — luma.gl sphere
+    - ``"@@CustomGeometry"`` — inline vertex arrays (use with
+      :func:`custom_geometry`)
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Data source providing anchor positions.
+    **kwargs
+        Extra properties (``mesh`` URL or geometry, ``getPosition``,
+        ``getColor``, ``getOrientation``, ``getScale``, ``sizeScale``,
+        ``texture``, etc.).
+
+    Example
+    -------
+    Render a parsed SHYFEM finite-element mesh::
+
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        mesh = parse_shyfem_mesh("mesh.grd")
+        lyr = simple_mesh_layer("fem-mesh", **custom_geometry(mesh),
+                                pickable=True)
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPosition": "@@=position",
+        "getColor": [140, 170, 200],
+        "sizeScale": 1,
+    }
+    defaults.update(kwargs)
+    return layer("SimpleMeshLayer", id, data, **defaults)
+
+
+def terrain_layer(id: str, data=None, **kwargs) -> dict:
+    """Create a deck.gl ``TerrainLayer``.
+
+    Reconstructs mesh surfaces from height-map images (e.g. Mapzen
+    Terrain Tiles).  The resulting 3-D terrain can be textured with a
+    satellite or map-style raster.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Terrain-RGB tile URL template (``{x}/{y}/{z}`` placeholders),
+        or ``None`` if ``elevationData`` is supplied via kwargs.
+    **kwargs
+        Extra properties:
+
+        - ``elevationData`` — URL template for elevation tiles
+        - ``texture`` — URL template for colour/satellite tiles
+        - ``elevationDecoder`` — dict describing RGB→elevation mapping
+        - ``meshMaxError`` — max LOD simplification error in metres
+        - ``bounds`` — ``[west, south, east, north]``
+    """
+    defaults: dict[str, Any] = {
+        "meshMaxError": 4.0,
+    }
+    # Allow either `data` or `elevationData` for the height-map URL
+    if data is not None and "elevationData" not in kwargs:
+        defaults["elevationData"] = data
+    defaults.update(kwargs)
+    return layer("TerrainLayer", id, data, **defaults)
+
+
+# ---------------------------------------------------------------------------
+# Coordinate system constants (mirrors deck.gl COORDINATE_SYSTEM enum)
+# ---------------------------------------------------------------------------
+
+class COORDINATE_SYSTEM:
+    """deck.gl coordinate system constants.
+
+    Use with the ``coordinateSystem`` property on any layer.
+
+    Example::
+
+        simple_mesh_layer("mesh", data,
+                          coordinateSystem=COORDINATE_SYSTEM.METER_OFFSETS)
+    """
+    DEFAULT = -1
+    """Auto-detect based on data."""
+    LNGLAT = 1
+    """Positions as ``[longitude, latitude]`` (default for most layers)."""
+    METER_OFFSETS = 2
+    """Positions in **metres** relative to a ``coordinateOrigin``."""
+    LNGLAT_OFFSETS = 3
+    """Positions as ``[longitude_offset, latitude_offset]``."""
+    CARTESIAN = 0
+    """Non-geographic pixel/unit coordinates."""
+
+
+# ---------------------------------------------------------------------------
+# Custom mesh geometry helper
+# ---------------------------------------------------------------------------
+
+def custom_geometry(
+    mesh_data: dict,
+    *,
+    position: list[float] | None = None,
+) -> dict:
+    """Build SimpleMeshLayer kwargs from parsed mesh geometry.
+
+    This helper converts the output of
+    :func:`~shiny_deckgl.parsers.parse_shyfem_mesh` (or any dict with
+    ``positions``, ``normals``, ``colors``, ``indices``, ``center``)
+    into the keyword arguments expected by :func:`simple_mesh_layer`.
+
+    The JS runtime detects the ``"@@CustomGeometry"`` mesh marker and
+    constructs a ``luma.Geometry`` from the inline vertex arrays.
+
+    Parameters
+    ----------
+    mesh_data
+        Dict with keys ``positions``, ``normals``, ``colors``,
+        ``indices``, and ``center`` (as returned by
+        :func:`~shiny_deckgl.parsers.parse_shyfem_mesh`).
+    position
+        Override the coordinate origin ``[lon, lat]``.  Defaults to
+        ``mesh_data["center"]``.  The single data instance is placed at
+        ``[0, 0, 0]`` metres offset from this origin.
+
+    Returns
+    -------
+    dict
+        Keyword arguments for :func:`simple_mesh_layer`: ``data``,
+        ``mesh``, ``_meshPositions``, ``_meshNormals``, ``_meshColors``,
+        ``_meshIndices``, ``coordinateSystem``, ``coordinateOrigin``,
+        ``sizeScale``, ``getPosition``, ``getColor``.
+
+    Example
+    -------
+    >>> from shiny_deckgl.parsers import parse_shyfem_mesh
+    >>> from shiny_deckgl import simple_mesh_layer, custom_geometry
+    >>> mesh = parse_shyfem_mesh("mesh.grd")
+    >>> lyr = simple_mesh_layer("my-mesh", **custom_geometry(mesh))
+    """
+    ctr = mesh_data.get("center", [0, 0])
+    origin = position if position is not None else [ctr[0], ctr[1]]
+
+    return {
+        # Single instance at the origin (0 m offset)
+        "data": [{"position": [0, 0, 0], "layerType": "Custom Mesh"}],
+        "getPosition": "@@=d.position",
+        "getColor": [255, 255, 255, 255],
+        "mesh": "@@CustomGeometry",
+        "_meshPositions": mesh_data["positions"],
+        "_meshNormals": mesh_data.get("normals", []),
+        "_meshColors": mesh_data.get("colors", []),
+        "_meshIndices": mesh_data["indices"],
+        "sizeScale": 1,
+        "coordinateSystem": COORDINATE_SYSTEM.METER_OFFSETS,
+        "coordinateOrigin": origin,
+    }

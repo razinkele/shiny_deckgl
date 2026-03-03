@@ -15,6 +15,7 @@ __all__ = [
     "color_range",
     "color_bins",
     "color_quantiles",
+    "depth_color",
 ]
 
 # ---------------------------------------------------------------------------
@@ -171,3 +172,37 @@ def color_quantiles(
         return n_bins - 1
 
     return [colours[_bin(v)] for v in values]
+
+
+def depth_color(
+    elevation: float,
+    max_depth: float = 459.0,
+    alpha: int = 210,
+) -> list[int]:
+    """Map an elevation / depth value to a blue-gradient RGBA colour.
+
+    Produces a smooth dark-blue-to-teal ramp suitable for bathymetric
+    visualisations.  At ``elevation=0`` the colour is a pale teal
+    ``[50, 180, 120, α]``; at ``max_depth`` it is a deep navy
+    ``[10, 60, 255, α]``.
+
+    Parameters
+    ----------
+    elevation
+        The depth or elevation value (0 = shallowest).
+    max_depth
+        The reference maximum depth for normalisation (default 459 m,
+        roughly the Baltic Sea's Landsort Deep).
+    alpha
+        Alpha channel value (0–255, default 210).
+
+    Returns
+    -------
+    list[int]
+        ``[R, G, B, A]`` colour.
+    """
+    t = min(elevation / max_depth, 1.0) if max_depth else 0.0
+    r = int(10 + 40 * (1 - t))
+    g = int(60 + 120 * (1 - t))
+    b = int(120 + 135 * t)
+    return [r, g, b, alpha]

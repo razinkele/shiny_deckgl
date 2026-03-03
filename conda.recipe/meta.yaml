@@ -1,6 +1,6 @@
 {% set name = "shiny-deckgl" %}
 # Version must match src/shiny_deckgl/_version.py (single source of truth)
-{% set version = "1.1.1" %}
+{% set version = "1.2.0" %}
 
 package:
   name: {{ name|lower }}

@@ -29,8 +29,6 @@ requirements:
 test:
   imports:
     - shiny_deckgl
-  commands:
-    - shiny_deckgl-demo --help || true
 
 about:
   home: "https://github.com/razinkele/shiny_deckgl"

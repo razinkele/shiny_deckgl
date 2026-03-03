@@ -5,6 +5,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.3.0] — 2026-03-03
+
+### Added
+
+- **`parsers.py` module** — SHYFEM finite-element mesh parsers:
+  - `parse_shyfem_grd()` — parse a `.grd` file into `PolygonLayer`-ready
+    data (triangles with depth colours, auto-detects UTM → WGS84).
+  - `parse_shyfem_mesh()` — parse a `.grd` file into `SimpleMeshLayer`
+    geometry arrays (positions, normals, colours, indices in metre offsets).
+- **`custom_geometry()`** — helper that converts `parse_shyfem_mesh()`
+  output into `simple_mesh_layer()` keyword arguments, using the
+  `@@CustomGeometry` mesh marker and `luma.Geometry` inline vertex arrays.
+- **`COORDINATE_SYSTEM`** — enum-style class mirroring deck.gl's coordinate
+  system constants (`DEFAULT`, `LNGLAT`, `METER_OFFSETS`,
+  `LNGLAT_OFFSETS`, `CARTESIAN`).
+- **`depth_color()`** — bathymetric blue-gradient RGBA colour function with
+  configurable `max_depth` and `alpha` parameters.
+- **Demo data factories** (in `_demo_data.py`):
+  - `SHYFEM_VIEW` — pre-set view state for the Curonian Lagoon.
+  - `make_shyfem_polygon_data()` / `make_shyfem_mesh_data()` — load
+    SHYFEM `.grd` files with graceful fallback when files are absent.
+  - `CURONIAN_GRD_PATH` / `POLYGON_GRD_PATH` — resolved `.grd` file paths.
+  - `FISH_SPECIES_COLORS` / `fish_species_color()` — Baltic fish species
+    RGBA colour mapping.
+  - `make_gallery_port_data()`, `make_gallery_arc_data()`,
+    `make_gallery_line_data()`, `make_gallery_path_data()`,
+    `make_gallery_text_data()`, `make_gallery_icon_data()`,
+    `make_gallery_column_data()` — 7 gallery data factory functions.
+  - `LAYER_LEGEND_META` — dict mapping layer type names to colour/shape
+    tuples for `deck_legend_control`.
+- **`about_row()`** — small HTML helper for the demo About panel
+  (`_demo_css.py`).
+- **`python_version()`** / **`shiny_version()`** — runtime version queries
+  (`_version.py`).
+- **Demo Tab 4: Colour Scales** — interactive palette management tab with 5
+  palettes, 3 colour modes, swatch preview, statistics, code examples, and
+  live map with bathymetry columns coloured by selected scheme.
+
+### Changed
+
+- **Demo app** refactored from 9 → 10 tabs (new Colour Scales tab).
+- **`app.py` cleaned up** — inline colour helpers, species colours, gallery
+  data comprehensions, and legend metadata extracted from `server()` into
+  library modules; `app.py` now imports them.
+- **`__init__.py`** — exports `custom_geometry`, `COORDINATE_SYSTEM`,
+  `depth_color`, `parse_shyfem_grd`, `parse_shyfem_mesh`,
+  `make_shyfem_polygon_data`, `make_shyfem_mesh_data`, `SHYFEM_VIEW`.
+- **`components.py`** — re-exports `depth_color` from `colors.py`.
+- **CI workflow** — added Python 3.13 to test matrix.
+
+---
 ## [1.2.0] — 2026-03-03
 
 ### Added
@@ -419,7 +470,8 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...HEAD
+[1.3.0]: https://github.com/razinkele/shiny_deckgl/compare/cd57ebf...HEAD
+[1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...cd57ebf
 [1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...3980562
 [1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562
 [1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e

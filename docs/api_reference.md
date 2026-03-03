@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.2.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.3.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -134,12 +134,21 @@ import shiny_deckgl as sdgl
   - [point\_cloud\_layer()](#point_cloud_layer)
   - [simple\_mesh\_layer()](#simple_mesh_layer)
   - [terrain\_layer()](#terrain_layer)
+- [Mesh Geometry Helpers (v1.3)](#mesh-geometry-helpers-v13)
+  - [custom\_geometry()](#custom_geometry)
+  - [COORDINATE\_SYSTEM](#coordinate_system)
+- [SHYFEM Parsers (v1.3)](#shyfem-parsers-v13)
+  - [parse\_shyfem\_grd()](#parse_shyfem_grd)
+  - [parse\_shyfem\_mesh()](#parse_shyfem_mesh)
+- [Demo Data Factories (v1.3)](#demo-data-factories-v13)
+- [IBM Visual Assets (v1.1)](#ibm-visual-assets-v11)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
   - [color\_range()](#color_range)
   - [color\_bins()](#color_bins)
   - [color\_quantiles()](#color_quantiles)
+  - [depth\_color()](#depth_color)
 - [Binary Data Transport](#binary-data-transport)
   - [encode\_binary\_attribute()](#encode_binary_attribute)
 - [View Helpers](#view-helpers)
@@ -1955,6 +1964,277 @@ Key kwargs: `elevationData` (URL template), `texture` (satellite/map tile URL), 
 
 ---
 
+## Mesh Geometry Helpers (v1.3)
+
+Helpers for building inline 3-D mesh geometry for `SimpleMeshLayer`.
+
+Importable from the top-level package or from `shiny_deckgl.layers`:
+
+```python
+from shiny_deckgl import custom_geometry, COORDINATE_SYSTEM
+```
+
+### `custom_geometry()`
+
+```python
+custom_geometry(
+    mesh_data: dict,
+    *,
+    position: list[float] | None = None,
+) -> dict
+```
+
+Build `simple_mesh_layer()` keyword arguments from parsed mesh geometry.
+
+Converts the output of `parse_shyfem_mesh()` (or any dict with `positions`, `normals`, `colors`, `indices`, `center`) into the kwargs expected by `simple_mesh_layer()`.  The JS runtime detects the `"@@CustomGeometry"` mesh marker and constructs a `luma.Geometry` from the inline vertex arrays.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `mesh_data` | *(required)* | Dict with keys `positions`, `normals`, `colors`, `indices`, `center` (as returned by `parse_shyfem_mesh()`). |
+| `position` | `None` | Override the coordinate origin `[lon, lat]`.  Defaults to `mesh_data["center"]`. |
+
+**Returns** a `dict` of kwargs: `data`, `mesh`, `_meshPositions`, `_meshNormals`, `_meshColors`, `_meshIndices`, `coordinateSystem`, `coordinateOrigin`, `sizeScale`, `getPosition`, `getColor`.
+
+```python
+from shiny_deckgl.parsers import parse_shyfem_mesh
+from shiny_deckgl import simple_mesh_layer, custom_geometry
+
+mesh = parse_shyfem_mesh("mesh.grd")
+lyr = simple_mesh_layer("my-mesh", **custom_geometry(mesh), pickable=True)
+```
+
+### `COORDINATE_SYSTEM`
+
+```python
+class COORDINATE_SYSTEM
+```
+
+deck.gl coordinate system constants.  Use with the `coordinateSystem` property on any layer.
+
+| Attribute | Value | Description |
+| --- | --- | --- |
+| `DEFAULT` | `-1` | Auto-detect based on data. |
+| `LNGLAT` | `1` | Positions as `[longitude, latitude]` (default for most layers). |
+| `METER_OFFSETS` | `2` | Positions in **metres** relative to a `coordinateOrigin`. |
+| `LNGLAT_OFFSETS` | `3` | Positions as `[longitude_offset, latitude_offset]`. |
+| `CARTESIAN` | `0` | Non-geographic pixel/unit coordinates. |
+
+```python
+simple_mesh_layer("mesh", data,
+                  coordinateSystem=COORDINATE_SYSTEM.METER_OFFSETS,
+                  coordinateOrigin=[21.07, 55.31])
+```
+
+---
+
+## SHYFEM Parsers (v1.3)
+
+Finite-element mesh parsers for SHYFEM `.grd` grid files.
+
+Importable from the top-level package or from `shiny_deckgl.parsers`:
+
+```python
+from shiny_deckgl import parse_shyfem_grd, parse_shyfem_mesh
+# or
+from shiny_deckgl.parsers import parse_shyfem_grd, parse_shyfem_mesh
+```
+
+> **Note:** If node X values exceed 100 000, coordinates are assumed to be in UTM Zone 33N (EPSG:32633) and `pyproj` is used for WGS84 conversion.  Install with: `micromamba install -n shiny pyproj`.
+
+### `parse_shyfem_grd()`
+
+```python
+parse_shyfem_grd(path: str | Path) -> list[dict]
+```
+
+Parse a SHYFEM `.grd` file and return **PolygonLayer-ready** data.
+
+Each element (triangle or quad) is converted to a closed polygon with a depth-mapped blue colour ramp.
+
+| Parameter | Description |
+| --- | --- |
+| `path` | Path to the `.grd` file. |
+
+**Returns** a list of dicts, each with keys:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `polygon` | `list[list[float]]` | Closed polygon coordinates `[[lon, lat], ...]`. |
+| `depth` | `float` | Element depth (metres). |
+| `element_id` | `int` | Mesh element identifier. |
+| `color` | `list[int]` | `[R, G, B, A]` depth-mapped colour. |
+| `layerType` | `str` | Always `"SHYFEM Mesh"`. |
+
+```python
+from shiny_deckgl import parse_shyfem_grd, layer
+data = parse_shyfem_grd("curonian.grd")
+lyr = layer("PolygonLayer", "mesh", data,
+            getFillColor="@@=color",
+            getPolygon="@@=polygon",
+            pickable=True)
+```
+
+### `parse_shyfem_mesh()`
+
+```python
+parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict
+```
+
+Parse a SHYFEM `.grd` file into **SimpleMeshLayer** geometry arrays.
+
+Vertex positions are in **metres** relative to the mesh centre, suitable for `COORDINATE_SYSTEM.METER_OFFSETS`.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `path` | *(required)* | Path to the `.grd` file. |
+| `z_scale` | `50.0` | Vertical exaggeration factor for depth. |
+
+**Returns** a dict with keys:
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `positions` | `list[float]` | Flat vertex positions `[x, y, z, ...]`. |
+| `normals` | `list[float]` | Flat per-vertex normals. |
+| `colors` | `list[float]` | Flat per-vertex colours (0–1 range). |
+| `indices` | `list[int]` | Flat triangle indices. |
+| `center` | `list[float]` | `[lon, lat]` mesh centre in WGS84. |
+| `n_vertices` | `int` | Total vertex count. |
+| `n_triangles` | `int` | Total triangle count. |
+| `depth_range` | `list[float]` | `[min_depth, max_depth]`. |
+
+```python
+from shiny_deckgl import parse_shyfem_mesh, simple_mesh_layer, custom_geometry
+mesh = parse_shyfem_mesh("curonian.grd", z_scale=100)
+lyr = simple_mesh_layer("fem", **custom_geometry(mesh))
+```
+
+---
+
+## Demo Data Factories (v1.3)
+
+Pre-built data generators for the demo app and quick prototyping.
+
+Importable from the top-level package:
+
+```python
+from shiny_deckgl import (
+    SHYFEM_VIEW,
+    make_h3_data, make_point_cloud_data,
+    make_shyfem_polygon_data, make_shyfem_mesh_data,
+)
+```
+
+### `SHYFEM_VIEW`
+
+```python
+SHYFEM_VIEW: dict
+```
+
+Default view state centred on the Curonian Lagoon (Lithuania):
+
+```python
+{"longitude": 21.07, "latitude": 55.31, "zoom": 9, "pitch": 0, "bearing": 0}
+```
+
+### `make_h3_data()`
+
+```python
+make_h3_data() -> list[dict]
+```
+
+Generate H3 hexagon demo data — 7 resolution-3 cells in the central Baltic.  Each dict has keys `hex`, `count`, `color`, `name`, `layerType`.
+
+### `make_point_cloud_data()`
+
+```python
+make_point_cloud_data() -> list[dict]
+```
+
+Generate synthetic 3-D point cloud around Baltic ports.  Each dict has keys `position` (`[lon, lat, z]`), `color`, `name`, `layerType`.
+
+### `make_shyfem_polygon_data()`
+
+```python
+make_shyfem_polygon_data(grd_path: str | None = None) -> list[dict]
+```
+
+Load a SHYFEM `.grd` as PolygonLayer data.  Falls back to simple bounding-box polygons around Baltic ports when `grd_path` is `None` or the file doesn't exist.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `grd_path` | `None` | Path to the `.grd` file. |
+
+### `make_shyfem_mesh_data()`
+
+```python
+make_shyfem_mesh_data(grd_path: str | None = None, z_scale: float = 50.0) -> dict | None
+```
+
+Load a SHYFEM `.grd` as SimpleMeshLayer geometry arrays.  Returns `None` when `grd_path` is `None` or the file doesn't exist.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `grd_path` | `None` | Path to the `.grd` file. |
+| `z_scale` | `50.0` | Vertical exaggeration factor. |
+
+---
+
+## IBM Visual Assets (v1.1)
+
+Colour palette, sprite-sheet atlas, and icon mapping for individual-based model (IBM) visualisations.
+
+Importable from the top-level package or from `shiny_deckgl.ibm`:
+
+```python
+from shiny_deckgl import SPECIES_COLORS, ICON_ATLAS, ICON_MAPPING
+```
+
+### `SPECIES_COLORS`
+
+```python
+SPECIES_COLORS: dict[str, list[int]]
+```
+
+RGBA colours per species for consistent rendering across layers.
+
+| Key | Colour | RGBA |
+| --- | --- | --- |
+| `"Grey seal"` | Slate grey | `[100, 100, 100, 220]` |
+| `"Ringed seal"` | Icy blue | `[70, 140, 220, 220]` |
+| `"Harbour seal"` | Sandy brown | `[180, 140, 80, 220]` |
+
+### `ICON_ATLAS`
+
+```python
+ICON_ATLAS: str
+```
+
+Base64-encoded data-URI of a 192×64 SVG sprite sheet containing three seal silhouettes (Grey, Ringed, Harbour).  Pass as `iconAtlas` to `icon_layer()` or the `_tripsHeadIcons` option.
+
+### `ICON_MAPPING`
+
+```python
+ICON_MAPPING: dict[str, dict]
+```
+
+deck.gl icon-mapping dict keyed by species name.  Each value specifies `x`, `y`, `width`, `height`, and `anchorY` within the `ICON_ATLAS` sprite sheet.
+
+| Key | x | y | width | height | anchorY |
+| --- | --- | --- | --- | --- | --- |
+| `"Grey seal"` | 0 | 0 | 64 | 64 | 32 |
+| `"Ringed seal"` | 64 | 0 | 64 | 64 | 32 |
+| `"Harbour seal"` | 128 | 0 | 64 | 64 | 32 |
+
+```python
+from shiny_deckgl import icon_layer, ICON_ATLAS, ICON_MAPPING
+lyr = icon_layer("seals", data,
+                 iconAtlas=ICON_ATLAS,
+                 iconMapping=ICON_MAPPING,
+                 getIcon="@@=species")
+```
+
+---
+
 ## Basemap & Control Constants
 
 ### Basemap Styles
@@ -2216,6 +2496,34 @@ color_quantiles(
 Map each value to a colour using **quantile-based** bins (each bin contains approximately the same number of values).
 
 Returns one `[R, G, B, A]` per input value.
+
+### `depth_color()`
+
+```python
+depth_color(
+    elevation: float,
+    max_depth: float = 459.0,
+    alpha: int = 210,
+) -> list[int]
+```
+
+Map an elevation / depth value to a blue-gradient RGBA colour.
+
+Produces a smooth dark-blue-to-teal ramp suitable for bathymetric visualisations.  At `elevation=0` the colour is a pale teal `[50, 180, 120, α]`; at `max_depth` it is a deep navy `[10, 60, 255, α]`.
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `elevation` | *(required)* | The depth or elevation value (0 = shallowest). |
+| `max_depth` | `459.0` | Reference maximum depth for normalisation (roughly the Baltic Sea's Landsort Deep). |
+| `alpha` | `210` | Alpha channel (0–255). |
+
+**Returns** `[R, G, B, A]`.
+
+```python
+from shiny_deckgl import depth_color
+shallow = depth_color(10)   # pale teal
+deep    = depth_color(400)  # deep navy
+```
 
 ---
 
@@ -2962,7 +3270,7 @@ The package installs a `shiny_deckgl-demo` console script:
 shiny_deckgl-demo
 ```
 
-This launches the built-in demo app centred on the Baltic Sea with 11 tabs
+This launches the built-in demo app centred on the Baltic Sea with 10 tabs
 showcasing all features: scatter layers, WMS, controls, drawing tools,
 markers, popups, terrain, extensions, clustering, lighting, effects,
 IBM trips animation, and a Layer Gallery of all 24 layer helpers.

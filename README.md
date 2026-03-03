@@ -127,6 +127,18 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.3.0 — Mesh Parsers, Colour Scales & Library Extraction
+
+| Capability | Details |
+| --- | --- |
+| **`parsers.py` module** | `parse_shyfem_grd()` and `parse_shyfem_mesh()` — parse SHYFEM `.grd` finite-element meshes into deck.gl layer-ready data. Auto-detects UTM Zone 33N → WGS84 projection. |
+| **`custom_geometry()`** | Helper to convert parsed mesh geometry into `simple_mesh_layer()` kwargs with inline `luma.Geometry` vertex arrays. |
+| **`COORDINATE_SYSTEM`** | Enum-style constants mirroring deck.gl's coordinate systems: `DEFAULT`, `LNGLAT`, `METER_OFFSETS`, `LNGLAT_OFFSETS`, `CARTESIAN`. |
+| **`depth_color()`** | Bathymetric blue-gradient RGBA colour function with configurable max depth and alpha. |
+| **Colour Scales tab** | Demo Tab 4 — interactive palette picker (5 palettes × 3 modes), swatch preview, statistics, code examples, and live-coloured bathymetry map. |
+| **Demo data factories** | 7 gallery data factories, fish species colours, SHYFEM helpers, and legend metadata extracted from `app.py` into reusable library modules. |
+| **Demo refactored** | 10 tabs (was 9); inline helpers extracted into `_demo_data.py`, `_demo_css.py`, `_version.py`, `colors.py`. |
+
 ### v1.0.0 — Extensions, Clusters & Modular Architecture
 
 | Capability | Details |
@@ -322,7 +334,8 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/_transitions.py` | `transition()` helper for layer property animations. |
 | `src/shiny_deckgl/components.py` | Backward-compatible re-export shim (imports from split modules). |
 | `src/shiny_deckgl/effects.py` | Effect helpers: `lighting_effect()`, `post_process_effect()`, and 4 light-source factories. |
-| `src/shiny_deckgl/app.py` | Demo `app` instance — 11-tab sidebar UI showcasing all features. |
+| `src/shiny_deckgl/parsers.py` | SHYFEM `.grd` mesh parsers: `parse_shyfem_grd()` (PolygonLayer data) and `parse_shyfem_mesh()` (SimpleMeshLayer geometry). |
+| `src/shiny_deckgl/app.py` | Demo `app` instance — 10-tab sidebar UI showcasing all features. |
 | `src/shiny_deckgl/ui.py` | `head_includes()` — injects pinned CDN scripts and local JS/CSS. |
 | `src/shiny_deckgl/_cdn.py` | CDN URL constants — single source of truth for all external asset URLs. |
 | `src/shiny_deckgl/_version.py` | Package version — single source of truth. |
@@ -333,6 +346,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
+| `src/shiny_deckgl/Sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
 | `tests/test_basic.py` | 1 051 unit tests covering all features. |
 
 ## Running Tests

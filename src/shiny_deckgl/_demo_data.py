@@ -5,12 +5,15 @@ Baltic Sea ports, shipping routes, MPA GeoJSON, and WMS layer definitions.
 
 from __future__ import annotations
 
+import base64 as _b64
 import functools
 import json
 import random
+import zlib as _zlib
 from pathlib import Path
+from typing import Any, cast
 
-from .components import (
+from .colors import (
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,
@@ -181,11 +184,42 @@ def _fetch_wms_layer_choices() -> dict[str, str]:
             title = layer.title or name
             choices[name] = f"{title}  [{name}]"
         return choices
-    except Exception:  # noqa: BLE001 — network/parse failures
+    except ImportError:
+        # owslib not installed -> fallback list (no warning needed)
+        return _WMS_LAYER_FALLBACK
+    except (TimeoutError, ConnectionError, OSError) as e:
+        # Network failure -> fallback list with warning
+        import logging
+        logging.getLogger(__name__).debug("WMS network error: %s", e)
+        return _WMS_LAYER_FALLBACK
+    except Exception as e:
+        # XML parse errors, unexpected owslib errors, etc.
+        import logging
+        logging.getLogger(__name__).warning("Failed to fetch WMS: %s", e)
         return _WMS_LAYER_FALLBACK
 
 
-WMS_LAYER_CHOICES = _fetch_wms_layer_choices()
+_WMS_LAYER_CHOICES_CACHE: dict[str, str] | None = None
+
+
+def get_wms_layer_choices() -> dict[str, str]:
+    """Return WMS layer choices, fetching from EMODnet on first call.
+
+    The network request is deferred from import time to the first
+    invocation, avoiding a 10-second timeout when the module is
+    imported without network access.
+    """
+    global _WMS_LAYER_CHOICES_CACHE
+    if _WMS_LAYER_CHOICES_CACHE is None:
+        _WMS_LAYER_CHOICES_CACHE = _fetch_wms_layer_choices()
+    return _WMS_LAYER_CHOICES_CACHE
+
+
+# Backward-compatible alias — existing code referencing the module-level
+# constant ``WMS_LAYER_CHOICES`` will now get a lazy wrapper.  Direct
+# dict usage (iteration, .get, .items, etc.) still works because the
+# underlying object is a real dict once resolved.
+WMS_LAYER_CHOICES = _WMS_LAYER_FALLBACK  # fast static default; call get_wms_layer_choices() for live data
 
 # ---------------------------------------------------------------------------
 # Lookup dicts for basemaps and palettes
@@ -241,6 +275,7 @@ def port_by_name(name: str) -> dict:
     return next(p for p in PORTS if p["name"] == name)
 
 
+@functools.lru_cache(maxsize=32)
 def make_arc_data() -> list[dict]:
     """Build arc data from routes (using first/last waypoints)."""
     arcs = []
@@ -258,19 +293,21 @@ def make_arc_data() -> list[dict]:
     return arcs
 
 
+@functools.lru_cache(maxsize=32)
 def make_heatmap_points(n: int = 300) -> list[list[float]]:
     """Generate random observation points clustered around Baltic ports."""
     random.seed(42)
     pts: list[list[float]] = []
     for _ in range(n):
         port = random.choice(PORTS)
-        lon = port["lon"] + random.gauss(0, 1.5)
-        lat = port["lat"] + random.gauss(0, 0.8)
+        lon = float(port["lon"]) + random.gauss(0, 1.5)
+        lat = float(port["lat"]) + random.gauss(0, 0.8)
         weight = random.uniform(1, 10)
         pts.append([lon, lat, weight])
     return pts
 
 
+@functools.lru_cache(maxsize=32)
 def make_path_data() -> list[dict]:
     """Build path data — polylines using actual route waypoints."""
     paths = []
@@ -285,6 +322,7 @@ def make_path_data() -> list[dict]:
     return paths
 
 
+@functools.lru_cache(maxsize=32)
 def make_port_data_simple() -> list[dict]:
     """Port data for events / advanced maps (no dynamic colours)."""
     return [
@@ -298,6 +336,7 @@ def make_port_data_simple() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_port_geojson() -> dict:
     """Convert port data to a GeoJSON FeatureCollection (for native layers)."""
     features = []
@@ -317,6 +356,7 @@ def make_port_geojson() -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+@functools.lru_cache(maxsize=32)
 def make_trips_data(loop_length: int = 1800) -> list[dict]:
     """Build TripsLayer data from Baltic shipping routes.
 
@@ -327,12 +367,12 @@ def make_trips_data(loop_length: int = 1800) -> list[dict]:
     """
     trips: list[dict] = []
     for r in ROUTES:
-        wps = r["waypoints"]
+        wps = cast(list[list[float]], r["waypoints"])
         n = len(wps)
         if n < 2:
             continue
         timestamps = [int(i * loop_length / (n - 1)) for i in range(n)]
-        path = [[wp[0], wp[1], ts] for wp, ts in zip(wps, timestamps)]
+        path = [[float(wp[0]), float(wp[1]), ts] for wp, ts in zip(wps, timestamps)]
         trips.append({
             "path": path,
             "timestamps": timestamps,
@@ -370,6 +410,7 @@ SAMPLE_STUDY_AREA = {
 # 3-D visualisation data — Baltic Sea bathymetry & marine observations
 # ---------------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=32)
 def make_bathymetry_grid(
     cols: int = 30,
     rows: int = 20,
@@ -437,6 +478,7 @@ def make_bathymetry_grid(
     return points
 
 
+@functools.lru_cache(maxsize=32)
 def make_fish_observations(n: int = 80) -> list[dict]:
     """Generate synthetic fish / marine species depth observations.
 
@@ -482,6 +524,7 @@ def make_fish_observations(n: int = 80) -> list[dict]:
     return obs
 
 
+@functools.lru_cache(maxsize=32)
 def make_bathymetry_geojson(cols: int = 15, rows: int = 10) -> dict:
     """Generate a GeoJSON FeatureCollection of bathymetry point features.
 
@@ -511,6 +554,7 @@ def make_bathymetry_geojson(cols: int = 15, rows: int = 10) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+@functools.lru_cache(maxsize=32)
 def make_3d_arc_data() -> list[dict]:
     """Build 3-D arc data where source/target have altitude (z) components.
 
@@ -520,12 +564,12 @@ def make_3d_arc_data() -> list[dict]:
     """
     arcs = []
     for r in ROUTES:
-        wp = r["waypoints"]
+        wp = cast(list[list[float]], r["waypoints"])
         # Height proportional to route length (longer = higher arc)
         alt = len(wp) * 500.0
         arcs.append({
-            "sourcePosition": [wp[0][0], wp[0][1], 0],
-            "targetPosition": [wp[-1][0], wp[-1][1], 0],
+            "sourcePosition": [float(wp[0][0]), float(wp[0][1]), 0],
+            "targetPosition": [float(wp[-1][0]), float(wp[-1][1]), 0],
             "sourceColor": r["color"],
             "targetColor": r["color"],
             "name": f"{r['from']} → {r['to']}",
@@ -576,6 +620,7 @@ SHYFEM_VIEW = {
 # Layer gallery data factory helpers
 # ---------------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=32)
 def make_h3_data() -> list[dict]:
     """Generate H3 hexagon demo data (7 resolution-3 cells in central Baltic)."""
     _h3_palette = [
@@ -600,6 +645,7 @@ def make_h3_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_point_cloud_data() -> list[dict]:
     """Generate synthetic 3-D point cloud around Baltic ports."""
     import math as _math
@@ -609,9 +655,9 @@ def make_point_cloud_data() -> list[dict]:
             _angle = _j * _math.pi * 2 / 20
             pts.append({
                 "position": [
-                    _p["lon"] + 0.05 * _math.cos(_angle),
-                    _p["lat"] + 0.03 * _math.sin(_angle),
-                    _p["cargo_mt"] * 50 + _j * 100,
+                    float(_p["lon"]) + 0.05 * _math.cos(_angle),
+                    float(_p["lat"]) + 0.03 * _math.sin(_angle),
+                    float(_p["cargo_mt"]) * 50 + _j * 100,
                 ],
                 "color": [200, 100 + _j * 5, 50],
                 "name": _p["name"],
@@ -620,6 +666,7 @@ def make_point_cloud_data() -> list[dict]:
     return pts
 
 
+@functools.lru_cache(maxsize=32)
 def make_shyfem_polygon_data(grd_path: str | None = None) -> list[dict]:
     """Load SHYFEM .grd as PolygonLayer data (with fallback to port boxes).
 
@@ -637,10 +684,10 @@ def make_shyfem_polygon_data(grd_path: str | None = None) -> list[dict]:
     return [
         {
             "polygon": [
-                [p["lon"] - 0.3, p["lat"] - 0.15],
-                [p["lon"] + 0.3, p["lat"] - 0.15],
-                [p["lon"] + 0.3, p["lat"] + 0.15],
-                [p["lon"] - 0.3, p["lat"] + 0.15],
+                [float(p["lon"]) - 0.3, float(p["lat"]) - 0.15],
+                [float(p["lon"]) + 0.3, float(p["lat"]) - 0.15],
+                [float(p["lon"]) + 0.3, float(p["lat"]) + 0.15],
+                [float(p["lon"]) - 0.3, float(p["lat"]) + 0.15],
             ],
             "name": p["name"],
             "depth": 0,
@@ -650,6 +697,7 @@ def make_shyfem_polygon_data(grd_path: str | None = None) -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_shyfem_mesh_data(
     grd_path: str | None = None,
     z_scale: float = 50.0,
@@ -685,8 +733,6 @@ def make_shyfem_mesh_data(
 # (emodnet:mean layer, GetFeatureInfo on a 43×27 grid).  1 = sea, 0 = land.
 # See https://ows.emodnet-bathymetry.eu/wms for the source WMS.
 # ---------------------------------------------------------------------------
-import base64 as _b64
-import zlib as _zlib
 
 _SEA_MASK_B64 = (
     "eJwdjSESQjEMRF+JKO5b/gxDr4DE/Rv88zCY9mCIOBxnqEOCrGB+SIjYye5mN+CzD9jN"
@@ -699,8 +745,14 @@ _SEA_LAT_MIN, _SEA_LAT_MAX = 53.0, 66.0
 _SEA_RES = 0.5  # degrees
 
 
+@functools.lru_cache(maxsize=1)
 def _load_sea_mask():
-    """Decode the embedded sea mask into a 2-D numpy-like list of lists."""
+    """Decode the embedded sea mask into a 2-D list of lists.
+
+    This may be moderately expensive due to base64/zlib decoding, so it
+    is cached.  The public accessor :func:`_get_sea_mask` allows the
+    mask to be loaded lazily on first use instead of at import time.
+    """
     raw = _zlib.decompress(_b64.b64decode(_SEA_MASK_B64))
     bits: list[int] = []
     for byte in raw:
@@ -708,14 +760,23 @@ def _load_sea_mask():
             bits.append((byte >> bit) & 1)
     total = _SEA_GRID_SHAPE[0] * _SEA_GRID_SHAPE[1]
     flat = bits[:total]
-    grid = []
+    grid: list[list[int]] = []
     cols = _SEA_GRID_SHAPE[1]
     for r in range(_SEA_GRID_SHAPE[0]):
         grid.append(flat[r * cols : (r + 1) * cols])
     return grid
 
 
-_SEA_MASK: list[list[int]] = _load_sea_mask()
+# Internal cache placeholder; use :func:`_get_sea_mask` for access.
+_SEA_MASK: list[list[int]] | None = None
+
+
+def _get_sea_mask() -> list[list[int]]:
+    """Return the decoded sea mask, loading it lazily on demand."""
+    global _SEA_MASK
+    if _SEA_MASK is None:
+        _SEA_MASK = _load_sea_mask()
+    return _SEA_MASK
 
 
 def is_sea(lon: float, lat: float) -> bool:
@@ -732,7 +793,8 @@ def is_sea(lon: float, lat: float) -> bool:
     row = int(round((lat - _SEA_LAT_MIN) / _SEA_RES))
     col = max(0, min(col, _SEA_GRID_SHAPE[1] - 1))
     row = max(0, min(row, _SEA_GRID_SHAPE[0] - 1))
-    return _SEA_MASK[row][col] == 1
+    mask = _get_sea_mask()
+    return mask[row][col] == 1
 
 from .ibm import SPECIES_COLORS  # noqa: E402
 
@@ -768,6 +830,7 @@ _SEAL_TRIP_PARAMS: dict[str, dict] = {
 }
 
 
+@functools.lru_cache(maxsize=32)
 def make_seal_trips(
     n_seals: int = 25,
     loop_length: int = 600,
@@ -898,6 +961,7 @@ def make_seal_trips(
     return trips
 
 
+@functools.lru_cache(maxsize=32)
 def make_seal_haulout_data() -> list[dict]:
     """Build scatterplot data for haul-out sites with population sizing."""
     return [
@@ -913,6 +977,7 @@ def make_seal_haulout_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_seal_foraging_areas() -> dict:
     """Build GeoJSON polygons approximating foraging ranges around haul-outs.
 
@@ -945,6 +1010,7 @@ def make_seal_foraging_areas() -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+@functools.lru_cache(maxsize=32)
 def make_seal_haulout_icons() -> list[dict]:
     """Build IconLayer data for haul-out sites with species-specific icons.
 
@@ -993,6 +1059,10 @@ def _build_baltic_habitat(
 
     Foraging hotspots are placed as Gaussian patches centred on each
     haulout site, overlaid on a base sea value.
+
+    The original implementation used Python loops to sample ``is_sea``
+    for every cell; this version leverages numpy vectorisation which is
+    substantially quicker for high-resolution rasters.
     """
     import numpy as np
 
@@ -1007,12 +1077,16 @@ def _build_baltic_habitat(
     lats = np.linspace(lat_min, lat_max, ny)
     LON, LAT = np.meshgrid(lons, lats)
 
-    # Base habitat: look up sea mask cell for each raster pixel
+    # Vectorised sea mask lookup ------------------------------------------------
+    mask = np.array(_get_sea_mask(), dtype=bool)
+    # Map each raster cell to corresponding mask index
+    col_idx = np.clip(np.round((LON - lon_min) / _SEA_RES).astype(int), 0, _SEA_GRID_SHAPE[1] - 1)
+    row_idx = np.clip(np.round((LAT - lat_min) / _SEA_RES).astype(int), 0, _SEA_GRID_SHAPE[0] - 1)
+    sea_mask_arr = mask[row_idx, col_idx]
+
+    # Base habitat: assign 0.3 to sea cells
     habitat = np.zeros((ny, nx), dtype=np.float64)
-    for r in range(ny):
-        for c in range(nx):
-            if is_sea(lons[c], lats[r]):
-                habitat[r, c] = 0.3  # base sea value
+    habitat[sea_mask_arr] = 0.3
 
     # Add Gaussian foraging hotspots near each haulout
     for site in _SEAL_HAULOUT_SITES:
@@ -1024,14 +1098,9 @@ def _build_baltic_habitat(
         )
         habitat += patch
 
-    # Zero out land cells (mask)
-    for r in range(ny):
-        for c in range(nx):
-            if not is_sea(lons[c], lats[r]):
-                habitat[r, c] = 0.0
+    # Zero out land cells (mask) — already zero by construction
 
     # Normalize to [0, 1]
-    sea_mask_arr = habitat > 0
     if sea_mask_arr.any():
         hmax = habitat[sea_mask_arr].max()
         if hmax > 0:
@@ -1064,6 +1133,7 @@ def _get_baltic_habitat(resolution: float = 0.25) -> tuple:
     return _BALTIC_HABITAT_CACHE[resolution]
 
 
+@functools.lru_cache(maxsize=32)
 def make_seal_trips_ibm(
     n_seals: int = 25,
     sim_hours: int = 168,
@@ -1189,6 +1259,17 @@ def make_seal_trips_ibm(
             "hours_on_haulout", "current_site", "site_idx",
             "species", "speed_scale",
         )
+
+        # type annotations for mypy
+        xy: Any
+        energy: float
+        at_sea: bool
+        hours_since_haulout: float
+        hours_on_haulout: float
+        current_site: Any | None
+        site_idx: int
+        species: str
+        speed_scale: float
 
     agents: list = []
     for _ in range(n_seals):
@@ -1406,6 +1487,7 @@ def fish_species_color(species: str) -> list[int]:
 # Gallery data factories (Tab 1 — all 24 layer helpers)
 # ---------------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_port_data() -> list[dict]:
     """Ports formatted for ScatterplotLayer (gallery)."""
     return [
@@ -1420,6 +1502,7 @@ def make_gallery_port_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_arc_data() -> list[dict]:
     """Route endpoints for ArcLayer (gallery)."""
     return [
@@ -1433,6 +1516,7 @@ def make_gallery_arc_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_line_data() -> list[dict]:
     """Adjacent port pairs for LineLayer (gallery)."""
     return [
@@ -1450,6 +1534,7 @@ def make_gallery_line_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_path_data() -> list[dict]:
     """Route waypoints for PathLayer (gallery)."""
     return [
@@ -1463,6 +1548,7 @@ def make_gallery_path_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_text_data() -> list[dict]:
     """Port name labels for TextLayer (gallery)."""
     return [
@@ -1476,6 +1562,7 @@ def make_gallery_text_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_icon_data() -> list[dict]:
     """Port positions for IconLayer (gallery)."""
     return [
@@ -1488,6 +1575,7 @@ def make_gallery_icon_data() -> list[dict]:
     ]
 
 
+@functools.lru_cache(maxsize=32)
 def make_gallery_column_data() -> list[dict]:
     """Port cargo as 3-D columns for ColumnLayer (gallery)."""
     return [

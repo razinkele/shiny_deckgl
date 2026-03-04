@@ -3,6 +3,11 @@
   // Exposed on window for standalone HTML exports
   const mapInstances = window.__deckgl_instances = {};
 
+  // Polyfill for structuredClone (Safari < 15.4, older browsers)
+  const deepClone = typeof structuredClone === 'function'
+    ? structuredClone
+    : function (obj) { return JSON.parse(JSON.stringify(obj)); };
+
   // -----------------------------------------------------------------------
   // Tooltip helper
   // -----------------------------------------------------------------------
@@ -21,6 +26,17 @@
     return el;
   }
 
+  // HTML-escape a string to prevent XSS when interpolating user data into tooltips
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function interpolateTemplate(template, obj) {
     if (!template || !obj) return '';
     return template.replace(/\{(\w+(?:\.\w+)*)\}/g, function (_match, path) {
@@ -29,7 +45,8 @@
         if (val == null) return '';
         val = val[key];
       }
-      return val != null ? val : '';
+      // HTML-escape interpolated values to prevent XSS attacks
+      return escapeHtml(val);
     });
   }
 
@@ -37,7 +54,7 @@
   // DeckLegendControl — custom legend for deck.gl overlay layers
   //
   // Implements the MapLibre IControl interface (onAdd / onRemove).
-  // Reads entries from the user-provided config, supports colour swatches,
+  // Reads entries from the user-provided config, supports color swatches,
   // visibility checkboxes, and a collapsible panel.
   // -----------------------------------------------------------------------
   class DeckLegendControl {
@@ -239,7 +256,7 @@
       case 'legend':
         if (typeof MaplibreLegendControl !== 'undefined' &&
             MaplibreLegendControl.MaplibreLegendControl) {
-          var targets = opts.targets || {};
+          const targets = opts.targets || {};
           delete opts.targets;
           return new MaplibreLegendControl.MaplibreLegendControl(targets, opts);
         }
@@ -320,7 +337,7 @@
     if (mapboxApiKey) {
       mapOpts.transformRequest = function(url, resourceType) {
         if (url.indexOf('mapbox') !== -1 && url.indexOf('access_token') === -1) {
-          var sep = url.indexOf('?') === -1 ? '?' : '&';
+          const sep = url.indexOf('?') === -1 ? '?' : '&';
           return { url: url + sep + 'access_token=' + mapboxApiKey };
         }
       };
@@ -330,7 +347,7 @@
     // Apply initial controller setting from data attribute
     if (el.dataset.controller !== undefined) {
       try {
-        var ctrlVal = JSON.parse(el.dataset.controller);
+        const ctrlVal = JSON.parse(el.dataset.controller);
         if (ctrlVal === false) {
           map.dragPan.disable();
           map.scrollZoom.disable();
@@ -348,18 +365,18 @@
     // When the attribute is present (even as "[]") honour it exactly;
     // only fall back to a default NavigationControl when the attribute
     // is absent (i.e. the widget was constructed with controls=None).
-    var controlsConfig = [];
+    let controlsConfig = [];
     if (el.dataset.controls !== undefined) {
       try { controlsConfig = JSON.parse(el.dataset.controls); } catch (_) {}
     } else {
       controlsConfig = [{ type: 'navigation', position: 'top-right' }];
     }
 
-    var initialControls = {};
+    const initialControls = {};
     controlsConfig.forEach(function (cfg) {
-      var ctrl = createControl(cfg.type, cfg.options || {});
+      const ctrl = createControl(cfg.type, cfg.options || {});
       if (ctrl) {
-        var pos = cfg.position || 'top-right';
+        const pos = cfg.position || 'top-right';
         map.addControl(ctrl, pos);
         initialControls[cfg.type] = { control: ctrl, position: pos };
       }
@@ -367,8 +384,8 @@
 
     // Send view state back to Shiny on every meaningful camera move
     map.on('moveend', function () {
-      var center = map.getCenter();
-      var bounds = map.getBounds();
+      const center = map.getCenter();
+      const bounds = map.getBounds();
       Shiny.setInputValue(mapId + '_view_state', {
         longitude: center.lng,
         latitude: center.lat,
@@ -400,7 +417,7 @@
       }, { priority: "event" });
     });
 
-    var interleavedMode = el.dataset.interleaved === 'true';
+    const interleavedMode = el.dataset.interleaved === 'true';
     const overlay = new deck.MapboxOverlay({
       interleaved: interleavedMode,
       layers: [],
@@ -409,9 +426,9 @@
       // Without this, the overlay silently consumes the change and MapLibre
       // overwrites it on the next render frame.
       onViewStateChange: function (params) {
-        var vs = params.viewState;
+        const vs = params.viewState;
         if (!vs) return;
-        var opts = {
+        const opts = {
           center: [vs.longitude, vs.latitude],
           zoom: vs.zoom,
           bearing: vs.bearing || 0,
@@ -427,7 +444,7 @@
     });
 
     // Apply initial deck-level props from data attributes
-    var initialDeckProps = {};
+    const initialDeckProps = {};
     if (el.dataset.pickingRadius) {
       initialDeckProps.pickingRadius = parseInt(el.dataset.pickingRadius, 10) || 0;
     }
@@ -457,6 +474,25 @@
       // TripsLayer animation state (v0.9.0)
       tripsAnimation: null     // {rafId, loopLength, speed, startedAt}
     };
+
+    // Dismiss tooltip when the cursor is over empty map space.
+    // Per-layer onHover only fires while the pointer is near that layer's
+    // features; once it moves away, deck.gl stops firing and the tooltip
+    // can get stuck.  This map-level listener catches every mouse move and
+    // hides the tooltip when deck.gl picking finds nothing underneath.
+    map.on('mousemove', function (e) {
+      const inst = mapInstances[mapId];
+      if (!inst || !inst.tooltipConfig || !inst.tooltipConfig.html) return;
+      const result = overlay.pickObject({
+        x: e.point.x,
+        y: e.point.y,
+        radius: 0,
+      });
+      if (!result || !result.object) {
+        const tooltipEl = document.getElementById(mapId + '__tooltip');
+        if (tooltipEl) tooltipEl.style.display = 'none';
+      }
+    });
   }
 
   // Initialize all deckgl-map divs on page load inside shiny
@@ -541,19 +577,24 @@
   };
 
   function resolveBinaryAttributes(layerProps) {
-    var binaryAttrs = {};
-    var hasBinary = false;
+    const binaryAttrs = {};
+    let hasBinary = false;
     for (const key of Object.keys(layerProps)) {
       const val = layerProps[key];
       if (val && typeof val === 'object' && val['@@binary']) {
-        const ArrayCtor = TYPED_ARRAY_MAP[val.dtype] || Float32Array;
-        const raw = atob(val.value);
-        const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        const typed = new ArrayCtor(bytes.buffer);
-        binaryAttrs[key] = { value: typed, size: val.size || 1 };
-        delete layerProps[key];
-        hasBinary = true;
+        try {
+          const ArrayCtor = TYPED_ARRAY_MAP[val.dtype] || Float32Array;
+          const raw = atob(val.value);
+          const bytes = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          const typed = new ArrayCtor(bytes.buffer);
+          binaryAttrs[key] = { value: typed, size: val.size || 1 };
+          delete layerProps[key];
+          hasBinary = true;
+        } catch (err) {
+          console.warn('[shiny_deckgl] Failed to decode binary attribute "' + key + '":', err);
+          delete layerProps[key];  // Remove corrupted attribute to prevent further errors
+        }
       }
     }
     // deck.gl v9 requires binary attributes in data.attributes
@@ -563,8 +604,8 @@
       }
       if (typeof layerProps.data.length === 'undefined') {
         // Infer length from first binary attribute
-        var firstKey = Object.keys(binaryAttrs)[0];
-        var attr = binaryAttrs[firstKey];
+        const firstKey = Object.keys(binaryAttrs)[0];
+        const attr = binaryAttrs[firstKey];
         layerProps.data.length = attr.value.length / (attr.size || 1);
       }
       layerProps.data.attributes = Object.assign(
@@ -632,17 +673,17 @@
   function buildWidgets(widgetSpecs, targetId) {
     if (!widgetSpecs || !widgetSpecs.length) return undefined;
     // Resolve the map container element so FullscreenWidget can target it
-    var containerEl = targetId ? document.getElementById(targetId) : null;
+    const containerEl = targetId ? document.getElementById(targetId) : null;
     return widgetSpecs.map(spec => {
-      var className = spec['@@widgetClass'];
+      const className = spec['@@widgetClass'];
       if (!className) return null;
-      var props = Object.assign({}, spec);
+      const props = Object.assign({}, spec);
       delete props['@@widgetClass'];
       // FullscreenWidget must target the map container, not the deck canvas
       if (className === 'FullscreenWidget' && containerEl && !props.container) {
         props.container = containerEl;
       }
-      var Cls = deck[className] || deck['_' + className];
+      const Cls = deck[className] || deck['_' + className];
       if (!Cls) {
         console.warn('[shiny_deckgl] Unknown widget: ' + className);
         return null;
@@ -654,7 +695,7 @@
   // -----------------------------------------------------------------------
   // Built-in easing functions for layer transitions (v0.8.0)
   // -----------------------------------------------------------------------
-  var EASINGS = {
+  const EASINGS = {
     'ease-in-cubic': function(t) { return t * t * t; },
     'ease-out-cubic': function(t) { return 1 - Math.pow(1 - t, 3); },
     'ease-in-out-cubic': function(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; },
@@ -691,8 +732,8 @@
 
       // Resolve @@easing in transitions specs (v0.8.0)
       if (layerProps.transitions) {
-        for (var prop in layerProps.transitions) {
-          var tSpec = layerProps.transitions[prop];
+        for (const prop in layerProps.transitions) {
+          const tSpec = layerProps.transitions[prop];
           if (tSpec && tSpec['@@easing']) {
             tSpec.easing = EASINGS[tSpec['@@easing']] || function(t) { return t; };
             delete tSpec['@@easing'];
@@ -828,7 +869,7 @@
           const urlTemplate = layerProps.data;
           layerProps.getTileData = function (tile) {
             const { west, south, east, north } = tile.bbox;
-            var bboxStr;
+            let bboxStr;
             if (epsg === '3857') {
               bboxStr = [
                 lonToMercX(west), latToMercY(south),
@@ -838,11 +879,11 @@
               // EPSG:4326 or other geographic CRS — use lon/lat directly
               bboxStr = [west, south, east, north].join(',');
             }
-            var url = urlTemplate.replace(WMS_BBOX_RE, bboxStr);
+            const url = urlTemplate.replace(WMS_BBOX_RE, bboxStr);
             return fetch(url, { signal: tile.signal })
               .then(function (r) {
                 if (!r.ok) return null;
-                var ct = (r.headers.get('content-type') || '').toLowerCase();
+                const ct = (r.headers.get('content-type') || '').toLowerCase();
                 // WMS servers may return XML errors with 200 status
                 if (ct.indexOf('xml') !== -1 || ct.indexOf('text') !== -1) return null;
                 return r.blob();
@@ -880,21 +921,21 @@
    * with { position, color, icon } for rendering as an IconLayer.
    */
   function interpolateTripHeads(tripsData, currentTime, iconField) {
-    var heads = [];
-    for (var i = 0; i < tripsData.length; i++) {
-      var trip = tripsData[i];
-      var path = trip.path;
+    const heads = [];
+    for (let i = 0; i < tripsData.length; i++) {
+      const trip = tripsData[i];
+      const path = trip.path;
       if (!path || path.length < 2) continue;
 
-      var pos = null;
-      var angle = 0; // degrees for deck.gl getAngle (billboard:false)
-      for (var j = 0; j < path.length - 1; j++) {
-        var t0 = path[j][2];
-        var t1 = path[j + 1][2];
+      let pos = null;
+      let angle = 0; // degrees for deck.gl getAngle (billboard:false)
+      for (let j = 0; j < path.length - 1; j++) {
+        const t0 = path[j][2];
+        const t1 = path[j + 1][2];
         if (currentTime >= t0 && currentTime <= t1) {
-          var frac = (t1 !== t0) ? (currentTime - t0) / (t1 - t0) : 0;
-          var dx = path[j + 1][0] - path[j][0];
-          var dy = path[j + 1][1] - path[j][1];
+          const frac = (t1 !== t0) ? (currentTime - t0) / (t1 - t0) : 0;
+          const dx = path[j + 1][0] - path[j][0];
+          const dy = path[j + 1][1] - path[j][1];
           pos = [
             path[j][0] + dx * frac,
             path[j][1] + dy * frac,
@@ -918,15 +959,15 @@
         if (currentTime <= path[0][2]) {
           pos = [path[0][0], path[0][1]];
           if (path.length >= 2) {
-            var dx0 = path[1][0] - path[0][0];
-            var dy0 = path[1][1] - path[0][1];
+            const dx0 = path[1][0] - path[0][0];
+            const dy0 = path[1][1] - path[0][1];
             angle = Math.atan2(dy0, dx0) * 180 / Math.PI;
           }
         } else {
-          var last = path[path.length - 1];
+          const last = path[path.length - 1];
           pos = [last[0], last[1]];
           if (path.length >= 2) {
-            var prev = path[path.length - 2];
+            const prev = path[path.length - 2];
             angle = Math.atan2(last[1] - prev[1], last[0] - prev[0]) * 180 / Math.PI;
           }
         }
@@ -946,12 +987,12 @@
     // Stop any running animation first
     stopTripsAnimation(instance);
 
-    var layersData = instance.lastLayers;
-    var tripsConfigs = [];     // {index, loopLength, speed, headIcons?}
-    for (var i = 0; i < layersData.length; i++) {
-      var lp = layersData[i];
+    const layersData = instance.lastLayers;
+    const tripsConfigs = [];     // {index, loopLength, speed, headIcons?}
+    for (let i = 0; i < layersData.length; i++) {
+      const lp = layersData[i];
       if (lp.type === 'TripsLayer' && lp._tripsAnimation) {
-        var cfg = {
+        const cfg = {
           index: i,
           loopLength: lp._tripsAnimation.loopLength || 1800,
           speed: lp._tripsAnimation.speed || 1,
@@ -965,33 +1006,33 @@
     if (tripsConfigs.length === 0) return;
 
     // Preserve accumulated time when resuming from a pause
-    var timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
+    const timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
                        ? instance.tripsAnimation.pausedAt : 0;
-    var startedAt = performance.now();
+    const startedAt = performance.now();
     function tick() {
-      var elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
+      const elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
       // Update currentTime on each TripsLayer
-      for (var c = 0; c < tripsConfigs.length; c++) {
-        var cfg = tripsConfigs[c];
-        var t = (elapsed * cfg.speed) % cfg.loopLength;
+      for (let c = 0; c < tripsConfigs.length; c++) {
+        const cfg = tripsConfigs[c];
+        const t = (elapsed * cfg.speed) % cfg.loopLength;
         layersData[cfg.index].currentTime = t;
       }
 
       // Re-build and push layers
-      var deckLayers = buildDeckLayers(
-        JSON.parse(JSON.stringify(layersData)),
+      const deckLayers = buildDeckLayers(
+        deepClone(layersData),
         targetId,
         instance.tooltipConfig
       );
 
       // Append head-icon layers for TripsLayers with _tripsHeadIcons
-      // Species-coloured SVG atlas — each silhouette has its own fill.
-      for (var c = 0; c < tripsConfigs.length; c++) {
-        var cfg = tripsConfigs[c];
+      // Species-colored SVG atlas — each silhouette has its own fill.
+      for (let c = 0; c < tripsConfigs.length; c++) {
+        const cfg = tripsConfigs[c];
         if (!cfg.headIcons) continue;
-        var lp = layersData[cfg.index];
-        var hi = cfg.headIcons;
-        var heads = interpolateTripHeads(
+        const lp = layersData[cfg.index];
+        const hi = cfg.headIcons;
+        const heads = interpolateTripHeads(
           lp.data, lp.currentTime, hi.iconField || 'species'
         );
         if (heads.length > 0) {
@@ -1021,14 +1062,18 @@
       instance.tripsAnimation.startedAt = startedAt;
       instance.tripsAnimation.timeOffset = timeOffset;
     }
-    instance.tripsAnimation = { rafId: requestAnimationFrame(tick), startedAt: startedAt, timeOffset: timeOffset };
+    // Initial kickoff (only runs once when animation starts)
+    instance.tripsAnimation = instance.tripsAnimation || {};
+    instance.tripsAnimation.rafId = requestAnimationFrame(tick);
+    instance.tripsAnimation.startedAt = startedAt;
+    instance.tripsAnimation.timeOffset = timeOffset;
   }
 
   function pauseTripsAnimation(instance) {
     if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
       cancelAnimationFrame(instance.tripsAnimation.rafId);
       // Compute accumulated elapsed time so we can resume from the same point
-      var accumulated = (performance.now() - instance.tripsAnimation.startedAt) / 1000
+      const accumulated = (performance.now() - instance.tripsAnimation.startedAt) / 1000
                       + (instance.tripsAnimation.timeOffset || 0);
       instance.tripsAnimation.rafId = null;
       instance.tripsAnimation.pausedAt = accumulated;
@@ -1092,7 +1137,7 @@
     const layersData = payload.layers || [];
     instance.lastLayers = layersData;
     const deckLayers = buildDeckLayers(
-      JSON.parse(JSON.stringify(layersData)),   // deep-clone to avoid mutating cache
+      deepClone(layersData),
       targetId,
       tooltipConfig
     );
@@ -1112,7 +1157,7 @@
     if (payload._animate !== undefined) overlayProps._animate = payload._animate;
 
     // Widgets (v0.8.0)
-    var widgets = buildWidgets(payload.widgets, targetId);
+    const widgets = buildWidgets(payload.widgets, targetId);
     if (widgets) overlayProps.widgets = widgets;
 
     overlay.setProps(overlayProps);
@@ -1123,15 +1168,71 @@
   });
 
   // -----------------------------------------------------------------------
+  // deck_partial_update — lightweight layer patch (merge into cached layers)
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_partial_update", function (payload) {
+    if (!payload || !payload.id) return;
+    const targetId = payload.id;
+    const instance = ensureInstance(targetId);
+    if (!instance) return;
+
+    const patches = payload.layers || [];
+    if (!patches.length) return;
+
+    // Build lookup of cached layers by id
+    const cached = instance.lastLayers || [];
+    const cacheMap = {};
+    cached.forEach(function (lp) { cacheMap[lp.id] = lp; });
+
+    // Merge each patch into cache: shallow-merge existing, append new
+    patches.forEach(function (patch) {
+      if (cacheMap[patch.id]) {
+        cacheMap[patch.id] = Object.assign({}, cacheMap[patch.id], patch);
+      } else {
+        cacheMap[patch.id] = patch;
+      }
+    });
+
+    // Rebuild ordered array (preserve original order, new layers at end)
+    const mergedIds = new Set();
+    const merged = [];
+    cached.forEach(function (lp) {
+      if (cacheMap[lp.id]) {
+        merged.push(cacheMap[lp.id]);
+        mergedIds.add(lp.id);
+      }
+    });
+    patches.forEach(function (patch) {
+      if (!mergedIds.has(patch.id)) {
+        merged.push(cacheMap[patch.id]);
+        mergedIds.add(patch.id);
+      }
+    });
+
+    instance.lastLayers = merged;
+
+    const deckLayers = buildDeckLayers(
+      deepClone(merged),
+      targetId,
+      instance.tooltipConfig
+    );
+    instance.overlay.setProps({ layers: deckLayers });
+    instance.map.triggerRepaint();
+
+    // Restart TripsLayer animation if patched layers include one (v0.9.0)
+    startTripsAnimation(instance, targetId);
+  });
+
+  // -----------------------------------------------------------------------
   // deck_trips_control — pause / resume / reset TripsLayer animation
   // -----------------------------------------------------------------------
   // payload: { id: "map_id", action: "pause" | "resume" | "reset" }
   Shiny.addCustomMessageHandler("deck_trips_control", function (payload) {
     if (!payload || !payload.id) return;
-    var targetId = payload.id;
-    var instance = mapInstances[targetId];
+    const targetId = payload.id;
+    const instance = mapInstances[targetId];
     if (!instance) return;
-    var action = payload.action || 'pause';
+    const action = payload.action || 'pause';
 
     if (action === 'pause') {
       pauseTripsAnimation(instance);
@@ -1150,9 +1251,9 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_widgets", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
-    var widgets = buildWidgets(payload.widgets, payload.id);
+    const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
       instance.overlay.setProps({ widgets: widgets });
       instance.map.triggerRepaint();
@@ -1164,10 +1265,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_fly_to", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
-    var vs = payload.viewState || {};
-    var opts = {
+    const vs = payload.viewState || {};
+    const opts = {
       center: [vs.longitude || 0, vs.latitude || 0],
       speed: payload.speed || 1.2
     };
@@ -1183,10 +1284,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_ease_to", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
-    var vs = payload.viewState || {};
-    var opts = {
+    const vs = payload.viewState || {};
+    const opts = {
       center: [vs.longitude || 0, vs.latitude || 0],
       duration: payload.duration || 1000
     };
@@ -1214,9 +1315,9 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_cooperative_gestures", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
-    var map = instance.map;
+    const map = instance.map;
     if (payload.enabled) {
       if (map.cooperativeGestures) {
         map.cooperativeGestures.enable();
@@ -1302,7 +1403,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_style", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     if (instance.nativeLayers && Object.keys(instance.nativeLayers).length > 0) {
       console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
@@ -1312,10 +1413,30 @@
     // that any Shiny messages arriving between setStyle() and the next
     // 'style.load' event correctly queue instead of running immediately.
     instance.map._deckStyleChanging = true;
+
+    // Timeout fallback: clear the flag after 30s in case style.load never fires
+    // (e.g., network error, invalid style URL, malformed JSON)
+    var styleChangeTimeout = setTimeout(function () {
+      if (instance.map._deckStyleChanging) {
+        console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
+        instance.map._deckStyleChanging = false;
+      }
+    }, 30000);
+
     instance.map.once('style.load', function () {
+      clearTimeout(styleChangeTimeout);
       instance.map._deckStyleChanging = false;
     });
-    var styleOpts = {};
+
+    // Also handle error events to clear the flag
+    instance.map.once('error', function (e) {
+      if (e.error && e.error.status === 404) {
+        clearTimeout(styleChangeTimeout);
+        instance.map._deckStyleChanging = false;
+        console.warn('[shiny_deckgl] Style load failed:', e.error);
+      }
+    });
+    const styleOpts = {};
     if (payload.diff) {
       styleOpts.diff = true;
     }
@@ -1332,12 +1453,12 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_control", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var type = payload.controlType;
-    var position = payload.position || 'top-right';
-    var opts = payload.options || {};
+    const type = payload.controlType;
+    const position = payload.position || 'top-right';
+    const opts = payload.options || {};
 
     // Remove existing control of same type first
     if (instance.controls[type]) {
@@ -1345,7 +1466,7 @@
       delete instance.controls[type];
     }
 
-    var control = createControl(type, opts);
+    const control = createControl(type, opts);
     if (!control) return;
 
     instance.map.addControl(control, position);
@@ -1357,10 +1478,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_control", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var type = payload.controlType;
+    const type = payload.controlType;
     if (instance.controls[type]) {
       instance.map.removeControl(instance.controls[type].control);
       delete instance.controls[type];
@@ -1372,7 +1493,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_controls", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     // Defer until style is loaded so that native sources/layers added
@@ -1381,9 +1502,9 @@
     // the map style.
     whenStyleReady(instance.map, function() {
       // Remove all existing controls
-      var existing = Object.keys(instance.controls);
-      for (var i = 0; i < existing.length; i++) {
-        var key = existing[i];
+      const existing = Object.keys(instance.controls);
+      for (let i = 0; i < existing.length; i++) {
+        const key = existing[i];
         try {
           instance.map.removeControl(instance.controls[key].control);
         } catch (e) { /* ignore */ }
@@ -1391,14 +1512,14 @@
       }
 
       // Add new controls
-      var newControls = payload.controls || [];
-      for (var j = 0; j < newControls.length; j++) {
-        var spec = newControls[j];
-        var type = spec.type;
-        var position = spec.position || 'top-right';
-        var opts = spec.options || {};
+      const newControls = payload.controls || [];
+      for (let j = 0; j < newControls.length; j++) {
+        const spec = newControls[j];
+        const type = spec.type;
+        const position = spec.position || 'top-right';
+        const opts = spec.options || {};
 
-        var control = createControl(type, opts);
+        const control = createControl(type, opts);
         if (!control) continue;
 
         instance.map.addControl(control, position);
@@ -1412,11 +1533,11 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_fit_bounds", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var bounds = payload.bounds;  // [[sw_lng, sw_lat], [ne_lng, ne_lat]]
-    var opts = {};
+    const bounds = payload.bounds;  // [[sw_lng, sw_lat], [ne_lng, ne_lat]]
+    const opts = {};
 
     if (payload.padding != null) {
       opts.padding = payload.padding;
@@ -1438,17 +1559,17 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_source", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
-      var map = instance.map;
-      var sourceId = payload.sourceId;
-      var spec = payload.spec;
+      const map = instance.map;
+      const sourceId = payload.sourceId;
+      const spec = payload.spec;
 
       // Remove existing source if present (along with its layers)
       if (map.getSource(sourceId)) {
-        var style = map.getStyle();
+        const style = map.getStyle();
         if (style && style.layers) {
           style.layers.forEach(function (l) {
             if (l.source === sourceId) {
@@ -1468,13 +1589,13 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
-      var map = instance.map;
-      var layerSpec = payload.layerSpec;
-      var beforeId = payload.beforeId || undefined;
+      const map = instance.map;
+      const layerSpec = payload.layerSpec;
+      const beforeId = payload.beforeId || undefined;
 
       // Remove existing layer with same id
       if (map.getLayer(layerSpec.id)) {
@@ -1491,7 +1612,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -1507,7 +1628,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_source", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -1522,11 +1643,11 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_source_data", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
-      var source = instance.map.getSource(payload.sourceId);
+      const source = instance.map.getSource(payload.sourceId);
       if (source && typeof source.setData === 'function') {
         source.setData(payload.data);
       }
@@ -1538,13 +1659,13 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_image", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
-      var map = instance.map;
-      var imageId = payload.imageId;
-      var url = payload.url;
-      var options = {};
+      const map = instance.map;
+      const imageId = payload.imageId;
+      const url = payload.url;
+      const options = {};
       if (payload.pixelRatio && payload.pixelRatio !== 1) {
         options.pixelRatio = payload.pixelRatio;
       }
@@ -1559,7 +1680,7 @@
 
       map.loadImage(url).then(function (result) {
         // MapLibre v5 loadImage returns { data: ImageBitmap | HTMLImageElement }
-        var imgData = result && result.data ? result.data : result;
+        const imgData = result && result.data ? result.data : result;
         if (!map.hasImage(imageId)) {
           map.addImage(imageId, imgData, options);
         }
@@ -1574,7 +1695,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_image", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       if (instance.map.hasImage(payload.imageId)) {
@@ -1588,10 +1709,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_has_image", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
-      var exists = instance.map.hasImage(payload.imageId);
+      const exists = instance.map.hasImage(payload.imageId);
       Shiny.setInputValue(payload.id + '_has_image', {
         imageId: payload.imageId,
         exists: exists
@@ -1604,7 +1725,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_paint_property", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setPaintProperty(payload.layerId, payload.name, payload.value);
@@ -1616,7 +1737,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_layout_property", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setLayoutProperty(payload.layerId, payload.name, payload.value);
@@ -1628,7 +1749,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_filter", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setFilter(payload.layerId, payload.filter || null);
@@ -1640,7 +1761,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_projection", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     if (typeof instance.map.setProjection === 'function') {
@@ -1657,7 +1778,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_terrain", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     if (typeof instance.map.setTerrain === 'function') {
@@ -1674,7 +1795,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_sky", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     if (typeof instance.map.setSky === 'function') {
@@ -1689,12 +1810,12 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_popup", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
-    var layerId = payload.layerId;
-    var template = payload.template;
+    const map = instance.map;
+    const layerId = payload.layerId;
+    const template = payload.template;
 
     // Store handler references for cleanup
     if (!instance.popupHandlers) instance.popupHandlers = {};
@@ -1708,12 +1829,12 @@
     }
 
     whenStyleReady(map, function() {
-      var clickHandler = function (e) {
+      const clickHandler = function (e) {
         if (!e.features || !e.features.length) return;
-        var props = e.features[0].properties || {};
-        var html = interpolateTemplate(template, props);
+        const props = e.features[0].properties || {};
+        const html = interpolateTemplate(template, props);
 
-        var popupOpts = {
+        const popupOpts = {
           closeButton: payload.closeButton !== false,
           closeOnClick: payload.closeOnClick !== false,
           maxWidth: payload.maxWidth || '300px'
@@ -1734,10 +1855,10 @@
         }, { priority: "event" });
       };
 
-      var enterHandler = function () {
+      const enterHandler = function () {
         map.getCanvas().style.cursor = 'pointer';
       };
-      var leaveHandler = function () {
+      const leaveHandler = function () {
         map.getCanvas().style.cursor = '';
       };
 
@@ -1758,10 +1879,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_popup", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.popupHandlers) return;
 
-    var layerId = payload.layerId;
+    const layerId = payload.layerId;
     whenStyleReady(instance.map, function() {
       if (instance.popupHandlers[layerId]) {
         instance.map.off('click', layerId, instance.popupHandlers[layerId].click);
@@ -1777,17 +1898,17 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_query_features", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
+    const map = instance.map;
     whenStyleReady(map, function() {
-      var queryOpts = {};
+      const queryOpts = {};
 
       if (payload.layers) queryOpts.layers = payload.layers;
       if (payload.filter) queryOpts.filter = payload.filter;
 
-      var features;
+      let features;
       if (payload.point) {
         features = map.queryRenderedFeatures(payload.point, queryOpts);
       } else if (payload.bounds) {
@@ -1796,7 +1917,7 @@
         features = map.queryRenderedFeatures(queryOpts);
       }
 
-      var simplified = features.map(function (f) {
+      const simplified = features.map(function (f) {
         return {
           type: "Feature",
           geometry: f.geometry,
@@ -1818,21 +1939,21 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_query_at_lnglat", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
+    const map = instance.map;
     whenStyleReady(map, function() {
-      var point = map.project([payload.longitude, payload.latitude]);
+      const point = map.project([payload.longitude, payload.latitude]);
 
-      var queryOpts = {};
+      const queryOpts = {};
       if (payload.layers) queryOpts.layers = payload.layers;
 
-      var features = map.queryRenderedFeatures(
+      const features = map.queryRenderedFeatures(
         [point.x, point.y], queryOpts
       );
 
-      var simplified = features.map(function (f) {
+      const simplified = features.map(function (f) {
         return {
           type: "Feature",
           geometry: f.geometry,
@@ -1854,25 +1975,25 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_marker", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     if (!instance.markers) instance.markers = {};
-    var mapId = payload.id;
+    const mapId = payload.id;
 
     // Remove existing marker with same id
     if (instance.markers[payload.markerId]) {
       instance.markers[payload.markerId].remove();
     }
 
-    var marker = new maplibregl.Marker({
+    const marker = new maplibregl.Marker({
       color: payload.color || '#3FB1CE',
       draggable: payload.draggable || false
     }).setLngLat([payload.longitude, payload.latitude]);
 
     // Optional popup
     if (payload.popupHtml) {
-      var popup = new maplibregl.Popup({ offset: 25 })
+      const popup = new maplibregl.Popup({ offset: 25 })
         .setHTML(payload.popupHtml);
       marker.setPopup(popup);
     }
@@ -1892,7 +2013,7 @@
     // Drag end event → Shiny
     if (payload.draggable) {
       marker.on('dragend', function () {
-        var lngLat = marker.getLngLat();
+        const lngLat = marker.getLngLat();
         Shiny.setInputValue(mapId + '_marker_drag', {
           markerId: payload.markerId,
           longitude: lngLat.lng,
@@ -1907,7 +2028,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_marker", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.markers) return;
 
     if (instance.markers[payload.markerId]) {
@@ -1921,7 +2042,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_clear_markers", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.markers) return;
 
     Object.keys(instance.markers).forEach(function (mid) {
@@ -1935,7 +2056,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_enable_draw", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     if (typeof MapboxDraw === 'undefined') {
@@ -1950,14 +2071,14 @@
         instance.map.removeControl(instance.draw);
       }
 
-      var drawOpts = {
+      const drawOpts = {
         displayControlsDefault: false,
       };
 
       if (payload.controls) {
         drawOpts.controls = payload.controls;
       } else {
-        var modes = payload.modes || ['draw_point', 'draw_line_string', 'draw_polygon'];
+        const modes = payload.modes || ['draw_point', 'draw_line_string', 'draw_polygon'];
         drawOpts.controls = {
           point: modes.indexOf('draw_point') !== -1,
           line_string: modes.indexOf('draw_line_string') !== -1,
@@ -1966,7 +2087,7 @@
         };
       }
 
-      var draw = new MapboxDraw(drawOpts);
+      const draw = new MapboxDraw(drawOpts);
       instance.map.addControl(draw, 'top-left');
       instance.draw = draw;
 
@@ -1982,9 +2103,9 @@
         instance.map.off('draw.modechange', instance._drawListeners.modechange);
       }
 
-      var mapId = payload.id;
+      const mapId = payload.id;
       function sendFeatures() {
-        var fc = draw.getAll();
+        const fc = draw.getAll();
         Shiny.setInputValue(mapId + '_drawn_features', fc, { priority: "event" });
       }
       function onModeChange(e) {
@@ -2011,7 +2132,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_disable_draw", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
 
     instance.map.removeControl(instance.draw);
@@ -2032,10 +2153,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_get_drawn_features", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
 
-    var fc = instance.draw.getAll();
+    const fc = instance.draw.getAll();
     Shiny.setInputValue(payload.id + '_drawn_features', fc, { priority: "event" });
   });
 
@@ -2044,7 +2165,7 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_delete_drawn", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
 
     if (payload.featureIds) {
@@ -2060,10 +2181,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_feature_state", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var target = { source: payload.sourceId, id: payload.featureId };
+    const target = { source: payload.sourceId, id: payload.featureId };
     if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
 
     whenStyleReady(instance.map, function() {
@@ -2076,10 +2197,10 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_feature_state", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var target = { source: payload.sourceId };
+    const target = { source: payload.sourceId };
     if (payload.featureId != null) target.id = payload.featureId;
     if (payload.sourceLayer) target.sourceLayer = payload.sourceLayer;
 
@@ -2097,18 +2218,18 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_export_image", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var map = instance.map;
-    var canvas = map.getCanvas();
-    var mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
-    var format = mimeTypes[payload.format] || 'image/png';
-    var quality = payload.quality || 0.92;
+    const map = instance.map;
+    const canvas = map.getCanvas();
+    const mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    const format = mimeTypes[payload.format] || 'image/png';
+    const quality = payload.quality || 0.92;
 
     // Wait for tiles to finish loading before capturing
     function capture() {
-      var dataUrl = canvas.toDataURL(format, quality);
+      const dataUrl = canvas.toDataURL(format, quality);
       Shiny.setInputValue(payload.id + '_export_result', {
         requestId: payload.requestId || 'default',
         dataUrl: dataUrl,
@@ -2132,38 +2253,38 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_add_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function () {
-      var map = instance.map;
-      var srcId = payload.sourceId;
-      var data = payload.data;
-      var opts = payload.options || {};
+      const map = instance.map;
+      const srcId = payload.sourceId;
+      const data = payload.data;
+      const opts = payload.options || {};
 
       // Defaults
-      var clusterRadius = opts.clusterRadius || 50;
-      var clusterMaxZoom = opts.clusterMaxZoom || 14;
+      const clusterRadius = opts.clusterRadius || 50;
+      const clusterMaxZoom = opts.clusterMaxZoom || 14;
 
-      var clusterColor = opts.clusterColor || "#51bbd6";
-      var clusterStrokeColor = opts.clusterStrokeColor || "#ffffff";
-      var clusterStrokeWidth = opts.clusterStrokeWidth || 1;
-      var clusterTextColor = opts.clusterTextColor || "#ffffff";
-      var clusterTextSize = opts.clusterTextSize || 12;
+      const clusterColor = opts.clusterColor || "#51bbd6";
+      const clusterStrokeColor = opts.clusterStrokeColor || "#ffffff";
+      const clusterStrokeWidth = opts.clusterStrokeWidth || 1;
+      const clusterTextColor = opts.clusterTextColor || "#ffffff";
+      const clusterTextSize = opts.clusterTextSize || 12;
 
-      var pointColor = opts.pointColor || "#11b4da";
-      var pointRadius = opts.pointRadius || 5;
-      var pointStrokeColor = opts.pointStrokeColor || "#ffffff";
-      var pointStrokeWidth = opts.pointStrokeWidth || 1;
+      const pointColor = opts.pointColor || "#11b4da";
+      const pointRadius = opts.pointRadius || 5;
+      const pointStrokeColor = opts.pointStrokeColor || "#ffffff";
+      const pointStrokeWidth = opts.pointStrokeWidth || 1;
 
       // Size steps: [count, radius] pairs for interpolation
-      var sizeSteps = opts.sizeSteps || [
+      const sizeSteps = opts.sizeSteps || [
         [0, 18], [100, 24], [750, 32]
       ];
 
       // Build circle-radius stops array for step expression
-      var radiusStops = ["step", ["get", "point_count"]];
-      for (var i = 0; i < sizeSteps.length; i++) {
+      const radiusStops = ["step", ["get", "point_count"]];
+      for (let i = 0; i < sizeSteps.length; i++) {
         if (i === 0) {
           radiusStops.push(sizeSteps[i][1]);  // default value
         } else {
@@ -2173,14 +2294,14 @@
       }
 
       // Clean up existing layers & source
-      var layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
+      const layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
       layerIds.forEach(function (lid) {
         if (map.getLayer(lid)) map.removeLayer(lid);
       });
       if (map.getSource(srcId)) map.removeSource(srcId);
 
       // Add source
-      var sourceSpec = {
+      const sourceSpec = {
         type: "geojson",
         data: data,
         cluster: true,
@@ -2240,13 +2361,16 @@
         instance.nativeLayers[lid] = true;
       });
 
-      // Click-to-zoom on cluster circles
-      map.on("click", srcId + "-clusters", function (e) {
-        var features = map.queryRenderedFeatures(e.point, {
+      // Initialize cluster handlers storage if needed
+      instance.clusterHandlers = instance.clusterHandlers || {};
+
+      // Click-to-zoom on cluster circles (store handler for cleanup)
+      var clickHandler = function (e) {
+        const features = map.queryRenderedFeatures(e.point, {
           layers: [srcId + "-clusters"]
         });
         if (!features.length) return;
-        var clusterId = features[0].properties.cluster_id;
+        const clusterId = features[0].properties.cluster_id;
         map.getSource(srcId).getClusterExpansionZoom(clusterId)
           .then(function (zoom) {
             map.easeTo({
@@ -2254,15 +2378,25 @@
               zoom: zoom
             });
           });
-      });
+      };
+      map.on("click", srcId + "-clusters", clickHandler);
 
-      // Pointer cursor on clusters
-      map.on("mouseenter", srcId + "-clusters", function () {
+      // Pointer cursor on clusters (store handlers for cleanup)
+      var mouseenterHandler = function () {
         map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", srcId + "-clusters", function () {
+      };
+      var mouseleaveHandler = function () {
         map.getCanvas().style.cursor = "";
-      });
+      };
+      map.on("mouseenter", srcId + "-clusters", mouseenterHandler);
+      map.on("mouseleave", srcId + "-clusters", mouseleaveHandler);
+
+      // Store handlers for cleanup on removal
+      instance.clusterHandlers[srcId] = {
+        click: clickHandler,
+        mouseenter: mouseenterHandler,
+        mouseleave: mouseleaveHandler
+      };
     });
   });
 
@@ -2271,13 +2405,23 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_remove_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
     whenStyleReady(instance.map, function () {
-      var map = instance.map;
-      var srcId = payload.sourceId;
-      var layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
+      const map = instance.map;
+      const srcId = payload.sourceId;
+
+      // Remove event handlers to prevent memory leaks
+      if (instance.clusterHandlers && instance.clusterHandlers[srcId]) {
+        var handlers = instance.clusterHandlers[srcId];
+        map.off("click", srcId + "-clusters", handlers.click);
+        map.off("mouseenter", srcId + "-clusters", handlers.mouseenter);
+        map.off("mouseleave", srcId + "-clusters", handlers.mouseleave);
+        delete instance.clusterHandlers[srcId];
+      }
+
+      const layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
       layerIds.forEach(function (lid) {
         if (map.getLayer(lid)) {
           map.removeLayer(lid);
@@ -2294,21 +2438,21 @@
   // Tab visibility: resize maps when a Bootstrap tab becomes visible
   // -----------------------------------------------------------------------
   document.addEventListener('shown.bs.tab', function (event) {
-    var href = event.target.getAttribute('data-bs-target')
+    const href = event.target.getAttribute('data-bs-target')
             || event.target.getAttribute('href');
     if (!href) return;
-    var panel;
+    let panel;
     try { panel = document.querySelector(href); } catch (e) { return; }
     if (!panel) return;
     panel.querySelectorAll('.deckgl-map').forEach(function (el) {
-      var inst = mapInstances[el.id];
+      const inst = mapInstances[el.id];
       if (inst && inst.map) {
         setTimeout(function () {
           inst.map.resize();
           // Re-apply current layers to force deck.gl re-render
           if (inst.overlay && inst.lastLayers && inst.lastLayers.length) {
-            var deckLayers = buildDeckLayers(
-              JSON.parse(JSON.stringify(inst.lastLayers)),
+            const deckLayers = buildDeckLayers(
+              deepClone(inst.lastLayers),
               el.id,
               inst.tooltipConfig
             );
@@ -2325,14 +2469,14 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_update_tooltip", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
     instance.tooltipConfig = payload.tooltip || null;
 
     // Re-render existing layers so the new tooltip config takes effect
     // immediately (onHover closures capture tooltipConfig at build time).
     if (instance.lastLayers && instance.lastLayers.length > 0) {
-      var deckLayers = buildDeckLayers(
+      const deckLayers = buildDeckLayers(
         instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
         payload.id,
         instance.tooltipConfig

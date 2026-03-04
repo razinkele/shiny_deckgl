@@ -139,7 +139,7 @@ def fill_style_extension(pattern: bool = True) -> Extension:
 
     * ``fillPatternAtlas`` — URL/image of the pattern atlas
     * ``fillPatternMapping`` — dict mapping pattern names to atlas regions
-    * ``fillPatternMask`` — whether pattern replaces fill colour
+    * ``fillPatternMask`` — whether pattern replaces fill color
     * ``getFillPattern`` — accessor returning pattern name per feature
     * ``getFillPatternScale`` — accessor for pattern scale
     * ``getFillPatternOffset`` — accessor for pattern offset

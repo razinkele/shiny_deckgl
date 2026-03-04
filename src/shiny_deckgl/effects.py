@@ -57,7 +57,7 @@ def ambient_light(
     Parameters
     ----------
     color
-        RGB colour of the light (default white).
+        RGB color of the light (default white).
     intensity
         Brightness multiplier (default 1.0).
     """
@@ -80,7 +80,7 @@ def point_light(
     position
         ``[longitude, latitude, altitude_metres]`` of the light source.
     color
-        RGB colour (default white).
+        RGB color (default white).
     intensity
         Brightness multiplier (default 1.0).
     **kwargs
@@ -90,7 +90,7 @@ def point_light(
 
 
 def directional_light(
-    direction: list[float] = (-1, -3, -1),
+    direction: list[float] | tuple[float, ...] = (-1, -3, -1),
     color: list[int] | tuple[int, ...] = (255, 255, 255),
     intensity: float = 1.0,
     _shadow: bool = False,
@@ -106,7 +106,7 @@ def directional_light(
     direction
         ``[x, y, z]`` direction vector the light points towards.
     color
-        RGB colour (default white).
+        RGB color (default white).
     intensity
         Brightness multiplier (default 1.0).
     _shadow
@@ -144,7 +144,7 @@ def sun_light(
         Unix timestamp in milliseconds (e.g. from
         ``datetime.datetime.now().timestamp() * 1000``).
     color
-        RGB colour (default white).
+        RGB color (default white).
     intensity
         Brightness multiplier (default 1.0).
     _shadow
@@ -257,10 +257,10 @@ def post_process_effect(
         - ``"hueSaturation"`` — adjust hue and saturation
         - ``"noise"`` — add noise
         - ``"sepia"`` — sepia tone
-        - ``"vibrance"`` — adjust colour vibrance
+        - ``"vibrance"`` — adjust color vibrance
         - ``"vignette"`` — darken edges
         - ``"tiltShift"`` — tilt-shift blur
-        - ``"colorHalftone"`` — colour halftone dots
+        - ``"colorHalftone"`` — color halftone dots
         - ``"dotScreen"`` — dot screen pattern
         - ``"edgeWork"`` — edge detection
         - ``"hexagonalPixelate"`` — hexagonal pixelation

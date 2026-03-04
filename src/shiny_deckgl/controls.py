@@ -165,7 +165,7 @@ def deck_legend_control(
 
     Unlike :func:`legend_control` (which drives the ``@watergis/maplibre-gl-legend``
     plugin and can only see native MapLibre style layers), this control displays
-    user-defined entries with colour swatches and optional visibility checkboxes
+    user-defined entries with color swatches and optional visibility checkboxes
     that toggle deck.gl layers on and off.
 
     Parameters
@@ -175,11 +175,11 @@ def deck_legend_control(
 
         * ``layer_id`` — deck.gl layer id (used for the visibility checkbox).
         * ``label`` — human-readable display label.
-        * ``color`` — ``[r, g, b]`` or ``[r, g, b, a]`` or CSS colour string.
+        * ``color`` — ``[r, g, b]`` or ``[r, g, b, a]`` or CSS color string.
         * ``shape`` — swatch shape: ``"circle"`` (default), ``"rect"``,
           ``"line"``, ``"arc"``, or ``"gradient"``.
-        * ``color2`` — second colour for ``"arc"`` shape (gradient end).
-        * ``colors`` — list of colours for ``"gradient"`` shape (e.g. for
+        * ``color2`` — second color for ``"arc"`` shape (gradient end).
+        * ``colors`` — list of colors for ``"gradient"`` shape (e.g. for
           HeatmapLayer ``colorRange``).
 
         Example::

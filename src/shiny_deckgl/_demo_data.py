@@ -766,18 +766,6 @@ def _load_sea_mask():
     return grid
 
 
-# Internal cache placeholder; use :func:`_get_sea_mask` for access.
-_SEA_MASK: list[list[int]] | None = None
-
-
-def _get_sea_mask() -> list[list[int]]:
-    """Return the decoded sea mask, loading it lazily on demand."""
-    global _SEA_MASK
-    if _SEA_MASK is None:
-        _SEA_MASK = _load_sea_mask()
-    return _SEA_MASK
-
-
 def is_sea(lon: float, lat: float) -> bool:
     """Return True if *(lon, lat)* is over sea according to the embedded mask.
 
@@ -792,7 +780,7 @@ def is_sea(lon: float, lat: float) -> bool:
     row = int(round((lat - _SEA_LAT_MIN) / _SEA_RES))
     col = max(0, min(col, _SEA_GRID_SHAPE[1] - 1))
     row = max(0, min(row, _SEA_GRID_SHAPE[0] - 1))
-    mask = _get_sea_mask()
+    mask = _load_sea_mask()
     return mask[row][col] == 1
 
 # ---------------------------------------------------------------------------
@@ -1038,6 +1026,7 @@ def make_seal_haulout_icons() -> list[dict]:
 # haulout recovery) with habitat-biased movement on a 2-D raster.
 # ---------------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=8)
 def _build_baltic_habitat(
     resolution: float = 0.25,
 ) -> tuple:
@@ -1068,7 +1057,7 @@ def _build_baltic_habitat(
     LON, LAT = np.meshgrid(lons, lats)
 
     # Vectorised sea mask lookup ------------------------------------------------
-    mask = np.array(_get_sea_mask(), dtype=bool)
+    mask = np.array(_load_sea_mask(), dtype=bool)
     # Map each raster cell to corresponding mask index
     col_idx = np.clip(np.round((LON - lon_min) / _SEA_RES).astype(int), 0, _SEA_GRID_SHAPE[1] - 1)
     row_idx = np.clip(np.round((LAT - lat_min) / _SEA_RES).astype(int), 0, _SEA_GRID_SHAPE[0] - 1)
@@ -1110,17 +1099,6 @@ def _build_baltic_habitat(
     )
 
     return habitat, bounds, haulout_xy, site_quality
-
-
-# Cache the habitat raster (built lazily on first call)
-_BALTIC_HABITAT_CACHE: dict = {}
-
-
-def _get_baltic_habitat(resolution: float = 0.25) -> tuple:
-    """Return cached (habitat, bounds, haulout_xy, site_quality)."""
-    if resolution not in _BALTIC_HABITAT_CACHE:
-        _BALTIC_HABITAT_CACHE[resolution] = _build_baltic_habitat(resolution)
-    return _BALTIC_HABITAT_CACHE[resolution]
 
 
 @functools.lru_cache(maxsize=32)
@@ -1170,7 +1148,7 @@ def make_seal_trips_ibm(
     rng = np.random.default_rng(seed)
 
     # -- Build environment ------------------------------------------------
-    habitat, bounds, haulout_xy, site_quality = _get_baltic_habitat(0.25)
+    habitat, bounds, haulout_xy, site_quality = _build_baltic_habitat(0.25)
     xmin, xmax, ymin, ymax = bounds
     ny, nx = habitat.shape
 

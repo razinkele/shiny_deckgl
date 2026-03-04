@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html as _html_mod
 import json
 import pathlib
 from functools import lru_cache
@@ -30,6 +29,15 @@ from .colors import CARTO_POSITRON
 from .controls import CONTROL_TYPES, CONTROL_POSITIONS
 from ._data_utils import _serialise_data
 
+__all__ = ["MapWidget"]
+
+# Hoist the namespace resolver import to module level so we pay the
+# try/except cost once at import time, not on every MapWidget instantiation.
+try:
+    from shiny._namespaces import resolve_id as _shiny_resolve_id
+except (ImportError, AttributeError):  # pragma: no cover — future-proofing
+    _shiny_resolve_id = None  # type: ignore[assignment]
+
 
 def _resolve_ns(raw_id: str) -> str:
     """Resolve *raw_id* through the current Shiny module namespace.
@@ -41,11 +49,12 @@ def _resolve_ns(raw_id: str) -> str:
     The function gracefully falls back to the bare ID when the private
     ``shiny._namespaces`` API is unavailable (future-proofing).
     """
-    try:
-        from shiny._namespaces import resolve_id  # noqa: WPS433
-        return str(resolve_id(raw_id))
-    except Exception:  # pragma: no cover — defensive
-        return raw_id
+    if _shiny_resolve_id is not None:
+        try:
+            return str(_shiny_resolve_id(raw_id))
+        except (TypeError, ValueError):  # pragma: no cover — defensive
+            pass
+    return raw_id
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +327,64 @@ class MapWidget:
             payload["widgets"] = widgets
         await session.send_custom_message("deck_update", payload)
 
+    async def partial_update(
+        self,
+        session: "Session",
+        layers: list[dict],
+    ) -> None:
+        """Push sparse layer patches — only changed **layer** properties are sent.
+
+        Each dict in *layers* must contain an ``"id"`` key matching a
+        previously-sent layer.  Only the properties present in the patch
+        are overwritten; all other properties (including binary-encoded
+        positions) are preserved from the JS-side cache.
+
+        New layer IDs (not in the cache) are appended.
+
+        .. note::
+           This method patches **layer** properties only.  Deck-level
+           props (``effects``, ``views``, ``widgets``, ``picking_radius``,
+           etc.) are not affected — use :meth:`update` for those.
+        """
+        # Serialise any DataFrames / GeoDataFrames in patch data fields
+        for lyr in layers:
+            if "data" in lyr:
+                lyr["data"] = _serialise_data(lyr["data"])
+        await session.send_custom_message("deck_partial_update", {
+            "id": self.id,
+            "layers": layers,
+        })
+
+    async def patch_layer(
+        self,
+        session: "Session",
+        layer_id: str,
+        **props: Any,
+    ) -> None:
+        """Patch a single layer's properties without resending the full stack.
+
+        Convenience wrapper around :meth:`partial_update` for the common
+        case of tweaking one layer at a time.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The ``id`` of the layer to patch (must match a previously-sent layer).
+        **props
+            Layer properties to overwrite, e.g. ``radiusPixels=50``,
+            ``getFillColor=[255, 0, 0]``, ``visible=False``.
+
+        Example
+        -------
+        ::
+
+            await widget.patch_layer(session, "heatmap",
+                                     radiusPixels=50, intensity=2.0)
+        """
+        await self.partial_update(session, [{"id": layer_id, **props}])
+
     async def trips_control(
         self,
         session: "Session",
@@ -425,6 +492,24 @@ class MapWidget:
             "widgets": widgets,
         })
 
+    @staticmethod
+    def _build_view_state(
+        longitude: float,
+        latitude: float,
+        zoom: float | None = None,
+        pitch: float | None = None,
+        bearing: float | None = None,
+    ) -> dict:
+        """Build a partial view-state dict, omitting ``None`` values."""
+        vs: dict = {"longitude": longitude, "latitude": latitude}
+        if zoom is not None:
+            vs["zoom"] = zoom
+        if pitch is not None:
+            vs["pitch"] = pitch
+        if bearing is not None:
+            vs["bearing"] = bearing
+        return vs
+
     async def fly_to(
         self,
         session: "Session",
@@ -457,16 +542,9 @@ class MapWidget:
         duration
             Duration in ms, or ``"auto"`` for MapLibre-calculated duration.
         """
-        view_state: dict = {"longitude": longitude, "latitude": latitude}
-        if zoom is not None:
-            view_state["zoom"] = zoom
-        if pitch is not None:
-            view_state["pitch"] = pitch
-        if bearing is not None:
-            view_state["bearing"] = bearing
         await session.send_custom_message("deck_fly_to", {
             "id": self.id,
-            "viewState": view_state,
+            "viewState": self._build_view_state(longitude, latitude, zoom, pitch, bearing),
             "speed": speed,
             "duration": duration,
         })
@@ -500,16 +578,9 @@ class MapWidget:
         duration
             Duration in milliseconds (default ``1000``).
         """
-        view_state: dict = {"longitude": longitude, "latitude": latitude}
-        if zoom is not None:
-            view_state["zoom"] = zoom
-        if pitch is not None:
-            view_state["pitch"] = pitch
-        if bearing is not None:
-            view_state["bearing"] = bearing
         await session.send_custom_message("deck_ease_to", {
             "id": self.id,
-            "viewState": view_state,
+            "viewState": self._build_view_state(longitude, latitude, zoom, pitch, bearing),
             "duration": duration,
         })
 
@@ -952,21 +1023,21 @@ class MapWidget:
         cluster_max_zoom
             Maximum zoom level at which clusters are generated.
         cluster_color
-            Fill colour for cluster circles.
+            Fill color for cluster circles.
         cluster_stroke_color
-            Stroke colour for cluster circles.
+            Stroke color for cluster circles.
         cluster_stroke_width
             Stroke width for cluster circles.
         cluster_text_color
-            Colour for cluster count labels.
+            Color for cluster count labels.
         cluster_text_size
             Font size for cluster count labels.
         point_color
-            Fill colour for unclustered point circles.
+            Fill color for unclustered point circles.
         point_radius
             Radius for unclustered point circles.
         point_stroke_color
-            Stroke colour for unclustered point circles.
+            Stroke color for unclustered point circles.
         point_stroke_width
             Stroke width for unclustered point circles.
         size_steps
@@ -1068,7 +1139,7 @@ class MapWidget:
             Device pixel ratio for retina displays (default ``1``).
         sdf
             If ``True`` the image is treated as a signed-distance-field icon
-            that can be recoloured at runtime with ``icon-color`` paint
+            that can be recolored at runtime with ``icon-color`` paint
             property.
         """
         await session.send_custom_message("deck_add_image", {
@@ -1968,7 +2039,7 @@ if (typeof Shiny === 'undefined') {{
   Object.keys(instances).forEach(function(mapId) {{
     var inst = instances[mapId];
     var deckLayers = buildDeckLayers(
-      JSON.parse(JSON.stringify(layersData)), mapId, inst.tooltipConfig
+      structuredClone(layersData), mapId, inst.tooltipConfig
     );
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);

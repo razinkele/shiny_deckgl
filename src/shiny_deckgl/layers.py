@@ -764,7 +764,7 @@ def terrain_layer(id: str, data: Any | None = None, **kwargs) -> dict:
         Extra properties:
 
         - ``elevationData`` — URL template for elevation tiles
-        - ``texture`` — URL template for colour/satellite tiles
+        - ``texture`` — URL template for color/satellite tiles
         - ``elevationDecoder`` — dict describing RGB→elevation mapping
         - ``meshMaxError`` — max LOD simplification error in metres
         - ``bounds`` — ``[west, south, east, north]``

@@ -59,12 +59,12 @@ def color_range(
     n: int = 6,
     palette: list[list[int]] | None = None,
 ) -> list[list[int]]:
-    """Generate *n* evenly-spaced RGBA colours by linearly interpolating a palette.
+    """Generate *n* evenly-spaced RGBA colors by linearly interpolating a palette.
 
     Parameters
     ----------
     n
-        Number of output colours (default 6).
+        Number of output colors (default 6).
     palette
         Source palette as a list of ``[R, G, B]`` or ``[R, G, B, A]`` stops.
         Defaults to ``PALETTE_VIRIDIS``.
@@ -72,7 +72,7 @@ def color_range(
     Returns
     -------
     list[list[int]]
-        ``n`` colours, each ``[R, G, B, 255]``.
+        ``n`` colors, each ``[R, G, B, 255]``.
     """
     palette = palette or PALETTE_VIRIDIS
     if n <= 0:
@@ -87,12 +87,12 @@ def color_range(
         lo = int(t)
         hi = min(lo + 1, stops - 1)
         frac = t - lo
-        a = palette[lo]
-        b = palette[hi]
-        r = int(a[0] + (b[0] - a[0]) * frac)
-        g = int(a[1] + (b[1] - a[1]) * frac)
-        bl = int(a[2] + (b[2] - a[2]) * frac)
-        result.append([r, g, bl, 255])
+        c0 = palette[lo]
+        c1 = palette[hi]
+        r = int(c0[0] + (c1[0] - c0[0]) * frac)
+        g = int(c0[1] + (c1[1] - c0[1]) * frac)
+        b = int(c0[2] + (c1[2] - c0[2]) * frac)
+        result.append([r, g, b, 255])
     return result
 
 
@@ -101,25 +101,25 @@ def color_bins(
     n_bins: int = 6,
     palette: list[list[int]] | None = None,
 ) -> list[list[int]]:
-    """Map each value to a colour using equal-width bins.
+    """Map each value to a color using equal-width bins.
 
     Parameters
     ----------
     values
         Numeric values to classify.
     n_bins
-        Number of colour bins.
+        Number of color bins.
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
 
     Returns
     -------
     list[list[int]]
-        One ``[R, G, B, A]`` colour per input value.
+        One ``[R, G, B, A]`` color per input value.
     """
     if not values:
         return []
-    colours = color_range(n_bins, palette)
+    colors = color_range(n_bins, palette)
     lo = min(values)
     hi = max(values)
     span = hi - lo if hi != lo else 1.0
@@ -127,7 +127,7 @@ def color_bins(
     for v in values:
         idx = int((v - lo) / span * (n_bins - 1))
         idx = max(0, min(idx, n_bins - 1))
-        result.append(colours[idx])
+        result.append(colors[idx])
     return result
 
 
@@ -136,7 +136,7 @@ def color_quantiles(
     n_bins: int = 6,
     palette: list[list[int]] | None = None,
 ) -> list[list[int]]:
-    """Map each value to a colour using quantile-based bins.
+    """Map each value to a color using quantile-based bins.
 
     Each bin contains approximately the same number of values.
 
@@ -145,18 +145,18 @@ def color_quantiles(
     values
         Numeric values to classify.
     n_bins
-        Number of colour bins.
+        Number of color bins.
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
 
     Returns
     -------
     list[list[int]]
-        One ``[R, G, B, A]`` colour per input value.
+        One ``[R, G, B, A]`` color per input value.
     """
     if not values:
         return []
-    colours = color_range(n_bins, palette)
+    colors = color_range(n_bins, palette)
     sorted_vals = sorted(values)
     n = len(sorted_vals)
     # Compute quantile breakpoints
@@ -171,7 +171,7 @@ def color_quantiles(
                 return i
         return n_bins - 1
 
-    return [colours[_bin(v)] for v in values]
+    return [colors[_bin(v)] for v in values]
 
 
 def depth_color(
@@ -179,10 +179,10 @@ def depth_color(
     max_depth: float = 459.0,
     alpha: int = 210,
 ) -> list[int]:
-    """Map an elevation / depth value to a blue-gradient RGBA colour.
+    """Map an elevation / depth value to a blue-gradient RGBA color.
 
     Produces a smooth dark-blue-to-teal ramp suitable for bathymetric
-    visualisations.  At ``elevation=0`` the colour is a pale teal
+    visualisations.  At ``elevation=0`` the color is a pale teal
     ``[50, 180, 120, α]``; at ``max_depth`` it is a deep navy
     ``[10, 60, 255, α]``.
 
@@ -199,7 +199,7 @@ def depth_color(
     Returns
     -------
     list[int]
-        ``[R, G, B, A]`` colour.
+        ``[R, G, B, A]`` color.
     """
     t = min(elevation / max_depth, 1.0) if max_depth else 0.0
     r = int(10 + 40 * (1 - t))

@@ -9,6 +9,7 @@ import shiny_deckgl as m
 from shiny import App
 from shiny_deckgl.app import app
 from shiny_deckgl.ui import head_includes
+from shiny_deckgl._data_utils import _serialise_data
 from shiny_deckgl.components import (
     MapWidget,
     layer,
@@ -30,7 +31,6 @@ from shiny_deckgl.components import (
     CARTO_DARK,
     CARTO_VOYAGER,
     OSM_LIBERTY,
-    _serialise_data,
     color_range,
     color_bins,
     color_quantiles,
@@ -864,6 +864,18 @@ class TestViridisFixed:
 
 
 # ---------------------------------------------------------------------------
+# Reusable fake session stub (used by tooltip, style, gestures tests)
+# ---------------------------------------------------------------------------
+
+class _FakeSession:
+    """Reusable fake session for tests requiring async message capture."""
+    def __init__(self):
+        self.messages = []
+    async def send_custom_message(self, handler, payload):
+        self.messages.append((handler, payload))
+
+
+# ---------------------------------------------------------------------------
 # update_tooltip method
 # ---------------------------------------------------------------------------
 
@@ -880,14 +892,7 @@ class TestUpdateTooltip:
         w = MapWidget("utt2", tooltip={"html": "<b>{name}</b>"})
         assert w.tooltip is not None
 
-        class FakeSession:
-            """Minimal stub that captures messages."""
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         new_tip = {"html": "{x}", "style": {"color": "red"}}
         asyncio.run(w.update_tooltip(fake, new_tip))
         assert w.tooltip == new_tip
@@ -899,13 +904,7 @@ class TestUpdateTooltip:
 
         w = MapWidget("utt3", tooltip={"html": "hi"})
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.update_tooltip(fake, None))
         assert w.tooltip is None
         assert fake.messages[0][1]["tooltip"] is None
@@ -928,13 +927,7 @@ class TestSetStyle:
         w = MapWidget("ss2", style=CARTO_POSITRON)
         assert w.style == CARTO_POSITRON
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_style(fake, CARTO_DARK))
         assert w.style == CARTO_DARK
         assert len(fake.messages) == 1
@@ -947,13 +940,7 @@ class TestSetStyle:
         w = MapWidget("ss3")
         custom = "https://example.com/my-style.json"
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_style(fake, custom))
         assert w.style == custom
         assert fake.messages[0][1]["style"] == custom
@@ -965,26 +952,14 @@ class TestSetStyleDiff:
     def test_diff_false_by_default(self):
         w = MapWidget("ssd1")
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_style(fake, CARTO_DARK))
         assert fake.messages[0][1]["diff"] is False
 
     def test_diff_true(self):
         w = MapWidget("ssd2")
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_style(fake, CARTO_DARK, diff=True))
         assert fake.messages[0][1]["diff"] is True
 
@@ -1013,13 +988,7 @@ class TestCooperativeGestures:
     def test_set_cooperative_gestures_method(self):
         w = MapWidget("cg5")
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_cooperative_gestures(fake, True))
         assert w.cooperative_gestures is True
         assert fake.messages[0][0] == "deck_set_cooperative_gestures"
@@ -1028,13 +997,7 @@ class TestCooperativeGestures:
     def test_set_cooperative_gestures_disable(self):
         w = MapWidget("cg6", cooperative_gestures=True)
 
-        class FakeSession:
-            def __init__(self):
-                self.messages = []
-            async def send_custom_message(self, handler, payload):
-                self.messages.append((handler, payload))
-
-        fake = FakeSession()
+        fake = _FakeSession()
         asyncio.run(w.set_cooperative_gestures(fake, False))
         assert w.cooperative_gestures is False
         assert fake.messages[0][1]["enabled"] is False
@@ -1043,13 +1006,6 @@ class TestCooperativeGestures:
 # ---------------------------------------------------------------------------
 # v0.2.0 â€” Phase 1 tests
 # ---------------------------------------------------------------------------
-
-class _FakeSession:
-    """Reusable fake session for Phase 1+ tests."""
-    def __init__(self):
-        self.messages = []
-    async def send_custom_message(self, handler, payload):
-        self.messages.append((handler, payload))
 
 
 # ---------------------------------------------------------------------------
@@ -1934,74 +1890,44 @@ class TestGeoPandas:
         w = MapWidget("gp1")
         fake = _FakeSession()
 
-        mock_geojson = {"type": "FeatureCollection", "features": []}
-
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-        comp._serialise_data = lambda x: mock_geojson
-
-        try:
-            asyncio.run(w.add_geodataframe(fake, "test-src", "fake_gdf",
-                                            layer_type="line",
-                                            paint={"line-color": "#f00"}))
-            assert len(fake.messages) == 2
-            assert fake.messages[0][0] == "deck_add_source"
-            assert fake.messages[0][1]["sourceId"] == "test-src"
-            assert fake.messages[1][0] == "deck_add_maplibre_layer"
-            assert fake.messages[1][1]["layerSpec"]["id"] == "test-src-layer"
-            assert fake.messages[1][1]["layerSpec"]["paint"]["line-color"] == "#f00"
-        finally:
-            comp._serialise_data = original
+        asyncio.run(w.add_geodataframe(fake, "test-src", "fake_gdf",
+                                        layer_type="line",
+                                        paint={"line-color": "#f00"}))
+        assert len(fake.messages) == 2
+        assert fake.messages[0][0] == "deck_add_source"
+        assert fake.messages[0][1]["sourceId"] == "test-src"
+        assert fake.messages[1][0] == "deck_add_maplibre_layer"
+        assert fake.messages[1][1]["layerSpec"]["id"] == "test-src-layer"
+        assert fake.messages[1][1]["layerSpec"]["paint"]["line-color"] == "#f00"
 
     def test_add_geodataframe_default_paint(self):
         """Default paint should be applied based on layer_type."""
         w = MapWidget("gp1b")
         fake = _FakeSession()
 
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
-
-        try:
-            asyncio.run(w.add_geodataframe(fake, "src", "gdf"))
-            layer_spec = fake.messages[1][1]["layerSpec"]
-            assert layer_spec["type"] == "fill"
-            assert "fill-color" in layer_spec["paint"]
-        finally:
-            comp._serialise_data = original
+        asyncio.run(w.add_geodataframe(fake, "src", "gdf"))
+        layer_spec = fake.messages[1][1]["layerSpec"]
+        assert layer_spec["type"] == "fill"
+        assert "fill-color" in layer_spec["paint"]
 
     def test_add_geodataframe_with_popup(self):
         """add_geodataframe with popup_template should send 3 messages."""
         w = MapWidget("gp2")
         fake = _FakeSession()
 
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
-
-        try:
-            asyncio.run(w.add_geodataframe(fake, "eez", "fake_gdf",
-                                            popup_template="<b>{name}</b>"))
-            assert len(fake.messages) == 3
-            assert fake.messages[2][0] == "deck_add_popup"
-            assert fake.messages[2][1]["template"] == "<b>{name}</b>"
-        finally:
-            comp._serialise_data = original
+        asyncio.run(w.add_geodataframe(fake, "eez", "fake_gdf",
+                                        popup_template="<b>{name}</b>"))
+        assert len(fake.messages) == 3
+        assert fake.messages[2][0] == "deck_add_popup"
+        assert fake.messages[2][1]["template"] == "<b>{name}</b>"
 
     def test_update_geodataframe(self):
         w = MapWidget("gp3")
         fake = _FakeSession()
 
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-        comp._serialise_data = lambda x: {"type": "FeatureCollection", "features": []}
-
-        try:
-            asyncio.run(w.update_geodataframe(fake, "eez", "fake_gdf"))
-            assert fake.messages[0][0] == "deck_set_source_data"
-            assert fake.messages[0][1]["sourceId"] == "eez"
-        finally:
-            comp._serialise_data = original
+        asyncio.run(w.update_geodataframe(fake, "eez", "fake_gdf"))
+        assert fake.messages[0][0] == "deck_set_source_data"
+        assert fake.messages[0][1]["sourceId"] == "eez"
 
 
 # ---------------------------------------------------------------------------
@@ -2820,150 +2746,100 @@ class TestGeoPandasExtended:
 
     def test_add_geodataframe_line_type(self):
         """When layer_type='line', default paint should have line properties."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
-            def __init__(self):
-                pass
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd1")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            asyncio.run(w.add_geodataframe(fake, "lines", gdf,
-                                            layer_type="line"))
-            # Should have 2 messages: add_source + add_maplibre_layer
-            assert len(fake.messages) == 2
-            layer_msg = fake.messages[1][1]
-            assert layer_msg["layerSpec"]["type"] == "line"
-            assert "line-color" in layer_msg["layerSpec"]["paint"]
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd1")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        asyncio.run(w.add_geodataframe(fake, "lines", gdf,
+                                        layer_type="line"))
+        # Should have 2 messages: add_source + add_maplibre_layer
+        assert len(fake.messages) == 2
+        layer_msg = fake.messages[1][1]
+        assert layer_msg["layerSpec"]["type"] == "line"
+        assert "line-color" in layer_msg["layerSpec"]["paint"]
 
     def test_add_geodataframe_circle_type(self):
         """When layer_type='circle', default paint should have circle props."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd2")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            asyncio.run(w.add_geodataframe(fake, "pts", gdf,
-                                            layer_type="circle"))
-            layer_msg = fake.messages[1][1]
-            assert layer_msg["layerSpec"]["type"] == "circle"
-            assert "circle-radius" in layer_msg["layerSpec"]["paint"]
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd2")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        asyncio.run(w.add_geodataframe(fake, "pts", gdf,
+                                        layer_type="circle"))
+        layer_msg = fake.messages[1][1]
+        assert layer_msg["layerSpec"]["type"] == "circle"
+        assert "circle-radius" in layer_msg["layerSpec"]["paint"]
 
     def test_add_geodataframe_custom_paint_overrides(self):
         """Custom paint should override defaults."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd3")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            custom_paint = {"fill-color": "#ff0000", "fill-opacity": 0.8}
-            asyncio.run(w.add_geodataframe(fake, "custom", gdf,
-                                            paint=custom_paint))
-            layer_msg = fake.messages[1][1]
-            assert layer_msg["layerSpec"]["paint"] == custom_paint
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd3")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        custom_paint = {"fill-color": "#ff0000", "fill-opacity": 0.8}
+        asyncio.run(w.add_geodataframe(fake, "custom", gdf,
+                                        paint=custom_paint))
+        layer_msg = fake.messages[1][1]
+        assert layer_msg["layerSpec"]["paint"] == custom_paint
 
     def test_add_geodataframe_with_layout(self):
         """Layout property should be included when provided."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd4")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            asyncio.run(w.add_geodataframe(
-                fake, "src", gdf,
-                layout={"visibility": "none"}))
-            layer_msg = fake.messages[1][1]
-            assert layer_msg["layerSpec"]["layout"] == {"visibility": "none"}
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd4")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        asyncio.run(w.add_geodataframe(
+            fake, "src", gdf,
+            layout={"visibility": "none"}))
+        layer_msg = fake.messages[1][1]
+        assert layer_msg["layerSpec"]["layout"] == {"visibility": "none"}
 
     def test_add_geodataframe_with_popup_generates_three_messages(self):
         """When popup_template is given, a third message should be popup."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd5")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            asyncio.run(w.add_geodataframe(
-                fake, "src", gdf,
-                popup_template="<b>{name}</b>"))
-            assert len(fake.messages) == 3  # source + layer + popup
-            assert fake.messages[2][0] == "deck_add_popup"
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd5")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        asyncio.run(w.add_geodataframe(
+            fake, "src", gdf,
+            popup_template="<b>{name}</b>"))
+        assert len(fake.messages) == 3  # source + layer + popup
+        assert fake.messages[2][0] == "deck_add_popup"
 
     def test_add_geodataframe_before_id(self):
         """before_id should be passed through to add_maplibre_layer."""
-        import shiny_deckgl.components as comp
-        original = comp._serialise_data
-
         class FakeGDF:
             @property
             def __geo_interface__(self):
                 return {"type": "FeatureCollection", "features": []}
 
-        comp._serialise_data = lambda d: d.__geo_interface__
-
-        try:
-            w = MapWidget("gpd6")
-            fake = _FakeSession()
-            gdf = FakeGDF()
-            asyncio.run(w.add_geodataframe(
-                fake, "mydata", gdf, before_id="existing-layer"))
-            layer_msg = fake.messages[1][1]
-            assert layer_msg["beforeId"] == "existing-layer"
-        finally:
-            comp._serialise_data = original
+        w = MapWidget("gpd6")
+        fake = _FakeSession()
+        gdf = FakeGDF()
+        asyncio.run(w.add_geodataframe(
+            fake, "mydata", gdf, before_id="existing-layer"))
+        layer_msg = fake.messages[1][1]
+        assert layer_msg["beforeId"] == "existing-layer"
 
 
 class TestPaletteConstants:
@@ -3868,7 +3744,7 @@ class TestV080Version:
     """Version bump verification."""
 
     def test_version_is_100(self):
-        assert m.__version__ == "1.3.0"
+        assert m.__version__ == "1.4.0"
 
 
 # ===========================================================================
@@ -7161,4 +7037,268 @@ class TestOrbitView:
     def test_in_views_all(self):
         from shiny_deckgl.views import __all__ as views_all
         assert "orbit_view" in views_all
+
+
+# ===========================================================================
+# Parsers module tests (parse_shyfem_grd / parse_shyfem_mesh)
+# ===========================================================================
+
+# Synthetic .grd content: 3 nodes (WGS84), 1 triangle element
+_SAMPLE_GRD = """\
+1  1  0  20.0  55.0  10.0
+1  2  0  21.0  55.0  20.0
+1  3  0  20.5  56.0  30.0
+2  1  0  3  1  2  3
+"""
+
+
+class TestParsers:
+    """Tests for shiny_deckgl.parsers (SHYFEM .grd parsing)."""
+
+    def _write_grd(self, tmp_path, content=_SAMPLE_GRD):
+        p = tmp_path / "test.grd"
+        p.write_text(content)
+        return p
+
+    # --- parse_shyfem_grd ---
+
+    def test_grd_output_is_list_of_dicts(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_grd
+        result = parse_shyfem_grd(self._write_grd(tmp_path))
+        assert isinstance(result, list)
+        assert len(result) == 1
+        d = result[0]
+        for key in ("polygon", "depth", "element_id", "color", "layerType"):
+            assert key in d
+
+    def test_grd_polygon_is_closed(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_grd
+        result = parse_shyfem_grd(self._write_grd(tmp_path))
+        poly = result[0]["polygon"]
+        assert poly[0] == poly[-1], "Polygon must be closed (first == last)"
+
+    def test_grd_color_is_rgba(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_grd
+        result = parse_shyfem_grd(self._write_grd(tmp_path))
+        color = result[0]["color"]
+        assert len(color) == 4
+        for c in color:
+            assert 0 <= c <= 255
+
+    def test_grd_empty_file_returns_empty(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_grd
+        result = parse_shyfem_grd(self._write_grd(tmp_path, ""))
+        assert result == []
+
+    # --- parse_shyfem_mesh ---
+
+    def test_mesh_output_has_required_keys(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        for key in ("positions", "normals", "colors", "indices",
+                     "center", "n_vertices", "n_triangles", "depth_range"):
+            assert key in result
+
+    def test_mesh_vertex_count(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        assert result["n_vertices"] == 3
+
+    def test_mesh_triangle_count(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        assert result["n_triangles"] == 1
+
+    def test_mesh_positions_length(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        assert len(result["positions"]) == result["n_vertices"] * 3
+
+    def test_mesh_normals_length(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        assert len(result["normals"]) == result["n_vertices"] * 3
+
+    def test_mesh_colors_in_range(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        for v in result["colors"]:
+            assert 0.0 <= v <= 1.0
+
+    def test_mesh_indices_valid(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        result = parse_shyfem_mesh(self._write_grd(tmp_path))
+        for idx in result["indices"]:
+            assert 0 <= idx < result["n_vertices"]
+
+    def test_mesh_z_scale_affects_positions(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        r1 = parse_shyfem_mesh(self._write_grd(tmp_path), z_scale=1.0)
+        r2 = parse_shyfem_mesh(self._write_grd(tmp_path), z_scale=100.0)
+        # Z values (every 3rd element starting at index 2) should differ
+        z1 = r1["positions"][2::3]
+        z2 = r2["positions"][2::3]
+        assert z1 != z2
+
+    def test_mesh_empty_file_raises(self, tmp_path):
+        from shiny_deckgl.parsers import parse_shyfem_mesh
+        with pytest.raises(ValueError):
+            parse_shyfem_mesh(self._write_grd(tmp_path, ""))
+
+
+# ===========================================================================
+# Seal movement model tests (_sealmove.py)
+# ===========================================================================
+
+class TestSealmoveUtilities:
+    """Tests for _sealmove utility functions."""
+
+    def test_normalize_rows_sums_to_one(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import normalize_rows
+        M = np.array([[1, 2, 3], [4, 5, 6]], dtype=float)
+        result = normalize_rows(M)
+        np.testing.assert_allclose(result.sum(axis=1), [1.0, 1.0])
+
+    def test_normalize_rows_zero_row(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import normalize_rows
+        M = np.array([[0, 0, 0], [1, 1, 1]], dtype=float)
+        result = normalize_rows(M)
+        # zero row stays zero (divided by 1.0 sentinel)
+        np.testing.assert_allclose(result[0], [0.0, 0.0, 0.0])
+        np.testing.assert_allclose(result[1].sum(), 1.0)
+
+    def test_softmax_sums_to_one(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import softmax
+        result = softmax(np.array([1.0, 2.0, 3.0]))
+        assert abs(result.sum() - 1.0) < 1e-9
+
+    def test_softmax_temperature(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import softmax
+        # High temperature → more uniform
+        hot = softmax(np.array([1.0, 10.0]), tau=100.0)
+        cold = softmax(np.array([1.0, 10.0]), tau=0.1)
+        # Cold should be more concentrated on the larger value
+        assert cold[1] > hot[1]
+
+    def test_reflect_into_bounds(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import reflect_into_bounds
+        bounds = (0.0, 10.0, 0.0, 10.0)
+        # Point inside bounds → unchanged
+        inside = reflect_into_bounds(np.array([5.0, 5.0]), bounds)
+        np.testing.assert_allclose(inside, [5.0, 5.0])
+        # Point outside → reflected back in
+        outside = reflect_into_bounds(np.array([-1.0, 11.0]), bounds)
+        assert bounds[0] <= outside[0] <= bounds[1]
+        assert bounds[2] <= outside[1] <= bounds[3]
+
+
+class TestSimulateIHTR:
+    """Tests for the I-HTR Markov chain simulator."""
+
+    def test_output_shape(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import IHTRConfig, simulate_IHTR
+        P = np.array([[0.9, 0.1], [0.2, 0.8]])
+        cfg = IHTRConfig(P=P, n_agents=10, T=5)
+        df = simulate_IHTR(cfg, random_state=42)
+        assert len(df) == 10 * 5
+        assert list(df.columns) == ["t", "agent", "cluster"]
+
+    def test_cluster_values_in_range(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import IHTRConfig, simulate_IHTR
+        K = 3
+        P = np.ones((K, K)) / K
+        cfg = IHTRConfig(P=P, n_agents=20, T=10)
+        df = simulate_IHTR(cfg, random_state=42)
+        assert df["cluster"].min() >= 0
+        assert df["cluster"].max() < K
+
+    def test_reproducible(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import IHTRConfig, simulate_IHTR
+        P = np.array([[0.8, 0.2], [0.3, 0.7]])
+        cfg = IHTRConfig(P=P, n_agents=5, T=10)
+        df1 = simulate_IHTR(cfg, random_state=99)
+        df2 = simulate_IHTR(cfg, random_state=99)
+        assert df1.equals(df2)
+
+
+class TestSealIBM:
+    """Tests for the mechanistic individual-based model."""
+
+    def _make_env(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import Environment, IBMParams
+        habitat = np.ones((10, 10))
+        bounds = (0.0, 50.0, 0.0, 50.0)
+        sites = np.array([[25.0, 25.0]], dtype=float)
+        env = Environment(bounds=bounds, habitat=habitat, haulout_sites=sites)
+        return env
+
+    def test_agents_initialized_within_bounds(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import SealIBM, IBMParams
+        env = self._make_env()
+        ibm = SealIBM(env=env, params=IBMParams(), n_agents=20,
+                       rng=np.random.default_rng(42))
+        for s in ibm.states:
+            assert env.bounds[0] <= s.xy[0] <= env.bounds[1]
+            assert env.bounds[2] <= s.xy[1] <= env.bounds[3]
+
+    def test_run_returns_dataframe_with_columns(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import SealIBM, IBMParams
+        env = self._make_env()
+        ibm = SealIBM(env=env, params=IBMParams(), n_agents=5,
+                       rng=np.random.default_rng(42))
+        df = ibm.run(T=10)
+        expected_cols = {"t", "agent", "x", "y", "energy", "at_sea", "haulout_site"}
+        assert set(df.columns) == expected_cols
+
+    def test_positions_stay_within_bounds(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import SealIBM, IBMParams
+        env = self._make_env()
+        ibm = SealIBM(env=env, params=IBMParams(), n_agents=10,
+                       rng=np.random.default_rng(42))
+        df = ibm.run(T=50)
+        assert df["x"].min() >= env.bounds[0]
+        assert df["x"].max() <= env.bounds[1]
+        assert df["y"].min() >= env.bounds[2]
+        assert df["y"].max() <= env.bounds[3]
+
+    def test_reproducible(self):
+        import numpy as np
+        from shiny_deckgl._sealmove import SealIBM, IBMParams
+        env = self._make_env()
+        ibm1 = SealIBM(env=env, params=IBMParams(), n_agents=5,
+                        rng=np.random.default_rng(42))
+        df1 = ibm1.run(T=10)
+        # Recreate environment (gradient caches)
+        env2 = self._make_env()
+        ibm2 = SealIBM(env=env2, params=IBMParams(), n_agents=5,
+                        rng=np.random.default_rng(42))
+        df2 = ibm2.run(T=10)
+        assert df1.equals(df2)
+
+
+class TestDemoSynthetic:
+    """Tests for the demo_synthetic() convenience function."""
+
+    def test_returns_expected_keys(self):
+        from shiny_deckgl._sealmove import demo_synthetic
+        result = demo_synthetic()
+        for key in ("ihtr", "ihtr_summary", "ibm", "ibm_usage_counts"):
+            assert key in result
+
+    def test_no_errors(self):
+        from shiny_deckgl._sealmove import demo_synthetic
+        # Should complete without raising
+        demo_synthetic()
 

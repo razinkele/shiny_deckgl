@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html as _html_mod
 import json
 import pathlib
 from functools import lru_cache

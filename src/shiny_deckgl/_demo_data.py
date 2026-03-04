@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64 as _b64
 import functools
 import json
+import math
 import random
 import zlib as _zlib
 from pathlib import Path
@@ -24,6 +25,7 @@ from .colors import (
     PALETTE_THERMAL,
     PALETTE_CHLOROPHYLL,
 )
+from .ibm import SPECIES_COLORS, format_trips
 
 # ---------------------------------------------------------------------------
 # Baltic Sea ports
@@ -438,8 +440,6 @@ def make_bathymetry_grid(
     lon_min, lon_max, lat_min, lat_max
         Geographic extent (default: full Baltic Sea).
     """
-    import math
-
     # Landsort Deep approximate location
     centre_lon, centre_lat = 18.2, 58.6
     max_depth = 459.0  # metres — deepest point in the Baltic
@@ -648,15 +648,14 @@ def make_h3_data() -> list[dict]:
 @functools.lru_cache(maxsize=32)
 def make_point_cloud_data() -> list[dict]:
     """Generate synthetic 3-D point cloud around Baltic ports."""
-    import math as _math
     pts: list[dict] = []
     for _i, _p in enumerate(PORTS):
         for _j in range(20):
-            _angle = _j * _math.pi * 2 / 20
+            _angle = _j * math.pi * 2 / 20
             pts.append({
                 "position": [
-                    float(_p["lon"]) + 0.05 * _math.cos(_angle),
-                    float(_p["lat"]) + 0.03 * _math.sin(_angle),
+                    float(_p["lon"]) + 0.05 * math.cos(_angle),
+                    float(_p["lat"]) + 0.03 * math.sin(_angle),
                     float(_p["cargo_mt"]) * 50 + _j * 100,
                 ],
                 "color": [200, 100 + _j * 5, 50],
@@ -796,8 +795,6 @@ def is_sea(lon: float, lat: float) -> bool:
     mask = _get_sea_mask()
     return mask[row][col] == 1
 
-from .ibm import SPECIES_COLORS  # noqa: E402
-
 # ---------------------------------------------------------------------------
 # Colony / haul-out reference data (demo-only, not part of the library)
 # ---------------------------------------------------------------------------
@@ -861,9 +858,6 @@ def make_seal_trips(
         ``timestamps``, ``name``, ``species``, ``haulout``,
         ``color``, and ``seal_id``.
     """
-    import math
-    from .ibm import format_trips
-
     rng = random.Random(seed)
     trips: list[dict] = []
 
@@ -984,8 +978,6 @@ def make_seal_foraging_areas() -> dict:
     Each haul-out gets an elliptical polygon whose size is based on the
     species' typical foraging range.
     """
-    import math
-
     features = []
     for site in _SEAL_HAULOUT_SITES:
         params = _SEAL_TRIP_PARAMS[site["species"]]
@@ -1024,8 +1016,6 @@ def make_seal_haulout_icons() -> list[dict]:
     list[dict]
         Ready for ``icon_layer(data=...)``.
     """
-    import math
-
     return [
         {
             "position": [s["lon"], s["lat"]],
@@ -1176,7 +1166,6 @@ def make_seal_trips_ibm(
         ``color``, ``seal_id``.
     """
     import numpy as np
-    from .ibm import format_trips
 
     rng = np.random.default_rng(seed)
 

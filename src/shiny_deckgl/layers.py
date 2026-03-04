@@ -1,4 +1,29 @@
-"""Deck.gl layer helpers — generic ``layer()`` + typed convenience wrappers."""
+"""Deck.gl layer helpers — generic ``layer()`` + typed convenience wrappers.
+
+Accessor String Conventions
+---------------------------
+Layer definitions use special ``@@`` prefixed strings that the deck.gl JSON
+converter resolves at runtime:
+
+- ``"@@d"`` — Direct data accessor, references the entire data item.
+  Used when the full object is the value (e.g., ``getPosition: "@@d"``
+  when data items are ``[lon, lat]`` arrays).
+
+- ``"@@d.property"`` — Property accessor, references a specific property
+  of the data item (e.g., ``getPosition: "@@d.position"`` when data items
+  are dicts like ``{"position": [lon, lat], ...}``).
+
+- ``"@@=property"`` — Binary accessor, used for binary-encoded attributes
+  passed via ``encode_binary_attribute()``. The ``=`` signals that the
+  attribute is a typed array, not JSON data.
+
+- ``"@@ClassName"`` — Class reference, instantiates a deck.gl/luma.gl class
+  (e.g., ``"@@BitmapLayer"`` for sub-layers, ``"@@CubeGeometry"`` for mesh
+  geometry types).
+
+See `deck.gl JSON configuration docs <https://deck.gl/docs/api-reference/json/conversion-reference>`_
+for the full specification.
+"""
 
 from __future__ import annotations
 
@@ -41,7 +66,7 @@ __all__ = [
 # Generic layer helper
 # ---------------------------------------------------------------------------
 
-def layer(type: str, id: str, data=None, *, extensions: list | None = None, **kwargs) -> dict:
+def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None = None, **kwargs) -> dict:
     """Create an arbitrary deck.gl layer definition.
 
     Works for *any* deck.gl layer class (e.g. ``"HeatmapLayer"``,
@@ -76,7 +101,10 @@ def layer(type: str, id: str, data=None, *, extensions: list | None = None, **kw
         Any additional deck.gl properties.  ``visible=False`` hides the
         layer without removing it from the stack.
     """
-    lyr: dict = {"type": type, "id": id}
+    # Build from kwargs first, then forcibly set type/id so that
+    # stray type= or id= in **kwargs can never silently clobber the
+    # positional arguments.
+    lyr: dict = {**kwargs, "type": type, "id": id}
     if data is not None:
         lyr["data"] = _serialise_data(data)
     if extensions:
@@ -92,7 +120,6 @@ def layer(type: str, id: str, data=None, *, extensions: list | None = None, **kw
                     "Expected a string or a [name, options] pair."
                 )
         lyr["@@extensions"] = resolved
-    lyr.update(kwargs)
     return lyr
 
 
@@ -122,7 +149,7 @@ def scatterplot_layer(id: str, data: list | dict, **kwargs) -> dict:
     return layer("ScatterplotLayer", id, data, **defaults)
 
 
-def geojson_layer(id: str, data: dict | list, **kwargs) -> dict:
+def geojson_layer(id: str, data: list | dict, **kwargs) -> dict:
     """Create a deck.gl ``GeoJsonLayer`` definition.
 
     Parameters
@@ -174,7 +201,7 @@ def tile_layer(id: str, data: str | list, **kwargs) -> dict:
     return layer("TileLayer", id, data, **defaults)
 
 
-def bitmap_layer(id: str, image: str, bounds: list, **kwargs) -> dict:
+def bitmap_layer(id: str, image: str, bounds: list[float], **kwargs) -> dict:
     """Create a deck.gl ``BitmapLayer`` for a static image overlay.
 
     Parameters
@@ -647,7 +674,7 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
     return layer("WMSLayer", id, data, **defaults)
 
 
-def point_cloud_layer(id: str, data=None, **kwargs) -> dict:
+def point_cloud_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     """Create a deck.gl ``PointCloudLayer``.
 
     Renders a cloud of 3-D points.  Each point is positioned at
@@ -676,7 +703,7 @@ def point_cloud_layer(id: str, data=None, **kwargs) -> dict:
     return layer("PointCloudLayer", id, data, **defaults)
 
 
-def simple_mesh_layer(id: str, data=None, **kwargs) -> dict:
+def simple_mesh_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     """Create a deck.gl ``SimpleMeshLayer``.
 
     Renders a 3-D mesh (OBJ, PLY, or programmatic geometry) at each
@@ -719,7 +746,7 @@ def simple_mesh_layer(id: str, data=None, **kwargs) -> dict:
     return layer("SimpleMeshLayer", id, data, **defaults)
 
 
-def terrain_layer(id: str, data=None, **kwargs) -> dict:
+def terrain_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     """Create a deck.gl ``TerrainLayer``.
 
     Reconstructs mesh surfaces from height-map images (e.g. Mapzen
@@ -745,11 +772,13 @@ def terrain_layer(id: str, data=None, **kwargs) -> dict:
     defaults: dict[str, Any] = {
         "meshMaxError": 4.0,
     }
-    # Allow either `data` or `elevationData` for the height-map URL
+    # Allow either `data` or `elevationData` for the height-map URL.
+    # When elevationData is set (either from data or kwargs), pass
+    # data=None to layer() to avoid sending the URL twice.
     if data is not None and "elevationData" not in kwargs:
         defaults["elevationData"] = data
     defaults.update(kwargs)
-    return layer("TerrainLayer", id, data, **defaults)
+    return layer("TerrainLayer", id, None, **defaults)
 
 
 # ---------------------------------------------------------------------------
@@ -823,6 +852,10 @@ def custom_geometry(
     >>> mesh = parse_shyfem_mesh("mesh.grd")
     >>> lyr = simple_mesh_layer("my-mesh", **custom_geometry(mesh))
     """
+    for key in ("positions", "indices"):
+        if key not in mesh_data:
+            raise ValueError(f"mesh_data must contain '{key}'")
+
     ctr = mesh_data.get("center", [0, 0])
     origin = position if position is not None else [ctr[0], ctr[1]]
 

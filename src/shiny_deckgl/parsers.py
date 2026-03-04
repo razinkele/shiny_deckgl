@@ -17,9 +17,9 @@ Coordinate system auto-detection:
 
 from __future__ import annotations
 
+import functools
 import math
 from pathlib import Path
-from typing import Any
 
 __all__ = [
     "parse_shyfem_grd",
@@ -28,26 +28,23 @@ __all__ = [
 
 
 # ---------------------------------------------------------------------------
-# Internal: coordinate transformer (lazy-loaded)
+# Internal: coordinate transformer (lazy-loaded, cached)
 # ---------------------------------------------------------------------------
 
-_TRANSFORMER: Any = None
-_TRANSFORMER_LOADED = False
 
-
+@functools.lru_cache(maxsize=1)
 def _get_transformer():
-    """Lazy-load pyproj Transformer (UTM Zone 33N → WGS84)."""
-    global _TRANSFORMER, _TRANSFORMER_LOADED
-    if not _TRANSFORMER_LOADED:
-        try:
-            from pyproj import Transformer
-            _TRANSFORMER = Transformer.from_crs(
-                "EPSG:32633", "EPSG:4326", always_xy=True,
-            )
-        except ImportError:
-            _TRANSFORMER = None
-        _TRANSFORMER_LOADED = True
-    return _TRANSFORMER
+    """Lazy-load pyproj Transformer (UTM Zone 33N → WGS84).
+
+    Returns ``None`` if pyproj is not installed.
+    """
+    try:
+        from pyproj import Transformer
+        return Transformer.from_crs(
+            "EPSG:32633", "EPSG:4326", always_xy=True,
+        )
+    except ImportError:
+        return None
 
 
 def _utm_to_wgs84(x: float, y: float) -> tuple[float, float]:
@@ -56,6 +53,27 @@ def _utm_to_wgs84(x: float, y: float) -> tuple[float, float]:
     if t is not None:
         return t.transform(x, y)
     raise RuntimeError("pyproj is required: micromamba install -n shiny pyproj")
+
+
+def _depth_to_rgb(t: float) -> tuple[int, int, int]:
+    """Convert normalized depth (0=shallow, 1=deep) to RGB color.
+
+    Returns a blue color ramp: shallow = light blue, deep = dark blue.
+
+    Parameters
+    ----------
+    t
+        Normalized depth value in [0, 1] range.
+
+    Returns
+    -------
+    tuple[int, int, int]
+        RGB color tuple (0-255 range).
+    """
+    r = int(30 + (1 - t) * 150)
+    g = int(60 + (1 - t) * 160)
+    b = int(180 + (1 - t) * 40)
+    return r, g, b
 
 
 # ---------------------------------------------------------------------------
@@ -184,9 +202,7 @@ def parse_shyfem_grd(path: str | Path) -> list[dict]:
 
         # Colour: shallow = light blue → deep = dark blue
         t = (depth - d_min) / d_range
-        r = int(30 + (1 - t) * 150)
-        g = int(60 + (1 - t) * 160)
-        b = int(180 + (1 - t) * 40)
+        r, g, b = _depth_to_rgb(t)
 
         result.append({
             "polygon": coords,
@@ -224,70 +240,70 @@ def parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict:
         ``indices`` (flat int list), ``center`` (``[lon, lat]``),
         ``n_vertices``, ``n_triangles``, ``depth_range``.
     """
+    import numpy as np
+
     nodes, elements, node_depths = _read_grd(Path(path))
 
     if not nodes or not elements:
         raise ValueError(f"No nodes or elements parsed from {path}")
 
-    # Centre in lon/lat
-    all_lons = [v[0] for v in nodes.values()]
-    all_lats = [v[1] for v in nodes.values()]
-    ctr_lon = (min(all_lons) + max(all_lons)) / 2
-    ctr_lat = (min(all_lats) + max(all_lats)) / 2
+    # Build node_id to index mapping
+    node_ids = np.array(list(nodes.keys()))
+    nid_to_idx = {nid: i for i, nid in enumerate(node_ids)}
+    n_vertices = len(node_ids)
 
-    # Metres-per-degree at centre latitude
+    # Coordinates array
+    node_coords = np.array(list(nodes.values())) # shape (N, 2)
+    lons = node_coords[:, 0]
+    lats = node_coords[:, 1]
+
+    ctr_lon = float(lons.mean())
+    ctr_lat = float(lats.mean())
+
     m_per_deg_lon = 111_320 * math.cos(math.radians(ctr_lat))
     m_per_deg_lat = 110_540
 
-    # Build vertex list (node id → index)
-    nid_to_idx: dict[int, int] = {}
-    positions: list[float] = []
-    idx = 0
-    for nid, (lon, lat) in nodes.items():
-        nid_to_idx[nid] = idx
-        dx = (lon - ctr_lon) * m_per_deg_lon
-        dy = (lat - ctr_lat) * m_per_deg_lat
-        positions.extend([dx, dy, 0.0])
-        idx += 1
+    # Initialize positions (X, Y, Z)
+    positions = np.zeros((n_vertices, 3), dtype=np.float32)
+    positions[:, 0] = (lons - ctr_lon) * m_per_deg_lon
+    positions[:, 1] = (lats - ctr_lat) * m_per_deg_lat
 
-    # Per-vertex depth: prefer per-node depths when available,
-    # otherwise average from adjacent elements.
-    vertex_depth: dict[int, float] = {}
+    # Per-vertex depth
     if node_depths:
-        vertex_depth = dict(node_depths)
+        # Vectorized lookup
+        depths_arr = np.array([node_depths.get(nid, 0.0) for nid in node_ids], dtype=np.float32)
     else:
-        _vd_sum: dict[int, float] = {nid: 0.0 for nid in nodes}
-        _vd_cnt: dict[int, int] = {nid: 0 for nid in nodes}
+        # Fallback to averaging elements
+        sum_depths = np.zeros(n_vertices, dtype=np.float32)
+        cnt_depths = np.zeros(n_vertices, dtype=np.float32)
         for elem in elements:
+            d = elem["depth"]
             for v in elem["verts"]:
-                _vd_sum[v] += elem["depth"]
-                _vd_cnt[v] += 1
-        for nid in nodes:
-            cnt = _vd_cnt[nid]
-            vertex_depth[nid] = _vd_sum[nid] / cnt if cnt else 0.0
+                if v in nid_to_idx:
+                    idx = nid_to_idx[v]
+                    sum_depths[idx] += d
+                    cnt_depths[idx] += 1
+        
+        valid = cnt_depths > 0
+        depths_arr = np.zeros(n_vertices, dtype=np.float32)
+        depths_arr[valid] = sum_depths[valid] / cnt_depths[valid]
 
-    # Depth range across vertices
-    all_depths = list(vertex_depth.values())
-    d_min, d_max = min(all_depths), max(all_depths)
+    d_min = float(depths_arr.min())
+    d_max = float(depths_arr.max())
     d_range = d_max - d_min if d_max > d_min else 1.0
 
-    # Assign vertex Z from depth
-    for nid in nodes:
-        vi = nid_to_idx[nid]
-        positions[vi * 3 + 2] = -vertex_depth.get(nid, 0.0) * z_scale
+    # Assign Z (remember to negate)
+    positions[:, 2] = -depths_arr * z_scale
 
-    # Per-vertex colours (depth-mapped blue ramp, values 0..1)
-    colors: list[float] = []
-    for nid in nodes:
-        d = vertex_depth.get(nid, 0.0)
-        t = (d - d_min) / d_range
-        r = (30 + (1 - t) * 150) / 255
-        g = (60 + (1 - t) * 160) / 255
-        b = (180 + (1 - t) * 40) / 255
-        colors.extend([round(r, 3), round(g, 3), round(b, 3)])
+    # Per-vertex colours (vectorized version of _depth_to_rgb formula)
+    t = (depths_arr - d_min) / d_range
+    colors = np.zeros((n_vertices, 3), dtype=np.float32)
+    colors[:, 0] = (30 + (1 - t) * 150) / 255.0  # R: shallow=light, deep=dark
+    colors[:, 1] = (60 + (1 - t) * 160) / 255.0  # G
+    colors[:, 2] = (180 + (1 - t) * 40) / 255.0  # B
 
     # Build triangle indices
-    indices: list[int] = []
+    indices_list = []
     for elem in elements:
         vs = elem["verts"]
         if len(vs) >= 3:
@@ -295,46 +311,42 @@ def parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict:
                 i0, i1, i2 = nid_to_idx[vs[0]], nid_to_idx[vs[1]], nid_to_idx[vs[2]]
             except KeyError:
                 continue
-            indices.extend([i0, i1, i2])
+            indices_list.extend([i0, i1, i2])
             if len(vs) == 4:
                 try:
                     i3 = nid_to_idx[vs[3]]
+                    indices_list.extend([i0, i2, i3])
                 except KeyError:
-                    continue
-                indices.extend([i0, i2, i3])
+                    pass
+    
+    indices = np.array(indices_list, dtype=np.int32)
 
-    # Compute per-vertex normals (average of face normals)
-    normals = [0.0] * len(positions)
-    for fi in range(0, len(indices), 3):
-        i0, i1, i2 = indices[fi], indices[fi + 1], indices[fi + 2]
-        p0 = positions[i0 * 3: i0 * 3 + 3]
-        p1 = positions[i1 * 3: i1 * 3 + 3]
-        p2 = positions[i2 * 3: i2 * 3 + 3]
-        e1 = [p1[j] - p0[j] for j in range(3)]
-        e2 = [p2[j] - p0[j] for j in range(3)]
-        nx = e1[1] * e2[2] - e1[2] * e2[1]
-        ny = e1[2] * e2[0] - e1[0] * e2[2]
-        nz = e1[0] * e2[1] - e1[1] * e2[0]
-        for vi in (i0, i1, i2):
-            normals[vi * 3] += nx
-            normals[vi * 3 + 1] += ny
-            normals[vi * 3 + 2] += nz
-    for vi in range(len(positions) // 3):
-        nx, ny, nz = normals[vi * 3], normals[vi * 3 + 1], normals[vi * 3 + 2]
-        length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
-        normals[vi * 3] = round(nx / length, 4)
-        normals[vi * 3 + 1] = round(ny / length, 4)
-        normals[vi * 3 + 2] = round(nz / length, 4)
-
-    positions = [round(v, 2) for v in positions]
+    # Compute normals using advanced indexing
+    normals = np.zeros_like(positions)
+    p0 = positions[indices[0::3]]
+    p1 = positions[indices[1::3]]
+    p2 = positions[indices[2::3]]
+    
+    e1 = p1 - p0
+    e2 = p2 - p0
+    
+    face_normals = np.cross(e1, e2)
+    
+    np.add.at(normals, indices[0::3], face_normals)
+    np.add.at(normals, indices[1::3], face_normals)
+    np.add.at(normals, indices[2::3], face_normals)
+    
+    lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+    lengths[lengths == 0] = 1.0
+    normals /= lengths
 
     return {
-        "positions": positions,
-        "normals": normals,
-        "colors": colors,
-        "indices": indices,
+        "positions": np.round(positions.flatten(), 2).tolist(),
+        "normals": np.round(normals.flatten(), 4).tolist(),
+        "colors": np.round(colors.flatten(), 3).tolist(),
+        "indices": indices.tolist(),
         "center": [round(ctr_lon, 5), round(ctr_lat, 5)],
-        "n_vertices": len(positions) // 3,
+        "n_vertices": n_vertices,
         "n_triangles": len(indices) // 3,
         "depth_range": [round(d_min, 2), round(d_max, 2)],
     }

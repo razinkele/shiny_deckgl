@@ -127,6 +127,16 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.4.0 — Partial Updates, Patch Layer & JS Modernisation
+
+| Capability | Details |
+| --- | --- |
+| **`partial_update()`** | Push sparse layer patches — only changed properties are sent, avoiding full-stack resend. Auto-serialises DataFrames. |
+| **`patch_layer()`** | Convenience wrapper to patch a single layer by ID: `await widget.patch_layer(session, "my_layer", opacity=0.5)`. |
+| **Tooltip dismiss** | Map tooltips auto-hide when cursor moves to empty space; Bootstrap switch tooltips no longer persist after toggle. |
+| **JS modernisation** | `structuredClone()` replaces `JSON.parse(JSON.stringify())`; all `var` declarations converted to `const`/`let`. |
+| **TripsLayer partial fix** | `partial_update` now correctly restarts TripsLayer animation after patching. |
+
 ### v1.3.0 — Mesh Parsers, Colour Scales & Library Extraction
 
 | Capability | Details |
@@ -346,8 +356,8 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/resources/deckgl-init.js` | Frontend: MapLibre init, deck.gl overlay, message handlers, draw tools, popups, terrain. |
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
-| `src/shiny_deckgl/Sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
-| `tests/test_basic.py` | 1 051 unit tests covering all features. |
+| `src/shiny_deckgl/_sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
+| `tests/test_basic.py` | 1 078 unit tests covering all features. |
 
 ## Running Tests
 

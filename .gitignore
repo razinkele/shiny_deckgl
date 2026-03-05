@@ -28,6 +28,9 @@ env/
 Thumbs.db
 .DS_Store
 
+# Type checking cache
+.mypy_cache/
+
 # Test / coverage
 .pytest_cache/
 htmlcov/
@@ -43,6 +46,7 @@ conda.recipe/build/
 # Local / user-specific files
 desktop.ini
 .claude/
+_check_*.py
 *.zip
 *.shp
 *.shx

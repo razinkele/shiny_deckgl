@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import base64
-import json
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np  # noqa: F401 — type-checking only
 
 __all__ = ["encode_binary_attribute"]
 
@@ -12,21 +14,25 @@ __all__ = ["encode_binary_attribute"]
 def _serialise_data(data: Any) -> Any:
     """Convert pandas/geopandas objects to JSON-safe structures.
 
-    - ``GeoDataFrame`` → GeoJSON ``FeatureCollection`` dict
-    - ``DataFrame`` → list of row-dicts
+    - ``GeoDataFrame`` (or subclasses) → GeoJSON ``FeatureCollection`` dict
+    - ``DataFrame`` (or subclasses) → list of row-dicts
     - Everything else is returned unchanged.
     """
-    type_name = type(data).__name__
-    if type_name == "GeoDataFrame":
-        if hasattr(data, "__geo_interface__"):
-            return data.__geo_interface__
-        return json.loads(data.to_json())
-    if type_name == "DataFrame":
+    # Check class names in the MRO so subclasses are handled without
+    # importing pandas/geopandas (which are optional dependencies).
+    mro_names = {cls.__name__ for cls in type(data).__mro__}
+    if "GeoDataFrame" in mro_names:
+        # __geo_interface__ is always present on GeoDataFrame; the old
+        # json.loads(data.to_json()) fallback serialised the entire
+        # frame to a string only to immediately deserialise it back —
+        # a significant memory and CPU bottleneck for large datasets.
+        return data.__geo_interface__
+    if "DataFrame" in mro_names:
         return data.to_dict(orient="records")
     return data
 
 
-def encode_binary_attribute(array) -> dict:
+def encode_binary_attribute(array: "np.ndarray") -> dict:
     """Encode a numpy array as a base64 binary transport dict.
 
     deck.gl supports `binary attributes
@@ -58,7 +64,9 @@ def encode_binary_attribute(array) -> dict:
     arr = np.ascontiguousarray(array)
     dtype_str = str(arr.dtype)
     if dtype_str not in ("float32", "float64", "uint8", "int32"):
-        arr = arr.astype("float32")
+        # astype always copies; ascontiguousarray above already
+        # ensured C-contiguity, so replace arr in-place reference.
+        arr = arr.astype("float32", copy=False)
         dtype_str = "float32"
     encoded = base64.b64encode(arr.tobytes()).decode("ascii")
     size = arr.shape[1] if arr.ndim > 1 else 1

@@ -34,10 +34,7 @@ from .colors import (  # noqa: F401
 )
 
 # --- _data_utils ---
-from ._data_utils import (  # noqa: F401
-    _serialise_data,
-    encode_binary_attribute,
-)
+from ._data_utils import encode_binary_attribute  # noqa: F401
 
 # --- views ---
 from .views import (  # noqa: F401
@@ -117,6 +114,7 @@ from .layers import (  # noqa: F401
 
 # --- extensions ---
 from .extensions import (  # noqa: F401
+    Extension,
     brushing_extension,
     collision_filter_extension,
     data_filter_extension,

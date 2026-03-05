@@ -1,4 +1,4 @@
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 
 def python_version() -> str:
@@ -10,7 +10,7 @@ def python_version() -> str:
 def shiny_version() -> str:
     """Return the installed Shiny for Python version, or ``'unknown'``."""
     try:
-        from importlib.metadata import version
+        from importlib.metadata import version, PackageNotFoundError
         return version("shiny")
-    except Exception:
+    except (PackageNotFoundError, ImportError):
         return "unknown"

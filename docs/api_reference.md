@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.3.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.4.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -141,6 +141,9 @@ import shiny_deckgl as sdgl
   - [parse\_shyfem\_grd()](#parse_shyfem_grd)
   - [parse\_shyfem\_mesh()](#parse_shyfem_mesh)
 - [Demo Data Factories (v1.3)](#demo-data-factories-v13)
+- [Partial Updates (v1.4)](#partial-updates-v14)
+  - [partial\_update()](#partial_update)
+  - [patch\_layer()](#patch_layer)
 - [IBM Visual Assets (v1.1)](#ibm-visual-assets-v11)
 - [Basemap & Control Constants](#basemap--control-constants)
 - [Color Utilities](#color-utilities)
@@ -2176,6 +2179,72 @@ Load a SHYFEM `.grd` as SimpleMeshLayer geometry arrays.  Returns `None` when `g
 | --- | --- | --- |
 | `grd_path` | `None` | Path to the `.grd` file. |
 | `z_scale` | `50.0` | Vertical exaggeration factor. |
+
+---
+
+## Partial Updates (v1.4)
+
+Methods for efficiently patching layer properties without resending the entire
+layer stack.
+
+### `partial_update()`
+
+```python
+await widget.partial_update(
+    session,
+    layers: list[dict],
+) -> None
+```
+
+Push **sparse layer patches** — only changed properties are sent.  Each dict
+in `layers` must contain an `"id"` key matching an existing layer; the
+remaining keys are shallow-merged into that layer's current props on the
+client.
+
+DataFrames / GeoDataFrames in `data` fields are auto-serialised.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `layers` | `list[dict]` | *(required)* | Sparse dicts with `id` + changed props. |
+
+> **Note:** This method patches **layer** properties only.  Deck-level props
+> (`effects`, `views`, `widgets`, `picking_radius`, etc.) are not affected —
+> use `update()` for those.
+
+**Example:**
+
+```python
+# Change only the opacity and radius of an existing layer
+await map_widget.partial_update(session, [
+    {"id": "scatter-ports", "opacity": 0.5, "radiusMinPixels": 12},
+])
+```
+
+### `patch_layer()`
+
+```python
+await widget.patch_layer(
+    session,
+    layer_id: str,
+    **props: Any,
+) -> None
+```
+
+Convenience wrapper around `partial_update()` for the common case of tweaking
+**one layer** at a time.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `session` | `Session` | *(required)* | The active Shiny session. |
+| `layer_id` | `str` | *(required)* | ID of the layer to patch. |
+| `**props` | `Any` | — | Layer properties to update. |
+
+**Example:**
+
+```python
+await map_widget.patch_layer(session, "scatter-ports", opacity=0.5)
+```
 
 ---
 

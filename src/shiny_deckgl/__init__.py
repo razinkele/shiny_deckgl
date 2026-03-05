@@ -1,11 +1,13 @@
-from .components import (
-    MapWidget,
+# --- map_widget ---
+from .map_widget import MapWidget  # noqa: F401
+
+# --- layers ---
+from .layers import (  # noqa: F401
     layer,
     scatterplot_layer,
     geojson_layer,
     tile_layer,
     bitmap_layer,
-    # Layer helpers (v0.7.0)
     arc_layer,
     icon_layer,
     path_layer,
@@ -16,7 +18,6 @@ from .components import (
     heatmap_layer,
     hexagon_layer,
     h3_hexagon_layer,
-    # Layer helpers (v0.9.0) — geo-layers & aggregation-layers
     trips_layer,
     great_circle_layer,
     contour_layer,
@@ -27,14 +28,16 @@ from .components import (
     point_cloud_layer,
     simple_mesh_layer,
     terrain_layer,
-    # Mesh geometry helpers (v1.3.0)
     custom_geometry,
     COORDINATE_SYSTEM,
+)
+
+# --- colors ---
+from .colors import (  # noqa: F401
     CARTO_POSITRON,
     CARTO_DARK,
     CARTO_VOYAGER,
     OSM_LIBERTY,
-    # Color-scale utilities
     color_range,
     color_bins,
     color_quantiles,
@@ -44,15 +47,22 @@ from .components import (
     PALETTE_OCEAN,
     PALETTE_THERMAL,
     PALETTE_CHLOROPHYLL,
-    # Binary data transport
-    encode_binary_attribute,
-    # View helpers
+)
+
+# --- _data_utils ---
+from ._data_utils import encode_binary_attribute  # noqa: F401
+
+# --- views ---
+from .views import (  # noqa: F401
     map_view,
     orthographic_view,
     first_person_view,
     globe_view,
     orbit_view,
-    # Widget helpers (v0.8.0)
+)
+
+# --- widgets ---
+from .widgets import (  # noqa: F401
     zoom_widget,
     compass_widget,
     fullscreen_widget,
@@ -65,27 +75,31 @@ from .components import (
     timeline_widget,
     geocoder_widget,
     theme_widget,
-    # Experimental widget helpers (v9.2+)
     context_menu_widget,
     info_widget,
     splitter_widget,
     stats_widget,
     view_selector_widget,
-    # MapLibre control helpers
+)
+
+# --- controls ---
+from .controls import (  # noqa: F401
     geolocate_control,
     globe_control,
     terrain_control,
-    # Third-party MapLibre plugin controls
     legend_control,
     opacity_control,
-    # Custom deck.gl legend
     deck_legend_control,
-    # Transition helper (v0.8.0)
-    transition,
-    # Control constants (v0.2.0)
     CONTROL_TYPES,
     CONTROL_POSITIONS,
-    # Extension helpers (v1.0.0)
+)
+
+# --- _transitions ---
+from ._transitions import transition  # noqa: F401
+
+# --- extensions ---
+from .extensions import (  # noqa: F401
+    Extension,
     brushing_extension,
     collision_filter_extension,
     data_filter_extension,
@@ -96,7 +110,8 @@ from .components import (
     path_style_extension,
     fp64_extension,
 )
-from .extensions import Extension
+
+# --- effects ---
 from .effects import (  # noqa: F401
     ambient_light,
     point_light,
@@ -105,9 +120,15 @@ from .effects import (  # noqa: F401
     lighting_effect,
     post_process_effect,
 )
+
+# --- parsers ---
 from .parsers import parse_shyfem_grd, parse_shyfem_mesh  # noqa: F401
-from .ui import head_includes
-from .ibm import (
+
+# --- ui ---
+from .ui import head_includes  # noqa: F401
+
+# --- IBM visual assets & helpers ---
+from .ibm import (  # noqa: F401
     SPECIES_COLORS,
     ICON_ATLAS,
     ICON_MAPPING,
@@ -115,6 +136,8 @@ from .ibm import (
     trips_animation_ui,
     trips_animation_server,
 )
+
+# --- demo data factories ---
 from ._demo_data import (  # noqa: F401
     SHYFEM_VIEW,
     make_h3_data,
@@ -122,6 +145,8 @@ from ._demo_data import (  # noqa: F401
     make_shyfem_polygon_data,
     make_shyfem_mesh_data,
 )
+
+# --- version ---
 from ._version import __version__
 
 
@@ -136,7 +161,9 @@ def __getattr__(name: str):
 
 __all__ = [
     "app",
+    # MapWidget
     "MapWidget",
+    # Layers
     "layer",
     "scatterplot_layer",
     "geojson_layer",
@@ -164,9 +191,7 @@ __all__ = [
     "terrain_layer",
     "custom_geometry",
     "COORDINATE_SYSTEM",
-    "parse_shyfem_grd",
-    "parse_shyfem_mesh",
-    "head_includes",
+    # Colors & basemaps
     "CARTO_POSITRON",
     "CARTO_DARK",
     "CARTO_VOYAGER",
@@ -180,12 +205,15 @@ __all__ = [
     "PALETTE_OCEAN",
     "PALETTE_THERMAL",
     "PALETTE_CHLOROPHYLL",
+    # Binary data transport
     "encode_binary_attribute",
+    # Views
     "map_view",
     "orthographic_view",
     "first_person_view",
     "globe_view",
     "orbit_view",
+    # Widgets
     "zoom_widget",
     "compass_widget",
     "fullscreen_widget",
@@ -203,15 +231,18 @@ __all__ = [
     "splitter_widget",
     "stats_widget",
     "view_selector_widget",
+    # Controls
     "geolocate_control",
     "globe_control",
     "terrain_control",
     "legend_control",
     "opacity_control",
     "deck_legend_control",
-    "transition",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",
+    # Transitions
+    "transition",
+    # Extensions
     "Extension",
     "brushing_extension",
     "collision_filter_extension",
@@ -222,13 +253,18 @@ __all__ = [
     "fill_style_extension",
     "path_style_extension",
     "fp64_extension",
-    # Effect helpers
+    # Effects
     "ambient_light",
     "point_light",
     "directional_light",
     "sun_light",
     "lighting_effect",
     "post_process_effect",
+    # Parsers
+    "parse_shyfem_grd",
+    "parse_shyfem_mesh",
+    # UI
+    "head_includes",
     # IBM visual assets & helpers
     "SPECIES_COLORS",
     "ICON_ATLAS",
@@ -242,5 +278,6 @@ __all__ = [
     "make_point_cloud_data",
     "make_shyfem_polygon_data",
     "make_shyfem_mesh_data",
+    # Version
     "__version__",
 ]

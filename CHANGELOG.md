@@ -5,6 +5,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.4.0] — 2026-03-04
+
+### Added
+
+- **`partial_update()`** — new `MapWidget` method that pushes sparse layer
+  patches (only changed properties) without resending the full layer stack.
+  Automatically serialises DataFrames/GeoDataFrames in patched `data` fields.
+- **`patch_layer()`** — convenience wrapper around `partial_update()` for the
+  common case of tweaking a single layer's properties by `layer_id`.
+
+### Fixed
+
+- **TripsLayer animation after partial update** — `deck_partial_update` JS
+  handler now calls `startTripsAnimation()` so TripsLayer continues animating
+  after a partial update (previously the animation stopped).
+- **Map tooltip stickiness** — added a map-level `mousemove` listener that
+  uses `overlay.pickObject()` to dismiss tooltips when the cursor leaves all
+  layer extents (previously tooltips stayed visible over empty map space).
+- **Bootstrap switch tooltip persistence** — added a document-level click
+  listener that removes `.tooltip.show` elements when a `.form-switch` is
+  clicked, fixing Bootstrap 5 tooltips that persisted after toggling layers.
+
+### Changed
+
+- **JS: `structuredClone()` replaces `JSON.parse(JSON.stringify())`** — 4
+  deep-clone call sites in `deckgl-init.js` upgraded for better performance
+  and correctness (preserves `undefined`, `NaN`, `Infinity`).
+- **JS: `var` → `const`/`let` modernisation** — all ~156 `var` declarations
+  in `deckgl-init.js` converted to `const` (138) or `let` (18) following
+  ES6+ best practices.
+- **`Sealmove.py` renamed to `_sealmove.py`** — private module naming
+  convention applied to the seal movement simulation.
+
+---
 ## [1.3.0] — 2026-03-03
 
 ### Added
@@ -470,7 +504,8 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.3.0]: https://github.com/razinkele/shiny_deckgl/compare/cd57ebf...HEAD
+[1.4.0]: https://github.com/razinkele/shiny_deckgl/compare/70f8a45...HEAD
+[1.3.0]: https://github.com/razinkele/shiny_deckgl/compare/cd57ebf...70f8a45
 [1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...cd57ebf
 [1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...3980562
 [1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562

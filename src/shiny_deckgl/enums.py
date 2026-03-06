@@ -150,33 +150,40 @@ class LayerType(str, Enum):
     # Core layers
     SCATTERPLOT = "ScatterplotLayer"
     ARC = "ArcLayer"
+    BITMAP = "BitmapLayer"
+    COLUMN = "ColumnLayer"
+    GEOJSON = "GeoJsonLayer"
+    GRID_CELL = "GridCellLayer"
+    ICON = "IconLayer"
     LINE = "LineLayer"
     PATH = "PathLayer"
+    POINT_CLOUD = "PointCloudLayer"
     POLYGON = "PolygonLayer"
-    GEOJSON = "GeoJsonLayer"
-    ICON = "IconLayer"
+    SOLID_POLYGON = "SolidPolygonLayer"
     TEXT = "TextLayer"
-    COLUMN = "ColumnLayer"
     # Aggregation layers
+    CONTOUR = "ContourLayer"
+    GRID = "GridLayer"
     HEATMAP = "HeatmapLayer"
     HEXAGON = "HexagonLayer"
-    H3_HEXAGON = "H3HexagonLayer"
-    GRID = "GridLayer"
     SCREEN_GRID = "ScreenGridLayer"
-    CONTOUR = "ContourLayer"
-    # Tile layers
-    TILE = "TileLayer"
-    MVT = "MVTLayer"
-    WMS = "WMSLayer"
-    BITMAP = "BitmapLayer"
-    TERRAIN = "TerrainLayer"
-    # Animation layers
-    TRIPS = "TripsLayer"
-    # 3D layers
-    POINT_CLOUD = "PointCloudLayer"
-    SIMPLE_MESH = "SimpleMeshLayer"
     # Geo layers
+    A5 = "A5Layer"
+    GEOHASH = "GeohashLayer"
     GREAT_CIRCLE = "GreatCircleLayer"
+    H3_CLUSTER = "H3ClusterLayer"
+    H3_HEXAGON = "H3HexagonLayer"
+    MVT = "MVTLayer"
+    QUADKEY = "QuadkeyLayer"
+    S2 = "S2Layer"
+    TERRAIN = "TerrainLayer"
+    TILE = "TileLayer"
+    TILE_3D = "Tile3DLayer"
+    TRIPS = "TripsLayer"
+    WMS = "WMSLayer"
+    # Mesh layers
+    SCENEGRAPH = "ScenegraphLayer"
+    SIMPLE_MESH = "SimpleMeshLayer"
 
 
 # ---------------------------------------------------------------------------

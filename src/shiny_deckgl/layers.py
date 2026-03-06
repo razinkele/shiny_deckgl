@@ -33,30 +33,44 @@ from ._data_utils import _serialise_data
 
 __all__ = [
     "layer",
+    # Core layers
     "scatterplot_layer",
     "geojson_layer",
-    "tile_layer",
-    "bitmap_layer",
     "arc_layer",
-    "icon_layer",
-    "path_layer",
-    "line_layer",
-    "text_layer",
+    "bitmap_layer",
     "column_layer",
+    "grid_cell_layer",
+    "icon_layer",
+    "line_layer",
+    "path_layer",
+    "point_cloud_layer",
     "polygon_layer",
-    "heatmap_layer",
-    "hexagon_layer",
-    "h3_hexagon_layer",
-    "trips_layer",
-    "great_circle_layer",
+    "solid_polygon_layer",
+    "text_layer",
+    # Aggregation layers
     "contour_layer",
     "grid_layer",
+    "heatmap_layer",
+    "hexagon_layer",
     "screen_grid_layer",
+    # Geo layers
+    "a5_layer",
+    "geohash_layer",
+    "great_circle_layer",
+    "h3_cluster_layer",
+    "h3_hexagon_layer",
     "mvt_layer",
-    "wms_layer",
-    "point_cloud_layer",
-    "simple_mesh_layer",
+    "quadkey_layer",
+    "s2_layer",
     "terrain_layer",
+    "tile_layer",
+    "tile_3d_layer",
+    "trips_layer",
+    "wms_layer",
+    # Mesh layers
+    "scenegraph_layer",
+    "simple_mesh_layer",
+    # Utilities
     "custom_geometry",
     "COORDINATE_SYSTEM",
 ]
@@ -785,6 +799,281 @@ def terrain_layer(id: str, data: Any | None = None, **kwargs) -> dict:
         defaults["elevationData"] = data
     defaults.update(kwargs)
     return layer("TerrainLayer", id, None, **defaults)
+
+
+# ---------------------------------------------------------------------------
+# Additional Core layers (v1.6.0)
+# ---------------------------------------------------------------------------
+
+
+def grid_cell_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``GridCellLayer``.
+
+    Renders grid cells as columns.  This is the primitive layer used by
+    :func:`grid_layer` after aggregation, but can be used directly when
+    you have pre-aggregated cell data.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of cell data with position and optional elevation/color.
+    **kwargs
+        Extra properties (``cellSize``, ``coverage``, ``extruded``,
+        ``elevationScale``, ``getPosition``, ``getColor``, ``getElevation``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "cellSize": 1000,
+        "coverage": 1,
+        "extruded": True,
+        "elevationScale": 1,
+        "getPosition": "@@d.position",
+        "getColor": [255, 140, 0, 180],
+        "getElevation": "@@d.elevation",
+    }
+    defaults.update(kwargs)
+    return layer("GridCellLayer", id, data, **defaults)
+
+
+def solid_polygon_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``SolidPolygonLayer``.
+
+    Renders filled and/or extruded polygons.  This is the primitive layer
+    used internally by :func:`polygon_layer` and :func:`geojson_layer`,
+    but can be used directly for more control.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of polygon data with ``polygon`` key containing coordinates.
+    **kwargs
+        Extra properties (``getPolygon``, ``getFillColor``, ``getLineColor``,
+        ``getElevation``, ``extruded``, ``wireframe``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "filled": True,
+        "extruded": False,
+        "wireframe": False,
+        "getPolygon": "@@d.polygon",
+        "getFillColor": [140, 170, 180, 200],
+        "getLineColor": [80, 80, 80],
+        "getElevation": 0,
+    }
+    defaults.update(kwargs)
+    return layer("SolidPolygonLayer", id, data, **defaults)
+
+
+# ---------------------------------------------------------------------------
+# Spatial index layers (v1.6.0) — Geo layers for various indexing systems
+# ---------------------------------------------------------------------------
+
+
+def a5_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``A5Layer`` for A5 pentagon cells.
+
+    Renders filled polygons based on the A5 geospatial indexing system,
+    which uses pentagons to tile the globe.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``pentagon`` (A5 index as BigInt or hex string).
+    **kwargs
+        Extra properties (``getPentagon``, ``getFillColor``, ``getElevation``,
+        ``extruded``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getPentagon": "@@d.pentagon",
+        "getFillColor": [255, 140, 0, 180],
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("A5Layer", id, data, **defaults)
+
+
+def geohash_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``GeohashLayer`` for Geohash cells.
+
+    Renders filled polygons based on the Geohash geospatial indexing
+    system.  Each cell is identified by a string like ``"9q8yy"``.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``geohash`` key containing geohash strings.
+    **kwargs
+        Extra properties (``getGeohash``, ``getFillColor``, ``getElevation``,
+        ``extruded``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getGeohash": "@@d.geohash",
+        "getFillColor": [255, 140, 0, 180],
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("GeohashLayer", id, data, **defaults)
+
+
+def h3_cluster_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``H3ClusterLayer`` for H3 hexagon clusters.
+
+    Renders the outline of clusters of H3 hexagons as polygons.  Unlike
+    :func:`h3_hexagon_layer` which renders individual hexagons, this
+    layer groups multiple hexagons into unified cluster polygons.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``hexIds`` (array of H3 indices per cluster).
+    **kwargs
+        Extra properties (``getHexagons``, ``getFillColor``, ``getLineColor``,
+        ``stroked``, ``lineWidthMinPixels``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "stroked": True,
+        "filled": True,
+        "getHexagons": "@@d.hexIds",
+        "getFillColor": [255, 140, 0, 180],
+        "getLineColor": [0, 0, 0],
+        "lineWidthMinPixels": 1,
+    }
+    defaults.update(kwargs)
+    return layer("H3ClusterLayer", id, data, **defaults)
+
+
+def quadkey_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``QuadkeyLayer`` for Bing Maps quadkey tiles.
+
+    Renders filled polygons based on the Quadkey geospatial indexing
+    system used by Bing Maps.  Each cell is identified by a string of
+    digits (0-3) like ``"0123"``.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``quadkey`` key containing quadkey strings.
+    **kwargs
+        Extra properties (``getQuadkey``, ``getFillColor``, ``getElevation``,
+        ``extruded``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getQuadkey": "@@d.quadkey",
+        "getFillColor": [255, 140, 0, 180],
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("QuadkeyLayer", id, data, **defaults)
+
+
+def s2_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``S2Layer`` for Google S2 cells.
+
+    Renders filled polygons based on the S2 geospatial indexing system
+    developed by Google.  Each cell is identified by a token (hex string
+    or Hilbert quad key).
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Array of dicts with ``token`` key containing S2 cell tokens.
+    **kwargs
+        Extra properties (``getS2Token``, ``getFillColor``, ``getElevation``,
+        ``extruded``, ``elevationScale``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "getS2Token": "@@d.token",
+        "getFillColor": [255, 140, 0, 180],
+        "extruded": False,
+    }
+    defaults.update(kwargs)
+    return layer("S2Layer", id, data, **defaults)
+
+
+def tile_3d_layer(id: str, data: str, **kwargs) -> dict:
+    """Create a deck.gl ``Tile3DLayer`` for 3D Tiles / I3S data.
+
+    Renders 3D tilesets in the OGC 3D Tiles specification (used by
+    Cesium) or Esri I3S format.  Supports point clouds, batched 3D
+    models, and instanced models.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        URL to a 3D Tiles tileset.json or I3S layer endpoint.
+    **kwargs
+        Extra properties (``pointSize``, ``opacity``, ``getPointColor``,
+        ``onTilesetLoad``, ``onTileLoad``, ``loadOptions``).
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "pointSize": 1.0,
+        "opacity": 1.0,
+    }
+    defaults.update(kwargs)
+    return layer("Tile3DLayer", id, data, **defaults)
+
+
+# ---------------------------------------------------------------------------
+# Additional Mesh layers (v1.6.0)
+# ---------------------------------------------------------------------------
+
+
+def scenegraph_layer(id: str, data: list | dict, **kwargs) -> dict:
+    """Create a deck.gl ``ScenegraphLayer`` for glTF 3D models.
+
+    Renders 3D models in the glTF format at each data point.  Supports
+    PBR materials, animations, and complex scene hierarchies.
+
+    Parameters
+    ----------
+    id
+        Unique layer identifier.
+    data
+        Data source providing anchor positions for model instances.
+    **kwargs
+        Extra properties:
+
+        - ``scenegraph`` — URL to a glTF/GLB file
+        - ``getPosition`` — position accessor (default: ``"@@d.position"``)
+        - ``getOrientation`` — ``[pitch, yaw, roll]`` in degrees
+        - ``getScale`` — scale factors ``[x, y, z]``
+        - ``sizeScale`` — global size multiplier
+        - ``_animations`` — animation playback config
+        - ``_lighting`` — ``"flat"`` or ``"pbr"``
+    """
+    defaults: dict[str, Any] = {
+        "pickable": True,
+        "sizeScale": 1,
+        "getPosition": "@@d.position",
+        "getOrientation": [0, 0, 0],
+        "getScale": [1, 1, 1],
+        "getColor": [255, 255, 255, 255],
+        "_lighting": "pbr",
+    }
+    defaults.update(kwargs)
+    return layer("ScenegraphLayer", id, data, **defaults)
 
 
 # ---------------------------------------------------------------------------

@@ -96,6 +96,15 @@ from ._demo_data import (
     make_seal_trips_ibm,
     make_seal_haulout_data,
     make_seal_foraging_areas,
+    # New layer data generators (v1.6.0)
+    make_grid_cell_data,
+    make_solid_polygon_data,
+    make_a5_data,
+    make_geohash_data,
+    make_h3_cluster_data,
+    make_quadkey_data,
+    make_s2_data,
+    make_scenegraph_data,
 )
 from .ibm import ICON_ATLAS, ICON_MAPPING, trips_animation_server
 from .colors import depth_color as _bathy_color
@@ -148,6 +157,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         simple_mesh_layer,
         terrain_layer,
         custom_geometry,
+        # New layers (v1.6.0)
+        grid_cell_layer,
+        solid_polygon_layer,
+        a5_layer,
+        geohash_layer,
+        h3_cluster_layer,
+        quadkey_layer,
+        s2_layer,
+        tile_3d_layer,
+        scenegraph_layer,
     )
 
     # Shared reactive stores
@@ -1755,7 +1774,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ui.update_switch("wg_view_selector", value=view_selector)
 
     # ===================================================================
-    # Tab 1: Layer Gallery — all 24 layer helpers
+    # Tab 1: Layer Gallery — all 33 layer helpers
     # ===================================================================
 
     # -- Pre-computed gallery data (generated once per session) ----------
@@ -1766,6 +1785,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     _gl_text_data = make_gallery_text_data()
     _gl_icon_data = make_gallery_icon_data()
     _gl_column_data = make_gallery_column_data()
+
+    # New layer data (v1.6.0)
+    _gl_grid_cell_data = make_grid_cell_data()
+    _gl_solid_polygon_data = make_solid_polygon_data()
+    _gl_a5_data = make_a5_data()
+    _gl_geohash_data = make_geohash_data()
+    _gl_h3_cluster_data = make_h3_cluster_data()
+    _gl_quadkey_data = make_quadkey_data()
+    _gl_s2_data = make_s2_data()
+    _gl_scenegraph_data = make_scenegraph_data()
 
     _gl_polygon_data = make_shyfem_polygon_data(_POLYGON_GRD_STR)
     _gl_shyfem_mesh = make_shyfem_mesh_data(_CURONIAN_GRD_STR, z_scale=500.0)
@@ -1813,7 +1842,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # GeoJSON for gallery — HELCOM Marine Protected Areas
     _gl_geojson = MPA_GEOJSON
 
-    # -- Build all 24 gallery layers once (data sent at session init) ----
+    # -- Build all 33 gallery layers once (data sent at session init) ----
     # Toggle-switch ID -> (layer_id(s), display_name(s))
     _GL_TOGGLE_MAP: dict[str, list[tuple[str, str]]] = {
         "gl_scatterplot":   [("gl-scatter", "ScatterplotLayer")],
@@ -1826,6 +1855,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_column":        [("gl-columns", "ColumnLayer")],
         "gl_polygon":       [("gl-polygons", "PolygonLayer")],
         "gl_great_circle":  [("gl-gc", "GreatCircleLayer")],
+        "gl_grid_cell":     [("gl-grid-cell", "GridCellLayer")],
+        "gl_solid_polygon": [("gl-solid-polygon", "SolidPolygonLayer")],
         "gl_heatmap":       [("gl-heatmap", "HeatmapLayer")],
         "gl_hexagon":       [("gl-hexagons", "HexagonLayer")],
         "gl_grid":          [("gl-grid", "GridLayer")],
@@ -1833,15 +1864,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_contour":       [("gl-contour", "ContourLayer")],
         "gl_h3_hexagon":    [("gl-h3", "H3HexagonLayer")],
         "gl_trips":         [("gl-trips", "TripsLayer")],
+        "gl_a5":            [("gl-a5", "A5Layer")],
+        "gl_geohash":       [("gl-geohash", "GeohashLayer")],
+        "gl_h3_cluster":    [("gl-h3-cluster", "H3ClusterLayer")],
+        "gl_quadkey":       [("gl-quadkey", "QuadkeyLayer")],
+        "gl_s2":            [("gl-s2", "S2Layer")],
         "gl_tile":          [("gl-tiles", "TileLayer")],
         "gl_bitmap":        [("gl-bitmap", "BitmapLayer")],
         "gl_mvt":           [("gl-mvt", "MVTLayer")],
         "gl_wms":           [("gl-wms", "WMSLayer")],
+        "gl_tile_3d":       [("gl-tile-3d", "Tile3DLayer")],
         "gl_point_cloud":   [("gl-pointcloud", "PointCloudLayer")],
         "gl_simple_mesh":   [("gl-mesh", "SimpleMeshLayer")]
                              + ([("gl-mesh-nodes", "MeshNodes")]
                                 if _gl_mesh_node_data is not None else []),
         "gl_terrain":       [("gl-terrain", "TerrainLayer")],
+        "gl_scenegraph":    [("gl-scenegraph", "ScenegraphLayer")],
     }
 
     # Legend colour map for gallery layers
@@ -1851,10 +1889,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     _GL_3D_NAMES = {
         "TerrainLayer", "PointCloudLayer", "SimpleMeshLayer",
         "ColumnLayer", "HexagonLayer", "GridLayer",
+        "GridCellLayer", "Tile3DLayer", "ScenegraphLayer",
     }
 
     def _gl_build_all_layers() -> list[dict]:
-        """Build all 24 gallery layers with initial visibility from switches."""
+        """Build all 33 gallery layers with initial visibility from switches."""
         layers: list[dict] = []
 
         def _add(switch_id: str, layer_spec: dict) -> None:
@@ -1947,6 +1986,23 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             getWidth=2,
             pickable=True,
         ))
+        _add("gl_grid_cell", grid_cell_layer(
+            "gl-grid-cell", _gl_grid_cell_data,
+            getPosition="@@=d.position",
+            getElevation="@@=d.elevation",
+            getFillColor="@@=d.color",
+            cellSize=50000,
+            elevationScale=1,
+            extruded=True,
+            pickable=True,
+        ))
+        _add("gl_solid_polygon", solid_polygon_layer(
+            "gl-solid-polygon", _gl_solid_polygon_data,
+            getPolygon="@@=d.polygon",
+            getFillColor="@@=d.color",
+            extruded=False,
+            pickable=True,
+        ))
 
         # -- Aggregation layers ---
         _add("gl_heatmap", heatmap_layer(
@@ -2002,6 +2058,42 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             trailLength=300,
             currentTime=500,
         ))
+        _add("gl_a5", a5_layer(
+            "gl-a5", _gl_a5_data,
+            getPentagon="@@=d.pentagon",
+            getFillColor="@@=d.color",
+            extruded=False,
+            pickable=True,
+        ))
+        _add("gl_geohash", geohash_layer(
+            "gl-geohash", _gl_geohash_data,
+            getGeohash="@@=d.geohash",
+            getFillColor="@@=d.color",
+            extruded=False,
+            pickable=True,
+        ))
+        _add("gl_h3_cluster", h3_cluster_layer(
+            "gl-h3-cluster", _gl_h3_cluster_data,
+            getHexagons="@@=d.hexIds",
+            getFillColor="@@=d.color",
+            stroked=True,
+            filled=True,
+            pickable=True,
+        ))
+        _add("gl_quadkey", quadkey_layer(
+            "gl-quadkey", _gl_quadkey_data,
+            getQuadkey="@@=d.quadkey",
+            getFillColor="@@=d.color",
+            extruded=False,
+            pickable=True,
+        ))
+        _add("gl_s2", s2_layer(
+            "gl-s2", _gl_s2_data,
+            getS2Token="@@=d.token",
+            getFillColor="@@=d.color",
+            extruded=False,
+            pickable=True,
+        ))
 
         # -- Tile / raster layers ---
         _add("gl_tile", tile_layer(
@@ -2042,6 +2134,13 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             layers=["emodnet:mean_atlas_land"],
             transparent=True,
             opacity=0.6,
+        ))
+        _add("gl_tile_3d", tile_3d_layer(
+            "gl-tile-3d",
+            # Sample 3D Tiles dataset (NYC buildings)
+            "https://tile.googleapis.com/v1/3dtiles/root.json",
+            pickable=True,
+            opacity=0.8,
         ))
 
         # -- 3-D / mesh layers ---
@@ -2103,6 +2202,15 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             },
             meshMaxError=4.0,
         ))
+        _add("gl_scenegraph", scenegraph_layer(
+            "gl-scenegraph", _gl_scenegraph_data,
+            getPosition="@@=d.position",
+            getOrientation="@@=d.orientation",
+            # Sample glTF model (a simple box)
+            scenegraph="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Box/glTF/Box.gltf",
+            sizeScale=5000,
+            pickable=True,
+        ))
 
         return layers
 
@@ -2122,7 +2230,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @reactive.Effect
     async def _gl_init():
-        """Send all 24 layers once (heavy payload, one-time cost)."""
+        """Send all 33 layers once (heavy payload, one-time cost)."""
         all_layers = _gl_build_all_layers()
 
         widgets = [

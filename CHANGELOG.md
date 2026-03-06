@@ -5,6 +5,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.6.1] — 2026-03-06
+
+### Added
+
+- **Demo update** — All 9 new layer types now showcased in the Layer Gallery tab
+  with dedicated UI toggles, demo data generators, and layer creation logic.
+- **Updated layer count badges** — Demo UI reflects "33 layer helpers" (was 24).
+
+### Fixed
+
+- **Demo data generator caching** — All new layer data generators use
+  `@functools.lru_cache` for efficient reuse across reactive effects.
+
+---
+## [1.6.0] — 2026-03-06
+
+### Added
+
+- **9 new layer helpers** for complete deck.gl layer coverage (33 total):
+  - **Core layers**: `grid_cell_layer()` (pre-aggregated grid cells),
+    `solid_polygon_layer()` (fast polygon fills without stroke).
+  - **Geo-spatial layers**: `a5_layer()` (A5 pentagon cells),
+    `geohash_layer()` (Geohash cells), `h3_cluster_layer()` (clustered H3
+    hexagons), `quadkey_layer()` (Bing Maps quadkeys), `s2_layer()` (Google S2
+    cells).
+  - **Tile layers**: `tile_3d_layer()` (OGC 3D Tiles / Esri I3S datasets).
+  - **Mesh layers**: `scenegraph_layer()` (glTF/GLB 3D models).
+- **LayerType enum expansion** — 9 new enum values in `enums.py` for type-safe
+  layer type constants.
+- **100% deck.gl layer coverage** — shiny_deckgl now provides typed helpers for
+  all 33 deck.gl layer types.
+
+### Changed
+
+- **`__init__.py`** — exports 9 new layer helpers with categorized comments.
+- **`components.py`** — re-exports new layers for backward compatibility.
+
+---
 ## [1.5.0] — 2026-03-06
 
 ### Added
@@ -540,19 +578,22 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.4.0]: https://github.com/razinkele/shiny_deckgl/compare/70f8a45...HEAD
-[1.3.0]: https://github.com/razinkele/shiny_deckgl/compare/cd57ebf...70f8a45
-[1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...cd57ebf
-[1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...3980562
-[1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562
-[1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
-[0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1
-[0.8.0]: https://github.com/razinkele/shiny_deckgl/compare/d8a3b2e...f3c7340
-[0.7.0]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...d8a3b2e
-[0.6.1]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...b3cc3af
-[0.6.0]: https://github.com/razinkele/shiny_deckgl/compare/05bed3c...b3cc3af
-[0.5.0]: https://github.com/razinkele/shiny_deckgl/compare/a0066d0...05bed3c
-[0.4.0]: https://github.com/razinkele/shiny_deckgl/compare/9708b7a...a0066d0
-[0.3.0]: https://github.com/razinkele/shiny_deckgl/compare/49afabb...9708b7a
-[0.2.0]: https://github.com/razinkele/shiny_deckgl/compare/1d96b2d...49afabb
-[0.1.0]: https://github.com/razinkele/shiny_deckgl/compare/1d96b2d...1d96b2d
+[1.6.1]: https://github.com/razinka/shiny_deckgl/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/razinka/shiny_deckgl/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/razinka/shiny_deckgl/compare/70f8a45...v1.5.0
+[1.4.0]: https://github.com/razinka/shiny_deckgl/compare/70f8a45...70f8a45
+[1.3.0]: https://github.com/razinka/shiny_deckgl/compare/cd57ebf...70f8a45
+[1.2.0]: https://github.com/razinka/shiny_deckgl/compare/3980562...cd57ebf
+[1.1.0]: https://github.com/razinka/shiny_deckgl/compare/3980562...3980562
+[1.0.1]: https://github.com/razinka/shiny_deckgl/compare/f07585e...3980562
+[1.0.0]: https://github.com/razinka/shiny_deckgl/compare/fa75ff1...f07585e
+[0.9.0]: https://github.com/razinka/shiny_deckgl/compare/f3c7340...fa75ff1
+[0.8.0]: https://github.com/razinka/shiny_deckgl/compare/d8a3b2e...f3c7340
+[0.7.0]: https://github.com/razinka/shiny_deckgl/compare/b3cc3af...d8a3b2e
+[0.6.1]: https://github.com/razinka/shiny_deckgl/compare/b3cc3af...b3cc3af
+[0.6.0]: https://github.com/razinka/shiny_deckgl/compare/05bed3c...b3cc3af
+[0.5.0]: https://github.com/razinka/shiny_deckgl/compare/a0066d0...05bed3c
+[0.4.0]: https://github.com/razinka/shiny_deckgl/compare/9708b7a...a0066d0
+[0.3.0]: https://github.com/razinka/shiny_deckgl/compare/49afabb...9708b7a
+[0.2.0]: https://github.com/razinka/shiny_deckgl/compare/1d96b2d...49afabb
+[0.1.0]: https://github.com/razinka/shiny_deckgl/compare/1d96b2d...1d96b2d

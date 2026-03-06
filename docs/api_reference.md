@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.4.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.6.1** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -134,6 +134,16 @@ import shiny_deckgl as sdgl
   - [point\_cloud\_layer()](#point_cloud_layer)
   - [simple\_mesh\_layer()](#simple_mesh_layer)
   - [terrain\_layer()](#terrain_layer)
+- [Layer Helpers (v1.6)](#layer-helpers-v16)
+  - [grid\_cell\_layer()](#grid_cell_layer)
+  - [solid\_polygon\_layer()](#solid_polygon_layer)
+  - [a5\_layer()](#a5_layer)
+  - [geohash\_layer()](#geohash_layer)
+  - [h3\_cluster\_layer()](#h3_cluster_layer)
+  - [quadkey\_layer()](#quadkey_layer)
+  - [s2\_layer()](#s2_layer)
+  - [tile\_3d\_layer()](#tile_3d_layer)
+  - [scenegraph\_layer()](#scenegraph_layer)
 - [Mesh Geometry Helpers (v1.3)](#mesh-geometry-helpers-v13)
   - [custom\_geometry()](#custom_geometry)
   - [COORDINATE\_SYSTEM](#coordinate_system)
@@ -1965,6 +1975,165 @@ Reconstruct mesh surfaces from height-map images (e.g. Mapzen Terrain Tiles).
 | `meshMaxError` | `4.0` | Max LOD simplification error in metres. |
 
 Key kwargs: `elevationData` (URL template), `texture` (satellite/map tile URL), `elevationDecoder` (RGB→elevation mapping), `bounds` (`[west, south, east, north]`).
+
+---
+
+## Layer Helpers (v1.6)
+
+Nine new layer helpers completing 100% coverage of all deck.gl layer types.
+
+### `grid_cell_layer()`
+
+```python
+shiny_deckgl.grid_cell_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders pre-aggregated grid cells (unlike `GridLayer` which aggregates at runtime).
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `cellSize` | `1000` | Cell size in metres. |
+| `coverage` | `1` | Cell coverage ratio (0–1). |
+| `extruded` | `True` | Enable 3-D extrusion. |
+| `elevationScale` | `1` | Elevation multiplier. |
+
+Key accessors: `getPosition`, `getColor`, `getElevation`.
+
+---
+
+### `solid_polygon_layer()`
+
+```python
+shiny_deckgl.solid_polygon_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders filled polygons without stroke overhead — faster than `PolygonLayer` when outlines aren't needed.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `filled` | `True` | Fill polygons. |
+| `extruded` | `False` | Enable 3-D extrusion. |
+| `wireframe` | `False` | Show wireframe for extruded polygons. |
+
+Key accessors: `getPolygon`, `getFillColor`, `getLineColor`, `getElevation`.
+
+---
+
+### `a5_layer()`
+
+```python
+shiny_deckgl.a5_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders A5 pentagon cells (icosahedral discrete global grid system).
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `extruded` | `False` | Enable 3-D extrusion. |
+
+Key accessors: `getPentagon` (A5 cell ID), `getFillColor`.
+
+---
+
+### `geohash_layer()`
+
+```python
+shiny_deckgl.geohash_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders Geohash cells — useful for location indexing and spatial hashing.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `extruded` | `False` | Enable 3-D extrusion. |
+
+Key accessors: `getGeohash` (Geohash string), `getFillColor`.
+
+---
+
+### `h3_cluster_layer()`
+
+```python
+shiny_deckgl.h3_cluster_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders clustered H3 hexagons as merged polygons — use for region outlines from grouped H3 indices.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `stroked` | `True` | Draw polygon outlines. |
+| `filled` | `True` | Fill polygons. |
+| `lineWidthMinPixels` | `1` | Minimum stroke width. |
+
+Key accessors: `getHexagons` (array of H3 indices), `getFillColor`, `getLineColor`.
+
+---
+
+### `quadkey_layer()`
+
+```python
+shiny_deckgl.quadkey_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders Bing Maps quadkey tiles — useful for quad-tree spatial partitioning.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `extruded` | `False` | Enable 3-D extrusion. |
+
+Key accessors: `getQuadkey` (quadkey string), `getFillColor`.
+
+---
+
+### `s2_layer()`
+
+```python
+shiny_deckgl.s2_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders Google S2 geometry cells — ideal for S2-indexed datasets and BigQuery GIS.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `extruded` | `False` | Enable 3-D extrusion. |
+
+Key accessors: `getS2Token` (S2 cell token), `getFillColor`.
+
+---
+
+### `tile_3d_layer()`
+
+```python
+shiny_deckgl.tile_3d_layer(id: str, data: str, **kwargs) -> dict
+```
+
+Renders OGC 3D Tiles and Esri I3S datasets — use for city models, point clouds, and photogrammetry.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `pointSize` | `1.0` | Point size for point cloud tiles. |
+| `opacity` | `1.0` | Layer opacity. |
+
+The `data` parameter should be a URL to a 3D Tiles tileset.json or I3S scene layer.
+
+---
+
+### `scenegraph_layer()`
+
+```python
+shiny_deckgl.scenegraph_layer(id: str, data, **kwargs) -> dict
+```
+
+Renders glTF/GLB 3-D models at geographic positions — use for ship models, wind turbines, offshore platforms.
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `sizeScale` | `1` | Scale multiplier for all models. |
+| `_lighting` | `"pbr"` | Lighting model (`"pbr"` or `"flat"`). |
+
+Key accessors: `getPosition`, `getOrientation` (Euler angles `[pitch, yaw, roll]`), `getScale`, `getColor`.
+
+The `scenegraph` property should be a URL to a glTF or GLB file.
 
 ---
 

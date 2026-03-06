@@ -127,6 +127,15 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.6.0 — Complete Layer Coverage (33 Layer Types)
+
+| Capability | Details |
+| --- | --- |
+| **9 new layer helpers** | `grid_cell_layer()`, `solid_polygon_layer()`, `a5_layer()`, `geohash_layer()`, `h3_cluster_layer()`, `quadkey_layer()`, `s2_layer()`, `tile_3d_layer()`, `scenegraph_layer()`. |
+| **100% deck.gl coverage** | shiny_deckgl now provides typed helpers for all 33 deck.gl layer types. |
+| **LayerType enum** | 9 new enum values for type-safe layer type constants. |
+| **Demo gallery update** | Layer Gallery tab showcases all 33 layer types with toggles and live visualization. |
+
 ### v1.4.0 — Partial Updates, Patch Layer & JS Modernisation
 
 | Capability | Details |
@@ -182,7 +191,7 @@ browser, all without Java dependencies.
 | **`terrain_layer()`** | Reconstruct mesh from Terrain-RGB height-map tiles. |
 | **`fp64_extension()`** | Double-precision GPU rendering for extreme zoom levels. |
 | **`orbit_view()`** | `OrbitView` — orbit a camera around a 3-D target. |
-| **Demo refactored** | 14 → 11 tabs: Effects merged into 3D Visualisation, Clusters into MapLibre Controls, Extensions into Advanced, Animation into Seal IBM; new Layer Gallery tab (all 24 layer helpers). |
+| **Demo refactored** | 14 → 11 tabs: Effects merged into 3D Visualisation, Clusters into MapLibre Controls, Extensions into Advanced, Animation into Seal IBM; new Layer Gallery tab (all 33 layer helpers). |
 | **JS `buildEffects`** | Updated for `SunLight` support via `@@sunLight` marker. |
 
 ## Environment & Prerequisites
@@ -334,7 +343,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | File | Purpose |
 | --- | --- |
 | `src/shiny_deckgl/map_widget.py` | `MapWidget` class — core widget with session methods, HTML export, JSON serialisation. |
-| `src/shiny_deckgl/layers.py` | Generic `layer()` + 24 typed layer helpers (scatter, arc, trips, grid, point cloud, mesh, terrain, …). |
+| `src/shiny_deckgl/layers.py` | Generic `layer()` + 33 typed layer helpers (scatter, arc, trips, grid, point cloud, mesh, terrain, scenegraph, tile3d, …). |
 | `src/shiny_deckgl/colors.py` | Color scales (`color_range`, `color_bins`, `color_quantiles`), palettes, basemap constants. |
 | `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`, `orbit_view`). |
 | `src/shiny_deckgl/widgets.py` | 17 deck.gl widget helpers (zoom, compass, fullscreen, timeline, …). |

@@ -48,13 +48,13 @@ def build_ui():
     return ui.page_navbar(
         head_includes(),
 
-        # -- Tab 1: deck.gl Layers (gallery - all 24 layer helpers) ---------
+        # -- Tab 1: deck.gl Layers (gallery - all 33 layer helpers) ---------
         ui.nav_panel(
         "\U0001F30A deck.gl Layers",
         ui.layout_sidebar(
             ui.sidebar(
                 ui.tags.small(
-                    "24 layer helpers",
+                    "33 layer helpers",
                     class_="badge text-bg-success mb-2",
                 ),
                 sidebar_hint(
@@ -170,6 +170,26 @@ def build_ui():
                             "intercontinental routes, long-range links. "
                             "\U0001F4E6 Data: generated (route endpoints).",
                         ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_grid_cell", "GridCellLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders individual grid cells "
+                            "(pre-aggregated). Use for: model output grids, "
+                            "pre-computed spatial bins. "
+                            "\U0001F4E6 Data: generated (grid cells).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_solid_polygon", "SolidPolygonLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders filled polygons without "
+                            "stroke overhead. Use for: fast polygon fills, "
+                            "extruded buildings, terrain. "
+                            "\U0001F4E6 Data: generated (port bounding boxes).",
+                        ),
                     ),
                     # -- Aggregation layers --------------------------------
                     ui.accordion_panel(
@@ -244,6 +264,52 @@ def build_ui():
                             "playback, drifter trajectories, AIS replay. "
                             "\U0001F4E6 Data: generated (synthetic tracks).",
                         ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_a5", "A5Layer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders A5 pentagon cells "
+                            "(icosahedral grid system). Use for: global "
+                            "climate models, atmospheric data. "
+                            "\U0001F4E6 Data: generated (A5 cells).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_geohash", "GeohashLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders Geohash cells. "
+                            "Use for: location indexing, spatial hashing, "
+                            "tile-based aggregation. "
+                            "\U0001F4E6 Data: generated (Baltic geohashes).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_h3_cluster", "H3ClusterLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders clustered H3 hexagons "
+                            "as merged polygons. Use for: region outlines, "
+                            "aggregated H3 coverage areas. "
+                            "\U0001F4E6 Data: generated (H3 clusters).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_quadkey", "QuadkeyLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders Bing Maps quadkey tiles. "
+                            "Use for: web map tile indices, quad-tree "
+                            "spatial partitioning. "
+                            "\U0001F4E6 Data: generated (quadkey cells).",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_s2", "S2Layer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders Google S2 geometry cells. "
+                            "Use for: S2-indexed datasets, BigQuery GIS, "
+                            "spherical geometry. "
+                            "\U0001F4E6 Data: generated (S2 tokens).",
+                        ),
                     ),
                     # -- Tile / raster layers ------------------------------
                     ui.accordion_panel(
@@ -285,6 +351,15 @@ def build_ui():
                             "bathymetry, HELCOM layers, INSPIRE services. "
                             "\U0001F310 Source: EMODnet WMS service.",
                         ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_tile_3d", "Tile3DLayer", value=False,
+                            ),
+                            "deck.gl \u2014 Renders OGC 3D Tiles and "
+                            "Esri I3S datasets. Use for: city models, "
+                            "point clouds, photogrammetry. "
+                            "\U0001F310 Source: 3D Tiles sample dataset.",
+                        ),
                     ),
                     # -- 3D / mesh layers ----------------------------------
                     ui.accordion_panel(
@@ -321,6 +396,16 @@ def build_ui():
                             "seabed bathymetry, terrain visualization. "
                             "\U0001F310 Source: AWS Terrain Tiles + OSM.",
                         ),
+                        ui.tooltip(
+                            ui.input_switch(
+                                "gl_scenegraph", "ScenegraphLayer",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Renders glTF/GLB 3-D models "
+                            "at geographic positions. Use for: ship models, "
+                            "wind turbines, offshore platforms. "
+                            "\U0001F310 Source: sample glTF model.",
+                        ),
                     ),
                     # -- Navigation ---------------------------------------
                     ui.accordion_panel(
@@ -340,7 +425,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F30A deck.gl Layer Gallery \u2014 24 Helpers"
+                    "\U0001F30A deck.gl Layer Gallery \u2014 33 Helpers"
                 ),
                 gallery_widget.ui(height="65vh"),
             ),
@@ -1295,7 +1380,7 @@ def build_ui():
                 ui.tags.hr(style="margin:10px 0;"),
                 ui.tags.a(
                     "GitHub repository",
-                    href="https://github.com/razinkele/shiny_deckgl",
+                    href="https://github.com/razinka/shiny_deckgl",
                     target="_blank",
                     style="font-size:0.85rem;",
                 ),

@@ -1451,7 +1451,7 @@ def fish_species_color(species: str) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
-# Gallery data factories (Tab 1 — all 24 layer helpers)
+# Gallery data factories (Tab 1 — all 33 layer helpers)
 # ---------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=32)
@@ -1558,6 +1558,167 @@ def make_gallery_column_data() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# New layer data factories (9 new layer types added in v1.6.0)
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=32)
+def make_grid_cell_data() -> list[dict]:
+    """Generate grid cell data for GridCellLayer (pre-aggregated cells)."""
+    cells = []
+    # Create a grid of cells around the central Baltic
+    for i in range(5):
+        for j in range(4):
+            lon = 17.0 + i * 1.5
+            lat = 55.0 + j * 1.2
+            cells.append({
+                "position": [lon, lat],
+                "elevation": random.randint(500, 3000),
+                "color": [100 + i * 30, 80 + j * 40, 180, 200],
+                "name": f"Cell ({i},{j})",
+                "layerType": "GridCellLayer",
+            })
+    return cells
+
+
+@functools.lru_cache(maxsize=32)
+def make_solid_polygon_data() -> list[dict]:
+    """Generate solid polygon data (port bounding boxes)."""
+    return [
+        {
+            "polygon": [
+                [float(p["lon"]) - 0.4, float(p["lat"]) - 0.2],
+                [float(p["lon"]) + 0.4, float(p["lat"]) - 0.2],
+                [float(p["lon"]) + 0.4, float(p["lat"]) + 0.2],
+                [float(p["lon"]) - 0.4, float(p["lat"]) + 0.2],
+            ],
+            "name": p["name"],
+            "color": [140, 170, 180, 150],
+            "layerType": "SolidPolygonLayer",
+        }
+        for p in PORTS
+    ]
+
+
+@functools.lru_cache(maxsize=32)
+def make_a5_data() -> list[dict]:
+    """Generate A5 pentagon cell data (synthetic)."""
+    # A5 uses base32-encoded pentagon IDs
+    # These are synthetic demo values for visualization
+    return [
+        {
+            "pentagon": f"8{i:07x}",  # Synthetic A5 cell IDs
+            "value": random.randint(10, 100),
+            "color": [255, 140, 0, 180],
+            "name": f"A5 Cell {i}",
+            "layerType": "A5Layer",
+        }
+        for i in range(7)
+    ]
+
+
+@functools.lru_cache(maxsize=32)
+def make_geohash_data() -> list[dict]:
+    """Generate Geohash cell data (Baltic Sea region)."""
+    # Real geohashes for Baltic Sea region (precision 4)
+    geohashes = [
+        "u3bc", "u3bd", "u3bf", "u3bg",  # Klaipėda area
+        "u3be", "u3bk", "u3bs", "u3bt",  # Central Baltic
+        "u6ps", "u6pt", "u6pv", "u6pw",  # Stockholm area
+    ]
+    return [
+        {
+            "geohash": gh,
+            "value": random.randint(5, 50),
+            "color": [60, 180, 75, 180],
+            "name": f"Geohash {gh}",
+            "layerType": "GeohashLayer",
+        }
+        for gh in geohashes
+    ]
+
+
+@functools.lru_cache(maxsize=32)
+def make_h3_cluster_data() -> list[dict]:
+    """Generate H3 cluster data (groups of adjacent hexagons)."""
+    # Clusters are groups of H3 hexagons rendered as merged polygons
+    clusters = [
+        {
+            "hexIds": [
+                "830892fffffffff", "831f74fffffffff", "831f75fffffffff",
+            ],
+            "name": "Cluster A (Klaipėda)",
+            "color": [200, 0, 100, 180],
+            "layerType": "H3ClusterLayer",
+        },
+        {
+            "hexIds": [
+                "831f66fffffffff", "830893fffffffff", "830890fffffffff",
+            ],
+            "name": "Cluster B (Central Baltic)",
+            "color": [0, 100, 200, 180],
+            "layerType": "H3ClusterLayer",
+        },
+    ]
+    return clusters
+
+
+@functools.lru_cache(maxsize=32)
+def make_quadkey_data() -> list[dict]:
+    """Generate Quadkey tile data (Bing Maps tile indices)."""
+    # Quadkeys for Baltic Sea region at zoom level 6
+    quadkeys = [
+        "120201", "120203", "120210", "120212",
+        "120221", "120223", "120230", "120232",
+    ]
+    return [
+        {
+            "quadkey": qk,
+            "value": random.randint(10, 80),
+            "color": [255, 200, 0, 180],
+            "name": f"Quadkey {qk}",
+            "layerType": "QuadkeyLayer",
+        }
+        for qk in quadkeys
+    ]
+
+
+@functools.lru_cache(maxsize=32)
+def make_s2_data() -> list[dict]:
+    """Generate S2 cell data (Google S2 geometry tokens)."""
+    # S2 cell tokens for Baltic Sea region (level 6)
+    tokens = [
+        "47a4", "47a5", "47ac", "47ad",
+        "47b4", "47b5", "47bc", "47bd",
+    ]
+    return [
+        {
+            "token": t,
+            "value": random.randint(15, 90),
+            "color": [180, 0, 200, 180],
+            "name": f"S2 Cell {t}",
+            "layerType": "S2Layer",
+        }
+        for t in tokens
+    ]
+
+
+@functools.lru_cache(maxsize=32)
+def make_scenegraph_data() -> list[dict]:
+    """Generate scenegraph layer data (3D model positions)."""
+    # Position 3D models at major Baltic ports
+    return [
+        {
+            "position": [p["lon"], p["lat"], 0],
+            "name": f"Model at {p['name']}",
+            "scale": [1, 1, 1],
+            "orientation": [0, 0, 0],
+            "layerType": "ScenegraphLayer",
+        }
+        for p in PORTS[:5]  # First 5 ports
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Default legend metadata for layer gallery
 # ---------------------------------------------------------------------------
 
@@ -1572,6 +1733,8 @@ LAYER_LEGEND_META: dict[str, tuple[list[int], str]] = {
     "ColumnLayer": ([160, 80, 200], "rect"),
     "PolygonLayer": ([0, 160, 180], "rect"),
     "GreatCircleLayer": ([200, 60, 150], "arc"),
+    "GridCellLayer": ([100, 80, 180], "rect"),
+    "SolidPolygonLayer": ([140, 170, 180], "rect"),
     "HeatmapLayer": ([255, 80, 0], "gradient"),
     "HexagonLayer": ([80, 160, 80], "rect"),
     "GridLayer": ([0, 120, 200], "rect"),
@@ -1579,13 +1742,20 @@ LAYER_LEGEND_META: dict[str, tuple[list[int], str]] = {
     "ContourLayer": ([100, 0, 200], "line"),
     "H3HexagonLayer": ([255, 140, 0], "rect"),
     "TripsLayer": ([253, 128, 93], "line"),
+    "A5Layer": ([255, 140, 0], "rect"),
+    "GeohashLayer": ([60, 180, 75], "rect"),
+    "H3ClusterLayer": ([200, 0, 100], "rect"),
+    "QuadkeyLayer": ([255, 200, 0], "rect"),
+    "S2Layer": ([180, 0, 200], "rect"),
     "TileLayer": ([100, 140, 100], "rect"),
     "BitmapLayer": ([180, 140, 100], "rect"),
     "MVTLayer": ([0, 150, 136], "rect"),
     "WMSLayer": ([70, 130, 180], "rect"),
+    "Tile3DLayer": ([120, 100, 180], "rect"),
     "PointCloudLayer": ([200, 100, 50], "circle"),
     "SimpleMeshLayer": ([80, 160, 220], "rect"),
     "MeshNodes": ([255, 200, 60], "circle"),
     "TerrainLayer": ([120, 160, 80], "rect"),
+    "ScenegraphLayer": ([200, 150, 100], "rect"),
 }
 """Layer-type → (colour, shape) mapping for ``deck_legend_control``."""

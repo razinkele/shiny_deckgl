@@ -546,6 +546,12 @@
             'must match pattern d.prop, d[0], d["key"], etc.');
           continue;
         }
+        // Blocklist: prevent prototype pollution via dangerous property names
+        const DANGEROUS_PROPS_RE = /(?:__proto__|constructor|prototype)/i;
+        if (DANGEROUS_PROPS_RE.test(expr)) {
+          console.warn('[shiny_deckgl] Blocked dangerous property access in "' + val + '"');
+          continue;
+        }
         try {
           // eslint-disable-next-line no-new-func
           layerProps[key] = new Function('d', 'return ' + expr);
@@ -1540,7 +1546,9 @@
         const key = existing[i];
         try {
           instance.map.removeControl(instance.controls[key].control);
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          console.debug('[shiny_deckgl] removeControl failed (may already be removed):', e.message);
+        }
         delete instance.controls[key];
       }
 
@@ -2475,7 +2483,12 @@
             || event.target.getAttribute('href');
     if (!href) return;
     let panel;
-    try { panel = document.querySelector(href); } catch (e) { return; }
+    try {
+      panel = document.querySelector(href);
+    } catch (e) {
+      console.debug('[shiny_deckgl] Invalid selector in tab href:', href);
+      return;
+    }
     if (!panel) return;
     panel.querySelectorAll('.deckgl-map').forEach(function (el) {
       const inst = mapInstances[el.id];

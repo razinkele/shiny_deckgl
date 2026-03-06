@@ -2009,7 +2009,7 @@ class MapWidget:
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>{title}</title>
+<title>{_html_mod.escape(title)}</title>
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
@@ -2024,7 +2024,7 @@ class MapWidget:
 <style>{css_src}</style>
 </head>
 <body>
-<div id="{self.id}" class="deckgl-map"
+<div id="{_html_mod.escape(self.id)}" class="deckgl-map"
      style="width:100%;height:100vh;"
      data-initial-longitude="{vs.get('longitude', 0)}"
      data-initial-latitude="{vs.get('latitude', 0)}"

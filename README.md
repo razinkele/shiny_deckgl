@@ -127,6 +127,24 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.6.2 — Security & Error Handling
+
+| Capability | Details |
+| --- | --- |
+| **Accessor expression validation** | Regex whitelist + prototype pollution blocklist before `new Function()` — prevents code injection. |
+| **Error logging** | All silent `catch` blocks now log `console.warn` (tooltip, controller, controls, WMS, map instance). |
+| **HTML escaping** | Title and widget ID properly escaped in `to_html()` export to prevent XSS. |
+| **COORDINATE_SYSTEM consolidation** | Single source of truth in `enums.py` with backwards-compatible alias. |
+| **Input validation** | `encode_binary_attribute()` raises `TypeError` for non-numpy input. |
+
+### v1.6.1 — Demo Update
+
+| Capability | Details |
+| --- | --- |
+| **Demo gallery expansion** | All 9 new layer types showcased in Layer Gallery tab with UI toggles. |
+| **Updated layer count** | Demo UI reflects "33 layer helpers" (was 24). |
+| **Data generator caching** | New layer data generators use `@functools.lru_cache` for efficiency. |
+
 ### v1.6.0 — Complete Layer Coverage (33 Layer Types)
 
 | Capability | Details |
@@ -135,6 +153,15 @@ browser, all without Java dependencies.
 | **100% deck.gl coverage** | shiny_deckgl now provides typed helpers for all 33 deck.gl layer types. |
 | **LayerType enum** | 9 new enum values for type-safe layer type constants. |
 | **Demo gallery update** | Layer Gallery tab showcases all 33 layer types with toggles and live visualization. |
+
+### v1.5.0 — Enum Types & TypedDict Definitions
+
+| Capability | Details |
+| --- | --- |
+| **12 enum classes** | `ControlPosition`, `WidgetPlacement`, `EasingFunction`, `TransitionType`, `ControlType`, `Projection`, `CoordinateSystem`, `DrawMode`, `LayerType`, `ViewType`, `LightType`, `PostProcessShader`. |
+| **TypedDict definitions** | Structured type hints for configuration dicts: `ControlSpec`, `WidgetSpec`, `ViewSpec`, `LayerSpec`, `EffectSpec`, `LightSpec`, `TooltipSpec`, `TransitionSpec`, `ViewState`. |
+| **H3HexagonLayer fix** | Correctly normalizes H3 cell IDs to lowercase for deck.gl compatibility. |
+| **214 new tests** | Expanded test suite covering enums, TypedDicts, and edge cases. |
 
 ### v1.4.0 — Partial Updates, Patch Layer & JS Modernisation
 

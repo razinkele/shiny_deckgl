@@ -267,6 +267,21 @@ class TestEncodeBinaryAttribute:
         # Should still work
         assert result["@@binary"] is True
 
+    def test_non_ndarray_raises_type_error(self):
+        """Non-ndarray input should raise TypeError."""
+        with pytest.raises(TypeError, match="expects numpy.ndarray"):
+            encode_binary_attribute([1, 2, 3])
+
+    def test_non_ndarray_type_in_error_message(self):
+        """TypeError message should include the actual type."""
+        with pytest.raises(TypeError, match="got list"):
+            encode_binary_attribute([1.0, 2.0, 3.0])
+
+    def test_dict_raises_type_error(self):
+        """Dict input should raise TypeError."""
+        with pytest.raises(TypeError, match="got dict"):
+            encode_binary_attribute({"values": [1, 2, 3]})
+
 
 # ---------------------------------------------------------------------------
 # Edge cases for data serialization

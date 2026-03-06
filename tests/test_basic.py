@@ -3740,11 +3740,11 @@ class TestLayerHelpersDataSerialization:
         assert spec["data"][0]["hex"] == "891f1d48177ffff"
 
 
-class TestV080Version:
+class TestVersionBump:
     """Version bump verification."""
 
-    def test_version_is_100(self):
-        assert m.__version__ == "1.5.0"
+    def test_version_is_current(self):
+        assert m.__version__ == "1.6.1"
 
 
 # ===========================================================================

@@ -313,7 +313,11 @@
     // Parse tooltip config from data-tooltip (JSON)
     let tooltipConfig = null;
     if (el.dataset.tooltip) {
-      try { tooltipConfig = JSON.parse(el.dataset.tooltip); } catch (_) {}
+      try {
+        tooltipConfig = JSON.parse(el.dataset.tooltip);
+      } catch (e) {
+        console.warn('[shiny_deckgl] Failed to parse data-tooltip JSON:', e.message);
+      }
     }
 
     const mapOpts = {
@@ -357,7 +361,9 @@
           map.doubleClickZoom.disable();
           map.touchZoomRotate.disable();
         }
-      } catch (_) {}
+      } catch (e) {
+        console.warn('[shiny_deckgl] Failed to parse data-controller JSON:', e.message);
+      }
     }
 
     // ---- Configurable initial controls ------------------------------------
@@ -367,7 +373,11 @@
     // is absent (i.e. the widget was constructed with controls=None).
     let controlsConfig = [];
     if (el.dataset.controls !== undefined) {
-      try { controlsConfig = JSON.parse(el.dataset.controls); } catch (_) {}
+      try {
+        controlsConfig = JSON.parse(el.dataset.controls);
+      } catch (e) {
+        console.warn('[shiny_deckgl] Failed to parse data-controls JSON:', e.message);
+      }
     } else {
       controlsConfig = [{ type: 'navigation', position: 'top-right' }];
     }
@@ -449,13 +459,21 @@
       initialDeckProps.pickingRadius = parseInt(el.dataset.pickingRadius, 10) || 0;
     }
     if (el.dataset.useDevicePixels !== undefined) {
-      try { initialDeckProps.useDevicePixels = JSON.parse(el.dataset.useDevicePixels); } catch (_) {}
+      try {
+        initialDeckProps.useDevicePixels = JSON.parse(el.dataset.useDevicePixels);
+      } catch (e) {
+        console.warn('[shiny_deckgl] Failed to parse data-useDevicePixels JSON:', e.message);
+      }
     }
     if (el.dataset.animate === 'true') {
       initialDeckProps._animate = true;
     }
     if (el.dataset.parameters) {
-      try { initialDeckProps.parameters = JSON.parse(el.dataset.parameters); } catch (_) {}
+      try {
+        initialDeckProps.parameters = JSON.parse(el.dataset.parameters);
+      } catch (e) {
+        console.warn('[shiny_deckgl] Failed to parse data-parameters JSON:', e.message);
+      }
     }
     if (Object.keys(initialDeckProps).length) {
       overlay.setProps(initialDeckProps);
@@ -517,8 +535,17 @@
 
       // @@=expr — expression accessor (safe subset)
       // Supports:  d.prop, d.a.b, d[0], d[2], d["key"]
+      // Security: validate expression matches safe pattern before new Function()
       if (raw.startsWith('=')) {
         const expr = raw.slice(1).trim();
+        // Whitelist: only allow safe accessor patterns (property access, array indexing)
+        // Matches: d, d.prop, d.a.b.c, d[0], d["key"], d['key'], or combinations
+        const SAFE_ACCESSOR_RE = /^d(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*|\[\d+\]|\["[^"]*"\]|\['[^']*'\])*$/;
+        if (!SAFE_ACCESSOR_RE.test(expr)) {
+          console.warn('[shiny_deckgl] Invalid accessor expression "' + val + '": ' +
+            'must match pattern d.prop, d[0], d["key"], etc.');
+          continue;
+        }
         try {
           // eslint-disable-next-line no-new-func
           layerProps[key] = new Function('d', 'return ' + expr);
@@ -892,8 +919,11 @@
                 if (!blob || blob.size === 0) return null;
                 return createImageBitmap(blob);
               })
-              .catch(function () {
-                // Silently ignore decode failures (empty/corrupt tiles)
+              .catch(function (err) {
+                // Log fetch/decode failures for debugging (ignore abort signals)
+                if (err && err.name !== 'AbortError') {
+                  console.warn('[shiny_deckgl] WMS tile fetch failed:', err.message || err);
+                }
                 return null;
               });
           };

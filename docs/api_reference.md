@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.6.1** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.6.2** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl

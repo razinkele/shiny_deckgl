@@ -5,6 +5,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.6.2] — 2026-03-06
+
+### Fixed
+
+- **Security: accessor expression validation** — Added regex whitelist validation
+  for `@@=expr` accessor expressions before `new Function()` to prevent code injection.
+  Only safe patterns allowed: `d`, `d.prop`, `d[0]`, `d["key"]`, and combinations.
+- **Error logging for JSON parse failures** — All silent `catch (_) {}` blocks now
+  log `console.warn` with details: tooltip, controller, controls, useDevicePixels,
+  parameters configurations.
+- **WMS tile fetch failure logging** — Failed WMS tile requests now log warnings
+  (excluding AbortError) for easier debugging.
+- **Map instance lookup logging** — `ensureInstance()` now warns when map ID not
+  found, helping diagnose silent Python-to-JS message failures.
+
+### Changed
+
+- **Consolidated COORDINATE_SYSTEM** — Removed duplicate definitions from `_types.py`
+  and `layers.py`. Now uses `CoordinateSystem` enum from `enums.py` as single source
+  of truth with `DEFAULT` alias for backwards compatibility.
+- **Input validation for `encode_binary_attribute()`** — Raises `TypeError` with
+  clear message when input is not a numpy array.
+- **Updated `.gitignore`** — Added `.hypothesis/`, `run_mypy.py`, `_measure_payload.py`,
+  `nul` artifacts.
+
+---
 ## [1.6.1] — 2026-03-06
 
 ### Added

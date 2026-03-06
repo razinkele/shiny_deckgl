@@ -3744,7 +3744,7 @@ class TestVersionBump:
     """Version bump verification."""
 
     def test_version_is_current(self):
-        assert m.__version__ == "1.6.1"
+        assert m.__version__ == "1.6.2"
 
 
 # ===========================================================================

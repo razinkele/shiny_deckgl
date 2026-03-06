@@ -1,6 +1,6 @@
 # shiny_deckgl User Manual
 
-> **Version 1.6.1** — A comprehensive guide to building interactive geospatial visualizations with Shiny for Python and deck.gl.
+> **Version 1.6.2** — A comprehensive guide to building interactive geospatial visualizations with Shiny for Python and deck.gl.
 
 ---
 
@@ -1229,4 +1229,4 @@ app = App(app_ui, server)
 
 ---
 
-*shiny_deckgl v1.6.1 — Built for marine science and GIS visualization*
+*shiny_deckgl v1.6.2 — Built for marine science and GIS visualization*

@@ -67,8 +67,6 @@ from ._demo_data import (
     BASEMAP_CHOICES,
     PALETTE_CHOICES,
     BALTIC_VIEW,
-    TOOLTIP_STYLE,
-    DEFAULT_TOOLTIP_HTML,
     make_arc_data,
     make_heatmap_points,
     make_path_data,
@@ -78,7 +76,6 @@ from ._demo_data import (
     make_bathymetry_grid,
     make_fish_observations,
     make_3d_arc_data,
-    BALTIC_VIEW_3D,
     SHYFEM_VIEW,
     make_h3_data,
     make_point_cloud_data,
@@ -152,7 +149,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         terrain_layer,
         custom_geometry,
     )
-    from .controls import deck_legend_control
 
     # Shared reactive stores
     _adv_layers: reactive.Value[list[dict]] = reactive.Value([])

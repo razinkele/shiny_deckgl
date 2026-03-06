@@ -3883,6 +3883,54 @@ class TestTransition:
         assert t["enter"] is True
         assert t["duration"] == 500
 
+    def test_zero_duration(self):
+        """Zero duration is valid for instant transitions."""
+        t = transition(duration=0)
+        assert t["duration"] == 0
+        assert t["type"] == "interpolation"
+
+    def test_large_duration(self):
+        """Large duration values are passed through."""
+        t = transition(duration=60000)  # 1 minute
+        assert t["duration"] == 60000
+
+    @pytest.mark.parametrize("easing", [
+        "ease-in-cubic",
+        "ease-out-cubic",
+        "ease-in-out-cubic",
+        "ease-in-out-sine",
+    ])
+    def test_all_supported_easing_values(self, easing):
+        """All documented easing values are valid."""
+        t = transition(1000, easing=easing)
+        assert t["@@easing"] == easing
+        assert t["duration"] == 1000
+
+    def test_json_serializable(self):
+        """Transition spec must be JSON-serializable."""
+        import json
+        t = transition(800, easing="ease-in-out-cubic", enter=True)
+        serialized = json.dumps(t)
+        assert isinstance(serialized, str)
+        parsed = json.loads(serialized)
+        assert parsed["duration"] == 800
+
+    def test_spring_without_kwargs(self):
+        """Spring type with no stiffness/damping uses deck.gl defaults."""
+        t = transition(type="spring")
+        assert t["type"] == "spring"
+        assert "duration" not in t
+        assert "stiffness" not in t
+        assert "damping" not in t
+
+    def test_interpolation_ignores_spring_params(self):
+        """Interpolation type ignores spring-specific params but keeps them."""
+        t = transition(500, type="interpolation", stiffness=100)
+        assert t["type"] == "interpolation"
+        assert t["duration"] == 500
+        # stiffness is passed through (deck.gl ignores it)
+        assert t["stiffness"] == 100
+
 
 # ---------------------------------------------------------------------------
 # set_widgets() async method

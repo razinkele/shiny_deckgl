@@ -48,11 +48,23 @@ def _get_transformer():
 
 
 def _utm_to_wgs84(x: float, y: float) -> tuple[float, float]:
-    """Convert UTM Zone 33N to WGS84 lon/lat."""
+    """Convert UTM Zone 33N to WGS84 lon/lat.
+
+    Raises
+    ------
+    RuntimeError
+        If pyproj is not installed.
+    ValueError
+        If coordinate transformation fails (e.g., invalid coordinates).
+    """
     t = _get_transformer()
-    if t is not None:
-        return t.transform(x, y)
-    raise RuntimeError("pyproj is required: micromamba install -n shiny pyproj")
+    if t is None:
+        raise RuntimeError("pyproj is required: micromamba install -n shiny pyproj")
+    try:
+        result = t.transform(x, y)
+        return (float(result[0]), float(result[1]))
+    except Exception as e:
+        raise ValueError(f"Coordinate transformation failed for ({x}, {y}): {e}") from e
 
 
 def _depth_to_rgb(t: float) -> tuple[int, int, int]:

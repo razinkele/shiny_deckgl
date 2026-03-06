@@ -38,7 +38,7 @@ def normalize_rows(M: np.ndarray) -> np.ndarray:
     M = np.array(M, dtype=float)
     rowsums = M.sum(axis=1, keepdims=True)
     rowsums[rowsums == 0] = 1.0
-    return M / rowsums
+    return np.asarray(M / rowsums)  # type: ignore[no-any-return]
 
 def softmax(x: np.ndarray, tau: float = 1.0) -> np.ndarray:
     """Temperature-scaled softmax for site choice utilities."""
@@ -46,12 +46,12 @@ def softmax(x: np.ndarray, tau: float = 1.0) -> np.ndarray:
     x = x - np.max(x)  # numerical stability
     ex = np.exp(x / max(1e-9, tau))
     s = ex.sum()
-    return ex / s if s > 0 else np.ones_like(x) / len(x)
+    return np.asarray(ex / s if s > 0 else np.ones_like(x) / len(x))  # type: ignore[no-any-return]
 
 def reflect_into_bounds(xy: np.ndarray, bounds: tuple[float, float, float, float]) -> np.ndarray:
     """Reflect a point at rectangular boundaries (xmin, xmax, ymin, ymax)."""
     xmin, xmax, ymin, ymax = bounds
-    x, y = xy
+    x, y = float(xy[0]), float(xy[1])
     if x < xmin:
         x = xmin + (xmin - x)
     if x > xmax:
@@ -60,7 +60,7 @@ def reflect_into_bounds(xy: np.ndarray, bounds: tuple[float, float, float, float
         y = ymin + (ymin - y)
     if y > ymax:
         y = ymax - (y - ymax)
-    return np.array([x, y], dtype=float)
+    return np.array([x, y], dtype=float)  # type: ignore[no-any-return]
 
 def gradient_field(raster: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Compute a simple gradient field of the habitat raster (central differences)."""
@@ -101,9 +101,9 @@ def simulate_IHTR(cfg: IHTRConfig, random_state: int | None = None) -> pd.DataFr
 
     # Pre-allocate output arrays (vectorized recording)
     n_records = cfg.T * cfg.n_agents
-    t_col = np.repeat(np.arange(cfg.T), cfg.n_agents)
-    agent_col = np.tile(np.arange(cfg.n_agents), cfg.T)
-    cluster_col = np.empty(n_records, dtype=np.int32)
+    t_col: np.ndarray = np.repeat(np.arange(cfg.T), cfg.n_agents)
+    agent_col: np.ndarray = np.tile(np.arange(cfg.n_agents), cfg.T)
+    cluster_col: np.ndarray = np.empty(n_records, dtype=np.int32)
 
     for t in range(cfg.T):
         # Record current states (vectorized)
@@ -178,7 +178,7 @@ class Environment:
         v = np.clip(v, 0, Ny - 1)
         u0 = int(np.floor(u))
         v0 = int(np.floor(v))
-        return np.array([self._gx[v0, u0], self._gy[v0, u0]], dtype=float)
+        return np.asarray([self._gx[v0, u0], self._gy[v0, u0]], dtype=float)  # type: ignore[no-any-return]
 
 @dataclass
 class IBMParams:
@@ -289,13 +289,13 @@ class SealIBM:
         n_records = T * self.n
 
         # Pre-allocate output arrays
-        t_col = np.repeat(np.arange(T), self.n)
-        agent_col = np.tile(np.arange(self.n), T)
-        x_col = np.empty(n_records, dtype=np.float64)
-        y_col = np.empty(n_records, dtype=np.float64)
-        energy_col = np.empty(n_records, dtype=np.float64)
-        at_sea_col = np.empty(n_records, dtype=np.int8)
-        haulout_col = np.empty(n_records, dtype=np.int32)
+        t_col: np.ndarray = np.repeat(np.arange(T), self.n)
+        agent_col: np.ndarray = np.tile(np.arange(self.n), T)
+        x_col: np.ndarray = np.empty(n_records, dtype=np.float64)
+        y_col: np.ndarray = np.empty(n_records, dtype=np.float64)
+        energy_col: np.ndarray = np.empty(n_records, dtype=np.float64)
+        at_sea_col: np.ndarray = np.empty(n_records, dtype=np.int8)
+        haulout_col: np.ndarray = np.empty(n_records, dtype=np.int32)
 
         for t in range(T):
             start_idx = t * self.n

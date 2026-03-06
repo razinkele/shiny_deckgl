@@ -1201,7 +1201,7 @@ class MapWidget:
         session: "Session",
         layer_id: str,
         name: str,
-        value,
+        value: Any,
     ) -> None:
         """Set a paint property on a native MapLibre layer.
 
@@ -1228,7 +1228,7 @@ class MapWidget:
         session: "Session",
         layer_id: str,
         name: str,
-        value,
+        value: Any,
     ) -> None:
         """Set a layout property on a native MapLibre layer.
 
@@ -1977,7 +1977,9 @@ class MapWidget:
 
         mapbox_attr = ""
         if self.mapbox_api_key:
-            mapbox_attr = f' data-mapbox-api-key="{self.mapbox_api_key}"'
+            # Escape the API key to prevent XSS in HTML attribute context
+            escaped_key = _html_mod.escape(self.mapbox_api_key, quote=True)
+            mapbox_attr = f' data-mapbox-api-key="{escaped_key}"'
 
         layers_json = json.dumps(layers, indent=2)
         effects_json = json.dumps(effects or [], indent=2)

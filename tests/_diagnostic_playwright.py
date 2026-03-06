@@ -2,6 +2,9 @@
 
 Usage:
     micromamba run -n shiny python tests/test_demo_playwright.py
+
+Note: This is a diagnostic script, not a pytest test suite.
+      For pytest-compatible E2E tests, see test_e2e_playwright.py.
 """
 from __future__ import annotations
 
@@ -9,7 +12,10 @@ import subprocess
 import sys
 import time
 
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None  # type: ignore
 
 
 PORT = 18765
@@ -31,6 +37,10 @@ def start_server():
 
 
 def main():
+    if sync_playwright is None:
+        print("ERROR: playwright not installed. Run: pip install playwright")
+        return
+
     proc = start_server()
     errors: list[str] = []
     console_msgs: list[str] = []

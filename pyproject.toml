@@ -32,10 +32,10 @@ geopandas = ["geopandas"]
 dev = ["pytest", "numpy", "geopandas"]
 
 [project.urls]
-Homepage = "https://github.com/razinkele/shiny_deckgl"
-Repository = "https://github.com/razinkele/shiny_deckgl"
-Issues = "https://github.com/razinkele/shiny_deckgl/issues"
-Changelog = "https://github.com/razinkele/shiny_deckgl/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/razinka/shiny_deckgl"
+Repository = "https://github.com/razinka/shiny_deckgl"
+Issues = "https://github.com/razinka/shiny_deckgl/issues"
+Changelog = "https://github.com/razinka/shiny_deckgl/blob/main/CHANGELOG.md"
 
 [project.scripts]
 shiny_deckgl-demo = "shiny_deckgl.cli:main"

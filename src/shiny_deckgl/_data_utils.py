@@ -58,8 +58,18 @@ def encode_binary_attribute(array: "np.ndarray") -> dict:
     >>> layer("ScatterplotLayer", "pts",
     ...       data={"length": len(positions)},
     ...       getPosition=encode_binary_attribute(positions))
+
+    Raises
+    ------
+    TypeError
+        If `array` is not a numpy ndarray.
     """
     import numpy as np  # noqa: local import — numpy is optional
+
+    if not isinstance(array, np.ndarray):
+        raise TypeError(
+            f"encode_binary_attribute() expects numpy.ndarray, got {type(array).__name__}"
+        )
 
     arr = np.ascontiguousarray(array)
     dtype_str = str(arr.dtype)

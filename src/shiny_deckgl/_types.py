@@ -232,17 +232,7 @@ class TransitionSpec(TypedDict, total=False):
 
 
 # ---------------------------------------------------------------------------
-# Coordinate system constants (matching deck.gl COORDINATE_SYSTEM)
+# Coordinate system constants
 # ---------------------------------------------------------------------------
-
-class CoordinateSystem:
-    """Deck.gl coordinate system constants."""
-    LNGLAT: int = 1
-    METER_OFFSETS: int = 2
-    LNGLAT_OFFSETS: int = 3
-    CARTESIAN: int = 0
-    IDENTITY: int = -1
-
-
-# Make available as module-level constant for backwards compatibility
-COORDINATE_SYSTEM = CoordinateSystem()
+# NOTE: CoordinateSystem is defined in enums.py as the single source of truth.
+# Import from there: from .enums import CoordinateSystem

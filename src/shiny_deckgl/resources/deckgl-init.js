@@ -1123,7 +1123,7 @@
   // -----------------------------------------------------------------------
   // Ensure instance helper
   // -----------------------------------------------------------------------
-  function ensureInstance(targetId) {
+  function ensureInstance(targetId, silent) {
     let instance = mapInstances[targetId];
     if (!instance) {
       const el = document.getElementById(targetId);
@@ -1131,6 +1131,9 @@
         initMap(el);
         instance = mapInstances[targetId];
       }
+    }
+    if (!instance && !silent) {
+      console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
     }
     return instance || null;
   }

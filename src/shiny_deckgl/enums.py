@@ -117,12 +117,25 @@ class CoordinateSystem(int, Enum):
     """Deck.gl coordinate system constants.
 
     These correspond to deck.gl's COORDINATE_SYSTEM values.
+    Use with the ``coordinateSystem`` property on any layer.
+
+    Example::
+
+        simple_mesh_layer("mesh", data,
+                          coordinateSystem=CoordinateSystem.METER_OFFSETS)
     """
     CARTESIAN = 0
+    """Non-geographic pixel/unit coordinates."""
     LNGLAT = 1
+    """Positions as ``[longitude, latitude]`` (default for most layers)."""
     METER_OFFSETS = 2
+    """Positions in **metres** relative to a ``coordinateOrigin``."""
     LNGLAT_OFFSETS = 3
+    """Positions as ``[longitude_offset, latitude_offset]``."""
     IDENTITY = -1
+    """Auto-detect based on data."""
+    DEFAULT = -1
+    """Alias for IDENTITY (auto-detect based on data)."""
 
 
 # ---------------------------------------------------------------------------

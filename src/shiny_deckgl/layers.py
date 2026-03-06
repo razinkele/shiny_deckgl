@@ -1077,29 +1077,14 @@ def scenegraph_layer(id: str, data: list | dict, **kwargs) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Coordinate system constants (mirrors deck.gl COORDINATE_SYSTEM enum)
+# Coordinate system constants (imported from enums for single source of truth)
 # ---------------------------------------------------------------------------
 
-class COORDINATE_SYSTEM:
-    """deck.gl coordinate system constants.
+from .enums import CoordinateSystem
 
-    Use with the ``coordinateSystem`` property on any layer.
-
-    Example::
-
-        simple_mesh_layer("mesh", data,
-                          coordinateSystem=COORDINATE_SYSTEM.METER_OFFSETS)
-    """
-    DEFAULT = -1
-    """Auto-detect based on data."""
-    LNGLAT = 1
-    """Positions as ``[longitude, latitude]`` (default for most layers)."""
-    METER_OFFSETS = 2
-    """Positions in **metres** relative to a ``coordinateOrigin``."""
-    LNGLAT_OFFSETS = 3
-    """Positions as ``[longitude_offset, latitude_offset]``."""
-    CARTESIAN = 0
-    """Non-geographic pixel/unit coordinates."""
+# Backwards-compatible alias: COORDINATE_SYSTEM.LNGLAT etc.
+# The enum values work the same way as the old class attributes.
+COORDINATE_SYSTEM = CoordinateSystem
 
 
 # ---------------------------------------------------------------------------

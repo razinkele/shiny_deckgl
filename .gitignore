@@ -33,6 +33,7 @@ Thumbs.db
 
 # Test / coverage
 .pytest_cache/
+.hypothesis/
 htmlcov/
 .coverage
 coverage.xml
@@ -47,6 +48,11 @@ conda.recipe/build/
 desktop.ini
 .claude/
 _check_*.py
+run_mypy.py
+**/run_mypy.py
+_measure_payload.py
+**/nul
+nul
 *.zip
 *.shp
 *.shx

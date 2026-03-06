@@ -5,8 +5,10 @@ MAPLIBRE_VERSION = "5.3.1"
 MAPBOX_DRAW_VERSION = "1.4.3"
 MAPLIBRE_LEGEND_VERSION = "2.0.6"
 MAPLIBRE_OPACITY_VERSION = "1.8.0"
+H3_JS_VERSION = "4.1.0"
 
 DECKGL_JS = f"https://cdn.jsdelivr.net/npm/deck.gl@{DECKGL_VERSION}/dist.min.js"
+H3_JS = f"https://cdn.jsdelivr.net/npm/h3-js@{H3_JS_VERSION}/dist/h3-js.umd.js"
 DECKGL_WIDGETS_JS = f"https://cdn.jsdelivr.net/npm/@deck.gl/widgets@{DECKGL_VERSION}/dist.min.js"
 DECKGL_WIDGETS_CSS = f"https://cdn.jsdelivr.net/npm/@deck.gl/widgets@{DECKGL_VERSION}/dist/stylesheet.css"
 MAPLIBRE_JS = f"https://cdn.jsdelivr.net/npm/maplibre-gl@{MAPLIBRE_VERSION}/dist/maplibre-gl.js"
@@ -21,6 +23,7 @@ MAPLIBRE_OPACITY_JS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLIB
 MAPLIBRE_OPACITY_CSS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLIBRE_OPACITY_VERSION}/build/maplibre-gl-opacity.css"
 
 CDN_HEAD_FRAGMENT = (
+    f'<script src="{H3_JS}"></script>\n'
     f'<script src="{DECKGL_JS}"></script>\n'
     f'<script src="{DECKGL_WIDGETS_JS}"></script>\n'
     f'<link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>\n'

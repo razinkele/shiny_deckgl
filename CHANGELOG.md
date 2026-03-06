@@ -5,6 +5,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.5.0] — 2026-03-06
+
+### Added
+
+- **Enum types** (`enums.py`) — 12 new enum classes for type-safe constants:
+  `ControlPosition`, `WidgetPlacement`, `EasingFunction`, `TransitionType`,
+  `ControlType`, `Projection`, `CoordinateSystem`, `DrawMode`, `LayerType`,
+  `ViewType`, `LightType`, `PostProcessShader`. All inherit from `str` for
+  seamless use with existing APIs.
+- **TypedDict definitions** (`_types.py`) — structured type hints for
+  configuration dicts: `ControlSpec`, `WidgetSpec`, `ViewSpec`, `LayerSpec`,
+  `EffectSpec`, `LightSpec`, `TooltipSpec`, `TransitionSpec`, `ViewState`.
+- **Module docstring** — comprehensive package docstring in `__init__.py`
+  documenting all major components and usage patterns.
+- **API reference: Enum Types section** — documentation for all enum classes.
+- **Test coverage expansion** — 214 new tests across 4 test files:
+  - `test_widgets.py` (91 tests) — widget helper functions
+  - `test_views.py` (49 tests) — view helper functions
+  - `test_extensions.py` (41 tests) — extension helper functions
+  - `test_app_modules.py` (33 tests) — app module integration
+
+### Fixed
+
+- **H3HexagonLayer not rendering** — added missing `h3-js` library (v4.1.0) to
+  CDN imports. The H3HexagonLayer requires this library to convert H3 indices
+  to polygon boundaries.
+- **`wms_layer()` validation** — now requires `layers` parameter to be a
+  non-empty list (previously accepted strings which caused silent failures).
+
+### Changed
+
+- **Validation helper refactoring** — introduced `_validate_choice()` helper
+  function and pre-computed sorted constants to reduce code duplication and
+  improve error message consistency in `MapWidget`.
+
+---
 ## [1.4.0] — 2026-03-04
 
 ### Added

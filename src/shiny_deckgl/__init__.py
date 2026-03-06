@@ -1,3 +1,76 @@
+"""shiny_deckgl — deck.gl and MapLibre integration for Shiny for Python.
+
+This package provides a bridge between Shiny for Python and deck.gl/MapLibre,
+enabling high-performance, GPU-accelerated geospatial visualizations in
+reactive Shiny applications.
+
+Core Components
+---------------
+MapWidget
+    The main widget class for creating deck.gl maps with MapLibre basemaps.
+    Supports layers, controls, widgets, effects, and server-side updates.
+
+Layer Functions
+---------------
+Functions like ``scatterplot_layer``, ``geojson_layer``, ``heatmap_layer``,
+etc., create deck.gl layer specifications. Each returns a dict suitable for
+``MapWidget.set_layers()`` or ``MapWidget.add_layer()``.
+
+View Functions
+--------------
+``map_view``, ``globe_view``, ``orbit_view``, etc., create deck.gl view
+configurations for multi-view layouts and 3D perspectives.
+
+Widget Functions
+----------------
+``zoom_widget``, ``compass_widget``, ``scale_widget``, etc., create deck.gl
+UI widget specifications for navigation controls and information displays.
+
+Extension Functions
+-------------------
+``brushing_extension``, ``data_filter_extension``, etc., create deck.gl
+layer extension specifications for advanced rendering features.
+
+Control Functions
+-----------------
+``geolocate_control``, ``terrain_control``, etc., create MapLibre control
+specifications for map interaction.
+
+Effect Functions
+----------------
+``ambient_light``, ``directional_light``, ``lighting_effect``, etc., create
+lighting and post-processing effect specifications.
+
+Color Utilities
+---------------
+``color_range``, ``color_bins``, ``color_quantiles``, and predefined palettes
+like ``PALETTE_VIRIDIS`` for data-driven coloring.
+
+Example
+-------
+>>> from shiny import App, ui, render
+>>> from shiny_deckgl import MapWidget, scatterplot_layer
+>>>
+>>> widget = MapWidget("mymap")
+>>>
+>>> app_ui = ui.page_fluid(widget.ui())
+>>>
+>>> def server(input, output, session):
+...     @render.effect
+...     async def _():
+...         await widget.set_layers(session, [
+...             scatterplot_layer("points", data=my_data)
+...         ])
+>>>
+>>> app = App(app_ui, server)
+
+See Also
+--------
+- deck.gl documentation: https://deck.gl/docs
+- MapLibre GL JS: https://maplibre.org/maplibre-gl-js/docs/
+- Shiny for Python: https://shiny.posit.co/py/
+"""
+
 # --- map_widget ---
 from .map_widget import MapWidget  # noqa: F401
 
@@ -146,6 +219,22 @@ from ._demo_data import (  # noqa: F401
     make_shyfem_mesh_data,
 )
 
+# --- enums ---
+from .enums import (  # noqa: F401
+    ControlPosition,
+    WidgetPlacement,
+    EasingFunction,
+    TransitionType,
+    ControlType,
+    Projection,
+    CoordinateSystem,
+    DrawMode,
+    LayerType,
+    ViewType,
+    LightType,
+    PostProcessShader,
+)
+
 # --- version ---
 from ._version import __version__
 
@@ -278,6 +367,19 @@ __all__ = [
     "make_point_cloud_data",
     "make_shyfem_polygon_data",
     "make_shyfem_mesh_data",
+    # Enums
+    "ControlPosition",
+    "WidgetPlacement",
+    "EasingFunction",
+    "TransitionType",
+    "ControlType",
+    "Projection",
+    "CoordinateSystem",
+    "DrawMode",
+    "LayerType",
+    "ViewType",
+    "LightType",
+    "PostProcessShader",
     # Version
     "__version__",
 ]

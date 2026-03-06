@@ -146,6 +146,7 @@ import shiny_deckgl as sdgl
   - [patch\_layer()](#patch_layer)
 - [IBM Visual Assets (v1.1)](#ibm-visual-assets-v11)
 - [Basemap & Control Constants](#basemap--control-constants)
+- [Enum Types (v1.4)](#enum-types-v14)
 - [Color Utilities](#color-utilities)
   - [Palette Constants](#palette-constants)
   - [color\_range()](#color_range)
@@ -2328,6 +2329,139 @@ Pass any MapLibre-compatible style URL to `MapWidget(style=...)`.
 **`CONTROL_POSITIONS`** — Valid position strings for controls:
 
 `{"top-left", "top-right", "bottom-left", "bottom-right"}`
+
+---
+
+## Enum Types (v1.4)
+
+Enum classes provide IDE autocomplete and type safety for common string constants. All enums inherit from `str` and can be used wherever the string value is expected.
+
+### ControlPosition
+
+```python
+from shiny_deckgl import ControlPosition
+
+ControlPosition.TOP_LEFT      # "top-left"
+ControlPosition.TOP_RIGHT     # "top-right"
+ControlPosition.BOTTOM_LEFT   # "bottom-left"
+ControlPosition.BOTTOM_RIGHT  # "bottom-right"
+```
+
+### WidgetPlacement
+
+Same values as `ControlPosition`, used for deck.gl widget placement.
+
+### EasingFunction
+
+Easing functions for camera transitions:
+
+```python
+from shiny_deckgl import EasingFunction
+
+EasingFunction.EASE_IN_CUBIC      # "ease-in-cubic"
+EasingFunction.EASE_OUT_CUBIC     # "ease-out-cubic"
+EasingFunction.EASE_IN_OUT_CUBIC  # "ease-in-out-cubic"
+EasingFunction.LINEAR             # "linear"
+# ... and more
+```
+
+### TransitionType
+
+Transition interpolator types:
+
+```python
+from shiny_deckgl import TransitionType
+
+TransitionType.FLY_TO           # "flyTo"
+TransitionType.LINEAR           # "linear"
+TransitionType.INTERPOLATOR     # "interpolator"
+```
+
+### ControlType
+
+MapLibre control types:
+
+```python
+from shiny_deckgl import ControlType
+
+ControlType.NAVIGATION   # "navigation"
+ControlType.SCALE        # "scale"
+ControlType.FULLSCREEN   # "fullscreen"
+ControlType.GEOLOCATE    # "geolocate"
+ControlType.GLOBE        # "globe"
+ControlType.TERRAIN      # "terrain"
+# ... etc.
+```
+
+### LayerType
+
+All supported deck.gl layer types:
+
+```python
+from shiny_deckgl import LayerType
+
+LayerType.SCATTERPLOT    # "ScatterplotLayer"
+LayerType.GEOJSON        # "GeoJsonLayer"
+LayerType.ARC            # "ArcLayer"
+LayerType.HEATMAP        # "HeatmapLayer"
+LayerType.TRIPS          # "TripsLayer"
+# ... all 22 layer types
+```
+
+### ViewType
+
+deck.gl view types:
+
+```python
+from shiny_deckgl import ViewType
+
+ViewType.MAP            # "MapView"
+ViewType.ORTHOGRAPHIC   # "OrthographicView"
+ViewType.FIRST_PERSON   # "FirstPersonView"
+ViewType.GLOBE          # "GlobeView"
+ViewType.ORBIT          # "OrbitView"
+```
+
+### LightType
+
+Lighting types for effects:
+
+```python
+from shiny_deckgl import LightType
+
+LightType.AMBIENT       # "AmbientLight"
+LightType.POINT         # "PointLight"
+LightType.DIRECTIONAL   # "DirectionalLight"
+LightType.SUN           # "SunLight"
+```
+
+### Projection & CoordinateSystem
+
+```python
+from shiny_deckgl import Projection, CoordinateSystem
+
+Projection.GLOBE           # "globe"
+Projection.MERCATOR        # "mercator"
+Projection.EQUAL_EARTH     # "equalEarth"
+
+CoordinateSystem.LNGLAT    # "LNGLAT"
+CoordinateSystem.METER     # "METER_OFFSETS"
+CoordinateSystem.CARTESIAN # "CARTESIAN"
+```
+
+### DrawMode
+
+Drawing mode options for `enable_draw()`:
+
+```python
+from shiny_deckgl import DrawMode
+
+DrawMode.SIMPLE_SELECT    # "simple_select"
+DrawMode.DIRECT_SELECT    # "direct_select"
+DrawMode.DRAW_POINT       # "draw_point"
+DrawMode.DRAW_LINE_STRING # "draw_line_string"
+DrawMode.DRAW_POLYGON     # "draw_polygon"
+```
 
 ---
 

@@ -32,6 +32,36 @@ from ._data_utils import _serialise_data
 
 __all__ = ["MapWidget"]
 
+# Pre-computed sorted constants for validation error messages (avoid sorting on every error)
+_CONTROL_TYPES_SORTED: tuple[str, ...] = tuple(sorted(CONTROL_TYPES))
+_CONTROL_POSITIONS_SORTED: tuple[str, ...] = tuple(sorted(CONTROL_POSITIONS))
+
+
+def _validate_choice(value: str, valid_values: set[str], name: str, sorted_values: tuple[str, ...]) -> None:
+    """Validate that value is in valid_values, raising ValueError if not.
+
+    Parameters
+    ----------
+    value
+        The value to validate.
+    valid_values
+        Set of valid values.
+    name
+        Human-readable name for error messages (e.g., "control type").
+    sorted_values
+        Pre-sorted tuple of valid values for error message.
+
+    Raises
+    ------
+    ValueError
+        If value is not in valid_values.
+    """
+    if value not in valid_values:
+        raise ValueError(
+            f"Unknown {name} {value!r}. "
+            f"Valid {name}s: {sorted_values}"
+        )
+
 # Hoist the namespace resolver import to module level so we pay the
 # try/except cost once at import time, not on every MapWidget instantiation.
 try:
@@ -688,16 +718,8 @@ class MapWidget:
             ``{"maxWidth": 200, "unit": "metric"}`` for ScaleControl,
             ``{"source": "terrain-dem", "exaggeration": 1.5}`` for TerrainControl.
         """
-        if control_type not in CONTROL_TYPES:
-            raise ValueError(
-                f"Unknown control type {control_type!r}. "
-                f"Valid types: {sorted(CONTROL_TYPES)}"
-            )
-        if position not in CONTROL_POSITIONS:
-            raise ValueError(
-                f"Unknown position {position!r}. "
-                f"Valid positions: {sorted(CONTROL_POSITIONS)}"
-            )
+        _validate_choice(control_type, CONTROL_TYPES, "control type", _CONTROL_TYPES_SORTED)
+        _validate_choice(position, CONTROL_POSITIONS, "position", _CONTROL_POSITIONS_SORTED)
         await session.send_custom_message("deck_add_control", {
             "id": self.id,
             "controlType": control_type,
@@ -756,14 +778,12 @@ class MapWidget:
         payload_controls = []
         for ctrl in controls:
             ct = ctrl.get("type", "")
-            if ct not in CONTROL_TYPES:
-                raise ValueError(
-                    f"Unknown control type {ct!r}. "
-                    f"Valid types: {sorted(CONTROL_TYPES)}"
-                )
+            _validate_choice(ct, CONTROL_TYPES, "control type", _CONTROL_TYPES_SORTED)
+            pos = ctrl.get("position", "top-right")
+            _validate_choice(pos, CONTROL_POSITIONS, "control position", _CONTROL_POSITIONS_SORTED)
             payload_controls.append({
                 "type": ct,
-                "position": ctrl.get("position", "top-right"),
+                "position": pos,
                 "options": ctrl.get("options", {}),
             })
         await session.send_custom_message("deck_set_controls", {

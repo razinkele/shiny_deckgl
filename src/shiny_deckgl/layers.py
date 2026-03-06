@@ -665,6 +665,12 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
             "specifying the WMS LAYERS to request, e.g. "
             "layers=['emodnet:mean_atlas_land']"
         )
+    layers_val = kwargs["layers"]
+    if not isinstance(layers_val, list) or len(layers_val) == 0:
+        raise ValueError(
+            "wms_layer() 'layers' must be a non-empty list of layer names, "
+            f"got {type(layers_val).__name__}: {layers_val!r}"
+        )
     defaults: dict[str, Any] = {
         "srs": "EPSG:4326",
         "format": "image/png",

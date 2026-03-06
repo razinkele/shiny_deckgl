@@ -4493,10 +4493,10 @@ class TestWMSLayer:
     def test_kwargs_override(self):
         spec = wms_layer(
             "w2", data="https://example.com/wms",
-            srs="EPSG:3857", layers="bathymetry",
+            srs="EPSG:3857", layers=["bathymetry"],
         )
         assert spec["srs"] == "EPSG:3857"
-        assert spec["layers"] == "bathymetry"
+        assert spec["layers"] == ["bathymetry"]
 
     def test_missing_layers_raises(self):
         """Omitting the required 'layers' kwarg must raise ValueError."""

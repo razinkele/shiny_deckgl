@@ -1767,6 +1767,135 @@ def make_grid_cell_data() -> list[dict]:
     return _make_bathymetry_cells_from_grid(_BALTIC_BATHYMETRY_GRID)
 
 
+def parse_asc_bathymetry(
+    file_path: str | Path,
+    source_crs: str = "EPSG:3035",
+    sample_step: int = 1,
+) -> list[dict]:
+    """Parse ESRI ASCII Grid (.asc) bathymetry file to GridCellLayer data.
+
+    Args:
+        file_path: Path to the .asc file
+        source_crs: Source coordinate reference system (default: ETRS89-LAEA)
+        sample_step: Sample every N-th cell to reduce data size (default: 1 = all)
+
+    Returns:
+        List of dicts with position [lon, lat], depth, and color for GridCellLayer
+    """
+    try:
+        from pyproj import Transformer
+    except ImportError:
+        raise ImportError("pyproj is required for coordinate transformation")
+
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"ASC file not found: {file_path}")
+
+    # Parse header and data
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    # Parse header (first 6 lines)
+    header: dict[str, Any] = {}
+    data_start = 0
+    for i, line in enumerate(lines[:10]):
+        parts = line.strip().split()
+        if len(parts) == 2 and parts[0].upper() in (
+            "NCOLS", "NROWS", "XLLCORNER", "YLLCORNER", "CELLSIZE", "NODATA_VALUE"
+        ):
+            key = parts[0].upper()
+            value = float(parts[1]) if "." in parts[1] or key != "NODATA_VALUE" else int(parts[1])
+            header[key] = value
+            data_start = i + 1
+        else:
+            break
+
+    ncols = int(header.get("NCOLS", 0))
+    nrows = int(header.get("NROWS", 0))
+    xll = float(header.get("XLLCORNER", 0))
+    yll = float(header.get("YLLCORNER", 0))
+    cellsize = float(header.get("CELLSIZE", 1000))
+    nodata = float(header.get("NODATA_VALUE", -9999))
+
+    # Create coordinate transformer
+    transformer = Transformer.from_crs(source_crs, "EPSG:4326", always_xy=True)
+
+    # Parse grid data
+    cells: list[dict] = []
+    max_depth = 0.0
+    min_depth = float("inf")
+
+    for row_idx, line in enumerate(lines[data_start:]):
+        if row_idx % sample_step != 0:
+            continue
+        if row_idx >= nrows:
+            break
+
+        values = line.strip().split()
+        for col_idx, val_str in enumerate(values):
+            if col_idx % sample_step != 0:
+                continue
+            if col_idx >= ncols:
+                break
+
+            try:
+                depth = float(val_str)
+            except ValueError:
+                continue
+
+            if depth == nodata or depth <= 0:
+                continue  # Skip NODATA and land (depth <= 0)
+
+            # Calculate cell center in source CRS
+            x = xll + (col_idx + 0.5) * cellsize
+            y = yll + (nrows - row_idx - 0.5) * cellsize  # ASC is top-to-bottom
+
+            # Transform to WGS84
+            lon, lat = transformer.transform(x, y)
+
+            max_depth = max(max_depth, depth)
+            min_depth = min(min_depth, depth)
+
+            cells.append({
+                "position": [lon, lat],
+                "depth": depth,
+            })
+
+    # Add colors based on depth (blue gradient: shallow=light, deep=dark)
+    depth_range = max_depth - min_depth if max_depth > min_depth else 1.0
+    for cell in cells:
+        norm = (cell["depth"] - min_depth) / depth_range
+        # Color gradient: light cyan (shallow) to dark blue (deep)
+        r = int(100 - norm * 80)
+        g = int(200 - norm * 120)
+        b = int(255 - norm * 55)
+        cell["color"] = [r, g, b, 200]
+
+    return cells
+
+
+@functools.lru_cache(maxsize=8)
+def make_lithuanian_bathymetry_data(sample_step: int = 2) -> list[dict]:
+    """Load Lithuanian coastal bathymetry from bathy.asc file.
+
+    Args:
+        sample_step: Sample every N-th cell (default: 2 for ~20k cells)
+
+    Returns:
+        GridCellLayer-compatible data with position, depth, and color
+    """
+    # Look for bathy.asc in project root
+    asc_path = Path(__file__).parent.parent.parent.parent / "bathy.asc"
+    if not asc_path.exists():
+        # Try current working directory
+        asc_path = Path("bathy.asc")
+
+    if not asc_path.exists():
+        return []  # Return empty if file not found
+
+    return parse_asc_bathymetry(asc_path, source_crs="EPSG:3035", sample_step=sample_step)
+
+
 @functools.lru_cache(maxsize=32)
 def make_solid_polygon_data() -> list[dict]:
     """Generate solid polygon data (port bounding boxes)."""

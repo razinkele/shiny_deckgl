@@ -98,6 +98,7 @@ from ._demo_data import (
     make_seal_foraging_areas,
     # New layer data generators (v1.6.0)
     make_grid_cell_data,
+    make_lithuanian_bathymetry_data,
     make_solid_polygon_data,
     make_a5_data,
     make_geohash_data,
@@ -1789,6 +1790,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # New layer data (v1.6.0)
     _gl_grid_cell_data = make_grid_cell_data()
+    _gl_lithuanian_bathy = make_lithuanian_bathymetry_data(sample_step=3)
     _gl_solid_polygon_data = make_solid_polygon_data()
     _gl_a5_data = make_a5_data()
     _gl_geohash_data = make_geohash_data()
@@ -1857,6 +1859,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_polygon":       [("gl-polygons", "PolygonLayer")],
         "gl_great_circle":  [("gl-gc", "GreatCircleLayer")],
         "gl_grid_cell":     [("gl-grid-cell", "GridCellLayer")],
+        "gl_lt_bathy":      [("gl-lt-bathy", "LT Bathymetry")],
         "gl_solid_polygon": [("gl-solid-polygon", "SolidPolygonLayer")],
         "gl_heatmap":       [("gl-heatmap", "HeatmapLayer")],
         "gl_hexagon":       [("gl-hexagons", "HexagonLayer")],
@@ -2010,6 +2013,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             extruded=True,
             pickable=True,
         ))
+        # Lithuanian coastal bathymetry from bathy.asc (1km resolution)
+        if _gl_lithuanian_bathy:
+            _add("gl_lt_bathy", grid_cell_layer(
+                "gl-lt-bathy", _gl_lithuanian_bathy,
+                coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
+                getPosition="@@=d.position",
+                getElevation="@@=d.depth * 100",  # Scale depth for visibility
+                getFillColor="@@=d.color",
+                cellSize=1500,  # ~1km cells
+                coverage=0.95,
+                elevationScale=1,
+                extruded=True,
+                pickable=True,
+            ))
         _add("gl_solid_polygon", solid_polygon_layer(
             "gl-solid-polygon", _gl_solid_polygon_data,
             coordinateSystem=COORDINATE_SYSTEM.LNGLAT,

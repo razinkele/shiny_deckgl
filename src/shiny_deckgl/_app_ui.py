@@ -182,6 +182,16 @@ def build_ui():
                         ),
                         ui.tooltip(
                             ui.input_switch(
+                                "gl_lt_bathy", "LT Bathymetry",
+                                value=False,
+                            ),
+                            "deck.gl \u2014 Lithuanian coastal bathymetry from "
+                            "bathy.asc (1km resolution). Displays depth as 3D "
+                            "extruded cells with color gradient. "
+                            "\U0001F30A Data: ESRI ASCII Grid.",
+                        ),
+                        ui.tooltip(
+                            ui.input_switch(
                                 "gl_solid_polygon", "SolidPolygonLayer",
                                 value=False,
                             ),

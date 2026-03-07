@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any
 
 from ._data_utils import _serialise_data
+from .enums import CoordinateSystem
 
 __all__ = [
     "layer",
@@ -155,6 +156,7 @@ def scatterplot_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getFillColor": [200, 0, 80, 180],
         "radiusMinPixels": 5,
@@ -177,6 +179,7 @@ def geojson_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getFillColor": [0, 128, 255, 120],
         "getLineColor": [0, 128, 255],
         "lineWidthMinPixels": 1,
@@ -249,6 +252,7 @@ def arc_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getSourcePosition": "@@d.sourcePosition",
         "getTargetPosition": "@@d.targetPosition",
         "getSourceColor": [0, 128, 200],
@@ -274,6 +278,7 @@ def icon_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getSize": 24,
         "sizeScale": 1,
@@ -297,6 +302,7 @@ def path_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPath": "@@d.path",
         "getColor": [0, 128, 255],
         "getWidth": 3,
@@ -320,6 +326,7 @@ def line_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getSourcePosition": "@@d.sourcePosition",
         "getTargetPosition": "@@d.targetPosition",
         "getColor": [0, 0, 0, 128],
@@ -344,6 +351,7 @@ def text_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getText": "@@d.text",
         "getSize": 16,
@@ -369,6 +377,7 @@ def column_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getElevation": "@@d.elevation",
         "getFillColor": [255, 140, 0],
@@ -393,6 +402,7 @@ def polygon_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPolygon": "@@d.polygon",
         "getFillColor": [0, 128, 255, 80],
         "getLineColor": [0, 0, 0, 200],
@@ -417,6 +427,7 @@ def heatmap_layer(id: str, data: list | dict, **kwargs) -> dict:
         Extra deck.gl properties (e.g. ``radiusPixels``, ``intensity``).
     """
     defaults: dict[str, Any] = {
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getWeight": 1,
         "radiusPixels": 30,
@@ -441,6 +452,7 @@ def hexagon_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "radius": 1000,
         "elevationScale": 4,
@@ -464,6 +476,7 @@ def h3_hexagon_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getHexagon": "@@d.hex",
         "getFillColor": "@@d.color",
         "extruded": False,
@@ -499,6 +512,7 @@ def trips_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPath": "@@d.path",
         "getTimestamps": "@@d.timestamps",
         "getColor": [253, 128, 93],
@@ -528,6 +542,7 @@ def great_circle_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getSourcePosition": "@@d.sourcePosition",
         "getTargetPosition": "@@d.targetPosition",
         "getSourceColor": [64, 255, 0],
@@ -555,6 +570,7 @@ def contour_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getWeight": 1,
         "cellSize": 200,
@@ -585,6 +601,7 @@ def grid_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "cellSize": 200,
         "elevationScale": 4,
@@ -610,6 +627,7 @@ def screen_grid_layer(id: str, data: list | dict, **kwargs) -> dict:
         Extra deck.gl properties (e.g. ``cellSizePixels``, ``colorRange``).
     """
     defaults: dict[str, Any] = {
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@d",
         "getWeight": 1,
         "cellSizePixels": 20,
@@ -713,6 +731,7 @@ def point_cloud_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "pointSize": 2,
         "sizeUnits": "pixels",
         "getPosition": "@@=position",
@@ -758,6 +777,7 @@ def simple_mesh_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPosition": "@@=position",
         "getColor": [140, 170, 200],
         "sizeScale": 1,
@@ -825,6 +845,7 @@ def grid_cell_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "cellSize": 1000,
         "coverage": 1,
         "extruded": True,
@@ -856,6 +877,7 @@ def solid_polygon_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "filled": True,
         "extruded": False,
         "wireframe": False,
@@ -891,6 +913,7 @@ def a5_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getPentagon": "@@d.pentagon",
         "getFillColor": [255, 140, 0, 180],
         "extruded": False,
@@ -917,6 +940,7 @@ def geohash_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getGeohash": "@@d.geohash",
         "getFillColor": [255, 140, 0, 180],
         "extruded": False,
@@ -944,6 +968,7 @@ def h3_cluster_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "stroked": True,
         "filled": True,
         "getHexagons": "@@d.hexIds",
@@ -974,6 +999,7 @@ def quadkey_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getQuadkey": "@@d.quadkey",
         "getFillColor": [255, 140, 0, 180],
         "extruded": False,
@@ -1001,6 +1027,7 @@ def s2_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "getS2Token": "@@d.token",
         "getFillColor": [255, 140, 0, 180],
         "extruded": False,
@@ -1065,6 +1092,7 @@ def scenegraph_layer(id: str, data: list | dict, **kwargs) -> dict:
     """
     defaults: dict[str, Any] = {
         "pickable": True,
+        "coordinateSystem": CoordinateSystem.LNGLAT,
         "sizeScale": 1,
         "getPosition": "@@d.position",
         "getOrientation": [0, 0, 0],
@@ -1079,8 +1107,6 @@ def scenegraph_layer(id: str, data: list | dict, **kwargs) -> dict:
 # ---------------------------------------------------------------------------
 # Coordinate system constants (imported from enums for single source of truth)
 # ---------------------------------------------------------------------------
-
-from .enums import CoordinateSystem
 
 # Backwards-compatible alias: COORDINATE_SYSTEM.LNGLAT etc.
 # The enum values work the same way as the old class attributes.

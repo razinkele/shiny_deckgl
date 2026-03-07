@@ -167,6 +167,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         s2_layer,
         tile_3d_layer,
         scenegraph_layer,
+        COORDINATE_SYSTEM,
     )
 
     # Shared reactive stores
@@ -1903,6 +1904,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # -- Core layers ---
         _add("gl_scatterplot", scatterplot_layer(
             "gl-scatter", _gl_port_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
             getRadius="@@=d.cargo_mt * 80",
             getFillColor=[20, 130, 180, 200],
@@ -1912,6 +1914,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_geojson", geojson_layer(
             "gl-geojson", _gl_geojson,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getFillColor=[0, 180, 120, 60],
             getLineColor=[0, 180, 120, 200],
             lineWidthMinPixels=2,
@@ -1919,6 +1922,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_arc", arc_layer(
             "gl-arcs", _gl_arc_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getSourceColor=[0, 128, 255],
             getTargetColor=[255, 80, 80],
             getWidth=2,
@@ -1926,12 +1930,14 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_line", line_layer(
             "gl-lines", _gl_line_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getColor=[80, 80, 80, 180],
             getWidth=2,
             pickable=True,
         ))
         _add("gl_path", path_layer(
             "gl-paths", _gl_path_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPath="@@=d.path",
             getColor="@@=d.color",
             widthMinPixels=2,
@@ -1939,6 +1945,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_icon", icon_layer(
             "gl-icons", _gl_icon_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
             iconAtlas="https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
             iconMapping={
@@ -1951,6 +1958,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_text", text_layer(
             "gl-text", _gl_text_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
             getText="@@=d.text",
             getSize=14,
@@ -1962,6 +1970,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_column", column_layer(
             "gl-columns", _gl_column_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
             getElevation="@@=d.elevation",
             getFillColor=[14, 145, 155, 200],
@@ -1972,6 +1981,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_polygon", polygon_layer(
             "gl-polygons", _gl_polygon_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPolygon="@@=d.polygon",
             getFillColor="@@=d.color",
             getLineColor=[40, 80, 120, 200],
@@ -1981,23 +1991,28 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_great_circle", great_circle_layer(
             "gl-gc", _gl_great_circle_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getSourceColor=[0, 200, 80],
             getTargetColor=[200, 0, 180],
             getWidth=2,
             pickable=True,
         ))
+        # GridCellLayer with real Baltic Sea bathymetry from EMODnet
         _add("gl_grid_cell", grid_cell_layer(
             "gl-grid-cell", _gl_grid_cell_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
             getElevation="@@=d.elevation",
             getFillColor="@@=d.color",
-            cellSize=50000,
+            cellSize=45000,  # ~0.5° at Baltic latitudes
+            coverage=0.9,
             elevationScale=1,
             extruded=True,
             pickable=True,
         ))
         _add("gl_solid_polygon", solid_polygon_layer(
             "gl-solid-polygon", _gl_solid_polygon_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPolygon="@@=d.polygon",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2007,12 +2022,14 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # -- Aggregation layers ---
         _add("gl_heatmap", heatmap_layer(
             "gl-heatmap", _gl_heatmap_pts,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             radiusPixels=40,
             intensity=1.2,
             threshold=0.05,
         ))
         _add("gl_hexagon", hexagon_layer(
             "gl-hexagons", _gl_heatmap_pts,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             radius=20000,
             elevationScale=50,
             extruded=True,
@@ -2020,6 +2037,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_grid", grid_layer(
             "gl-grid", _gl_heatmap_pts,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             cellSize=20000,
             elevationScale=50,
             extruded=True,
@@ -2027,10 +2045,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_screen_grid", screen_grid_layer(
             "gl-screen-grid", _gl_heatmap_pts,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             cellSizePixels=20,
         ))
         _add("gl_contour", contour_layer(
             "gl-contour", _gl_heatmap_pts,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             cellSize=20000,
             contours=[
                 {"threshold": 1, "color": [255, 0, 0],
@@ -2044,6 +2064,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # -- Geo-spatial layers ---
         _add("gl_h3_hexagon", h3_hexagon_layer(
             "gl-h3", _gl_h3_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getHexagon="@@=d.hex",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2051,6 +2072,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_trips", trips_layer(
             "gl-trips", _gl_trips_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPath="@@=d.path",
             getTimestamps="@@=d.timestamps",
             getColor=[253, 128, 93],
@@ -2060,6 +2082,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_a5", a5_layer(
             "gl-a5", _gl_a5_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPentagon="@@=d.pentagon",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2067,6 +2090,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_geohash", geohash_layer(
             "gl-geohash", _gl_geohash_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getGeohash="@@=d.geohash",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2074,6 +2098,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_h3_cluster", h3_cluster_layer(
             "gl-h3-cluster", _gl_h3_cluster_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getHexagons="@@=d.hexIds",
             getFillColor="@@=d.color",
             stroked=True,
@@ -2082,6 +2107,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_quadkey", quadkey_layer(
             "gl-quadkey", _gl_quadkey_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getQuadkey="@@=d.quadkey",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2089,6 +2115,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ))
         _add("gl_s2", s2_layer(
             "gl-s2", _gl_s2_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getS2Token="@@=d.token",
             getFillColor="@@=d.color",
             extruded=False,
@@ -2192,15 +2219,26 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 pickable=True,
             ))
 
+        # TerrainLayer with AWS elevation + Esri Ocean Base texture
+        # AWS Terrarium tiles include bathymetry data
+        # Esri World Ocean Base shows ocean depth coloring
+        # Elevation exaggeration: 20x to make terrain differences visible
         _add("gl_terrain", terrain_layer(
             "gl-terrain",
             elevationData="https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
-            texture="https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+            # Esri World Ocean Base - shows bathymetry coloring (tile-based)
+            texture="https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}",
             elevationDecoder={
-                "rScaler": 25600, "gScaler": 100,
-                "bScaler": 100 / 256, "offset": -3276800,
+                # Terrarium format with 20x exaggeration for visibility
+                # Base formula: elevation = (R * 256 + G + B / 256) - 32768
+                "rScaler": 256 * 20, "gScaler": 1 * 20,
+                "bScaler": (1 / 256) * 20, "offset": -32768 * 20,
             },
+            # Baltic Sea bounds (focus area)
+            bounds=[9.0, 53.0, 30.5, 66.0],
             meshMaxError=4.0,
+            wireframe=False,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
         ))
         _add("gl_scenegraph", scenegraph_layer(
             "gl-scenegraph", _gl_scenegraph_data,

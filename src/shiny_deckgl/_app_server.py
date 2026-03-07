@@ -2013,18 +2013,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             extruded=True,
             pickable=True,
         ))
-        # Lithuanian coastal bathymetry from bathy.asc (1km resolution)
+        # Lithuanian coastal bathymetry from bathy.asc (1km resolution, sampled every 3rd)
         if _gl_lithuanian_bathy:
             _add("gl_lt_bathy", grid_cell_layer(
                 "gl-lt-bathy", _gl_lithuanian_bathy,
                 coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
                 getPosition="@@=d.position",
-                getElevation="@@=d.depth * 100",  # Scale depth for visibility
+                getElevation="@@=d.depth",
                 getFillColor="@@=d.color",
-                cellSize=1500,  # ~1km cells
-                coverage=0.95,
-                elevationScale=1,
-                extruded=True,
+                cellSize=3500,  # ~3km to match sampling step (covers gaps)
+                coverage=1.0,   # Full coverage, no gaps between cells
+                elevationScale=0,  # Flat display (2D colored grid)
+                extruded=False,    # No 3D extrusion
                 pickable=True,
             ))
         _add("gl_solid_polygon", solid_polygon_layer(

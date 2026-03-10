@@ -223,6 +223,368 @@
   }
 
   // -----------------------------------------------------------------------
+  // DeckLayerLegendWidget — deck.gl widget version of the layer legend
+  //
+  // Implements the deck.gl Widget interface (onAdd / onRemove / setProps)
+  // so it can be passed in the widgets array alongside ZoomWidget, etc.
+  // Reuses the same CSS classes and rendering logic as DeckLegendControl.
+  // -----------------------------------------------------------------------
+  // DeckLayerLegendWidget is created lazily via createDeckLayerLegendWidget()
+  // because deck.Widget may not be available when this script first loads.
+  var _DeckLayerLegendWidgetClass = null;
+
+  function createDeckLayerLegendWidget(props) {
+    if (!_DeckLayerLegendWidgetClass) {
+      var Base = (typeof deck !== 'undefined' && deck.Widget) ? deck.Widget : null;
+
+      if (Base) {
+        // deck.gl >= 9.x: extend the real Widget base class
+        _DeckLayerLegendWidgetClass = class extends Base {
+          constructor(p) {
+            super(p);
+            this._initLegend(p);
+          }
+        };
+      } else {
+        // Fallback: plain constructor (shouldn't happen with deck.gl 9.2)
+        _DeckLayerLegendWidgetClass = function (p) {
+          this.id = (p && p.id) || 'deck-layer-legend';
+          this.placement = (p && p.placement) || 'top-left';
+          this.viewId = (p && p.viewId) || null;
+          this._initLegend(p);
+        };
+      }
+
+      var proto = _DeckLayerLegendWidgetClass.prototype;
+
+      proto._initLegend = function (p) {
+        this.id = (p && p.id) || 'deck-layer-legend';
+        this.placement = (p && p.placement) || 'top-left';
+        this.viewId = (p && p.viewId) || null;
+        this._legendProps = Object.assign({
+          entries: [], showCheckbox: true, collapsed: false, title: null,
+          autoIntrospect: false, excludeLayers: [], labelMap: {},
+        }, p);
+        this._mapId = null;
+        this._rootEl = null;
+      };
+
+      proto.onRemove = function () { this._mapId = null; };
+
+      proto.onRenderHTML = function (el) {
+        el.classList.add('deck-legend-ctrl', 'deck-layer-legend-widget');
+        this._rootEl = el;
+        // Sync _legendProps from this.props (kept updated by base setProps)
+        if (this.props) {
+          this._legendProps = Object.assign({
+            entries: [], showCheckbox: true, collapsed: false, title: null,
+            autoIntrospect: false, excludeLayers: [], labelMap: {},
+          }, this.props);
+        }
+        this._resolveMapId();
+        // Register this widget on the mapInstance for refresh callbacks
+        if (this._mapId && mapInstances[this._mapId]) {
+          mapInstances[this._mapId]._legendWidget = this;
+        }
+        this._renderInto(el);
+      };
+
+      proto._resolveMapId = function () {
+        if (this._mapId) return;
+        // Find which mapInstance owns this deck overlay
+        if (this.deck) {
+          for (var id of Object.keys(mapInstances)) {
+            var inst = mapInstances[id];
+            if (inst.overlay === this.deck || inst.overlay._deck === this.deck) {
+              this._mapId = id;
+              return;
+            }
+          }
+        }
+      };
+
+      proto._renderInto = function (container) {
+        var opts = this._legendProps;
+        container.innerHTML = '';
+
+        // Auto-introspect if enabled and no manual entries provided
+        var entries = opts.entries && opts.entries.length > 0
+          ? opts.entries
+          : (opts.autoIntrospect ? this._introspectLayers() : []);
+
+        if (opts.title) {
+          var header = document.createElement('button');
+          header.className = 'deck-legend-header';
+          header.setAttribute('aria-label', 'Toggle legend');
+          header.innerHTML = '<span class="deck-legend-title">' +
+            this._esc(opts.title) + '</span><span class="deck-legend-arrow">' +
+            (opts.collapsed ? '\u25B6' : '\u25BC') + '</span>';
+          header.addEventListener('click', function () {
+            var body = container.querySelector('.deck-legend-body');
+            var arrow = header.querySelector('.deck-legend-arrow');
+            if (!body) return;
+            var hidden = body.style.display === 'none';
+            body.style.display = hidden ? '' : 'none';
+            if (arrow) arrow.textContent = hidden ? '\u25BC' : '\u25B6';
+          });
+          container.appendChild(header);
+        }
+
+        var body = document.createElement('div');
+        body.className = 'deck-legend-body';
+        if (opts.collapsed) body.style.display = 'none';
+
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          var row = document.createElement('label');
+          row.className = 'deck-legend-row';
+
+          if (opts.showCheckbox && entry.layer_id) {
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = this._isLayerVisible(entry.layer_id);
+            cb.className = 'deck-legend-cb';
+            var self = this;
+            (function (layerId) {
+              cb.addEventListener('change', function () {
+                self._toggleLayer(layerId, this.checked);
+              });
+            })(entry.layer_id);
+            row.appendChild(cb);
+          }
+
+          row.appendChild(this._createSwatch(entry));
+
+          var lbl = document.createElement('span');
+          lbl.className = 'deck-legend-label';
+          lbl.textContent = entry.label || entry.layer_id || '';
+          row.appendChild(lbl);
+
+          body.appendChild(row);
+        }
+        container.appendChild(body);
+      };
+
+      // Layer type → swatch shape mapping
+      var TYPE_SHAPE = {
+        // Points / markers
+        ScatterplotLayer: 'circle', GeoJsonLayer: 'circle',
+        IconLayer: 'circle', PointCloudLayer: 'circle', TextLayer: 'circle',
+        // Arcs
+        ArcLayer: 'arc', GreatCircleLayer: 'arc',
+        // Lines / paths
+        PathLayer: 'line', LineLayer: 'line', TripsLayer: 'line',
+        // Polygons / columns / cells
+        ColumnLayer: 'rect', GridLayer: 'rect', GridCellLayer: 'rect',
+        HexagonLayer: 'rect', H3HexagonLayer: 'rect', H3ClusterLayer: 'rect',
+        PolygonLayer: 'rect', SolidPolygonLayer: 'rect', BitmapLayer: 'rect',
+        // Geo-index layers
+        A5Layer: 'rect', GeohashLayer: 'rect', QuadkeyLayer: 'rect', S2Layer: 'rect',
+        // Gradient / aggregation
+        HeatmapLayer: 'gradient', ContourLayer: 'gradient', ScreenGridLayer: 'gradient',
+        // Tile / raster / 3D
+        TileLayer: 'rect', MVTLayer: 'rect', Tile3DLayer: 'rect',
+        WMSLayer: 'rect', TerrainLayer: 'rect',
+        // Mesh / scene
+        SimpleMeshLayer: 'rect', ScenegraphLayer: 'rect',
+      };
+
+      // Fallback colors for layer types where color props aren't statically extractable
+      var LAYER_TYPE_DEFAULT_COLOR = {
+        HeatmapLayer: [255, 140, 0],     // warm orange
+        HexagonLayer: [65, 182, 196],     // teal
+        GridLayer: [65, 182, 196],        // teal
+        ContourLayer: [80, 120, 200],     // blue
+        IconLayer: [60, 60, 60],          // dark grey (icons are image-based)
+        TileLayer: [100, 140, 180],       // slate
+        Tile3DLayer: [100, 140, 180],
+        TerrainLayer: [120, 160, 100],    // earthy green
+        WMSLayer: [100, 140, 180],        // slate
+      };
+
+      proto._introspectLayers = function () {
+        if (!this._mapId) return [];
+        var inst = mapInstances[this._mapId];
+        if (!inst || !inst.lastLayers) return [];
+        var exclude = this._legendProps.excludeLayers || [];
+        var labelMap = this._legendProps.labelMap || {};
+        var entries = [];
+        for (var i = 0; i < inst.lastLayers.length; i++) {
+          var lp = inst.lastLayers[i];
+          if (!lp || !lp.id) continue;
+          if (lp.visible === false) continue;
+          if (exclude.indexOf(lp.id) >= 0) continue;
+          var entry = this._extractEntry(lp, labelMap);
+          if (entry) entries.push(entry);
+        }
+        return entries;
+      };
+
+      proto._extractEntry = function (lp, labelMap) {
+        var layerType = lp.type || lp['@@type'] || '';
+        // Strip module prefix (e.g. "HexagonLayer" from "@deck.gl/aggregation-layers/HexagonLayer")
+        var shortType = layerType.split('/').pop() || layerType;
+        var shape = TYPE_SHAPE[shortType] || 'circle';
+        var label = (labelMap && labelMap[lp.id]) || lp.id;
+        var entry = { layer_id: lp.id, label: label, shape: shape };
+
+        // Color extraction priority chain
+        // 1. Gradient shapes use colorRange
+        if (shape === 'gradient') {
+          var cr = this._resolveColorRange(lp.colorRange);
+          if (cr) { entry.colors = cr; return entry; }
+        }
+        // 2. Arc shapes use source/target color pair
+        if (shape === 'arc') {
+          var src = this._resolveColor(lp.getSourceColor);
+          var tgt = this._resolveColor(lp.getTargetColor);
+          if (src && tgt) {
+            entry.color = src;
+            entry.color2 = tgt;
+            return entry;
+          }
+        }
+        // 3. Standard color props: getFillColor → getColor → getLineColor
+        var color = this._resolveColor(lp.getFillColor)
+                 || this._resolveColor(lp.getColor)
+                 || this._resolveColor(lp.getLineColor);
+        // 4. For line shapes, also try getColor even when getPath present
+        if (!color && shape === 'line') {
+          color = this._resolveColor(lp.getPath ? lp.getColor : null);
+        }
+        // 5. Sample first data item when accessor string (@@=d.color)
+        if (!color) {
+          color = this._sampleDataColor(lp);
+        }
+        // 6. Aggregation layers without explicit color: use a sensible default
+        if (!color) {
+          color = LAYER_TYPE_DEFAULT_COLOR[shortType] || null;
+        }
+        entry.color = color || [150, 150, 150];
+        return entry;
+      };
+
+      proto._resolveColor = function (val) {
+        if (!val) return null;
+        // Static array like [255, 0, 0] or [255, 0, 0, 200]
+        if (Array.isArray(val) && val.length >= 3 && typeof val[0] === 'number') {
+          return val;
+        }
+        if (typeof val === 'string') {
+          // @@= accessor string — can't resolve statically
+          if (val.charAt(0) === '@') return null;
+          // Try parsing JSON-encoded array (e.g. "[255,0,0]")
+          if (val.charAt(0) === '[') {
+            try {
+              var parsed = JSON.parse(val);
+              if (Array.isArray(parsed) && parsed.length >= 3 && typeof parsed[0] === 'number') {
+                return parsed;
+              }
+            } catch (e) { /* not valid JSON */ }
+          }
+          // CSS color string
+          return val;
+        }
+        return null;
+      };
+
+      proto._resolveColorRange = function (val) {
+        if (!val) return null;
+        // Already a nested array [[r,g,b], ...]
+        if (Array.isArray(val) && val.length > 0 && Array.isArray(val[0])) return val;
+        // JSON-encoded nested array
+        if (typeof val === 'string' && val.charAt(0) === '[') {
+          try {
+            var parsed = JSON.parse(val);
+            if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0])) {
+              return parsed;
+            }
+          } catch (e) { /* not valid JSON */ }
+        }
+        return null;
+      };
+
+      // Try to extract a color from the first data item when color is an accessor
+      proto._sampleDataColor = function (lp) {
+        var data = lp.data;
+        if (!data || !data.length) return null;
+        var d = data[0];
+        if (!d) return null;
+        // Try common accessor targets: d.color, d.sourceColor, d.targetColor
+        var c = d.color || d.sourceColor || d.fillColor;
+        if (Array.isArray(c) && c.length >= 3 && typeof c[0] === 'number') return c;
+        // Try JSON-encoded
+        if (typeof c === 'string' && c.charAt(0) === '[') {
+          try { var p = JSON.parse(c); if (Array.isArray(p) && p.length >= 3) return p; } catch (e) {}
+        }
+        return null;
+      };
+
+      proto._refresh = function () {
+        if (!this._rootEl) return;
+        this._resolveMapId();
+        this._renderInto(this._rootEl);
+      };
+
+      proto._toCSS = function (c) {
+        if (!c) return '#666';
+        if (typeof c === 'string') return c;
+        if (Array.isArray(c)) {
+          if (c.length >= 4) return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (c[3] / 255) + ')';
+          return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+        }
+        return '#666';
+      };
+
+      proto._createSwatch = function (entry) {
+        var shape = entry.shape || 'circle';
+        var el = document.createElement('span');
+        el.className = 'deck-legend-swatch deck-legend-sh-' + shape;
+        if (shape === 'arc' && entry.color2) {
+          el.style.background = 'linear-gradient(90deg,' + this._toCSS(entry.color) + ',' + this._toCSS(entry.color2) + ')';
+        } else if (shape === 'gradient' && Array.isArray(entry.colors)) {
+          el.style.background = 'linear-gradient(90deg,' + entry.colors.map(function (c2) { return proto._toCSS(c2); }).join(',') + ')';
+        } else {
+          el.style.backgroundColor = this._toCSS(entry.color);
+        }
+        return el;
+      };
+
+      proto._isLayerVisible = function (layerId) {
+        if (!this._mapId) return true;
+        var inst = mapInstances[this._mapId];
+        if (!inst) return true;
+        var lp = inst.lastLayers.find(function (l) { return l.id === layerId; });
+        return lp ? lp.visible !== false : true;
+      };
+
+      proto._toggleLayer = function (layerId, visible) {
+        if (!this._mapId) return;
+        var inst = mapInstances[this._mapId];
+        if (!inst) return;
+        inst.lastLayers = inst.lastLayers.map(function (lp) {
+          if (lp.id !== layerId) return lp;
+          return Object.assign({}, lp, { visible: visible });
+        });
+        var deckLayers = buildDeckLayers(
+          inst.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
+          this._mapId, inst.tooltipConfig
+        );
+        inst.overlay.setProps({ layers: deckLayers });
+        inst.map.triggerRepaint();
+      };
+
+      proto._esc = function (s) {
+        var d = document.createElement('span');
+        d.textContent = s;
+        return d.innerHTML;
+      };
+    }
+
+    return new _DeckLayerLegendWidgetClass(props);
+  }
+
+  // -----------------------------------------------------------------------
   // Helper: create MapLibre control by type name
   // -----------------------------------------------------------------------
   function createControl(type, opts) {
@@ -725,6 +1087,10 @@
       if (className === 'FullscreenWidget' && containerEl && !props.container) {
         props.container = containerEl;
       }
+      // Custom shiny_deckgl widgets
+      if (className === '_DeckLayerLegendWidget') {
+        return createDeckLayerLegendWidget(props);
+      }
       const Cls = deck[className] || deck['_' + className];
       if (!Cls) {
         console.warn('[shiny_deckgl] Unknown widget: ' + className);
@@ -1060,12 +1426,33 @@
   // Property animation loop (v1.7.0)
   // -----------------------------------------------------------------------
   function startPropertyAnimations(instance, mapId) {
-    // Collect animation configs from all layers
+    // Collect animation configs from all layers by scanning for @@animate
+    // markers in the raw layer props (instance.lastLayers stores the original
+    // un-cloned data; _animConfigs is only set on the clone inside
+    // buildDeckLayers, so we must detect markers here directly).
     const allConfigs = {};
     for (let i = 0; i < instance.lastLayers.length; i++) {
       const lp = instance.lastLayers[i];
-      if (lp._animConfigs) {
-        allConfigs[lp.id] = lp._animConfigs;
+      const configs = {};
+      for (const key of Object.keys(lp)) {
+        const val = lp[key];
+        if (val && typeof val === 'object' && val['@@animate'] === true) {
+          configs[key] = {
+            prop: val.prop,
+            speed: val.speed || 1,
+            loop: val.loop !== false,
+            rangeMin: val.range_min != null ? val.range_min : 0,
+            rangeMax: val.range_max != null ? val.range_max : 360,
+          };
+          // Ensure window global is initialised
+          const globalKey = '_deckgl_anim_' + mapId + '_' + val.prop;
+          if (window[globalKey] === undefined) {
+            window[globalKey] = val.range_min != null ? val.range_min : 0;
+          }
+        }
+      }
+      if (Object.keys(configs).length > 0) {
+        allConfigs[lp.id] = configs;
       }
     }
 
@@ -1078,11 +1465,11 @@
       return;
     }
 
-    // Don't restart if already running
-    if (instance.propertyAnimation && instance.propertyAnimation.rafId) return;
-
     // Merge into existing animations (don't overwrite in-flight configs)
     instance.animations = Object.assign(instance.animations || {}, allConfigs);
+
+    // Don't restart RAF if already running (configs are merged above)
+    if (instance.propertyAnimation && instance.propertyAnimation.rafId) return;
     let lastTime = performance.now();
 
     function tick(now) {
@@ -1301,6 +1688,7 @@
     // Build layers and cache raw props for visibility toggling
     const layersData = payload.layers || [];
     instance.lastLayers = layersData;
+    if (instance._legendWidget) instance._legendWidget._refresh();
     const deckLayers = buildDeckLayers(
       deepClone(layersData),
       targetId,
@@ -1381,6 +1769,7 @@
     });
 
     instance.lastLayers = merged;
+    if (instance._legendWidget) instance._legendWidget._refresh();
 
     const deckLayers = buildDeckLayers(
       deepClone(merged),
@@ -1392,6 +1781,11 @@
 
     // Restart TripsLayer animation if patched layers include one (v0.9.0)
     startTripsAnimation(instance, targetId);
+
+    // Property animations: start for new animated layers, clean up removed ones
+    startPropertyAnimations(instance, targetId);
+    const currentLayerIds = new Set(merged.map(function (lp) { return lp.id; }));
+    cleanupAnimations(instance, targetId, currentLayerIds);
   });
 
   // -----------------------------------------------------------------------
@@ -1517,6 +1911,7 @@
       return copy;
     });
     instance.lastLayers = patched;
+    if (instance._legendWidget) instance._legendWidget._refresh();
 
     const deckLayers = buildDeckLayers(
       patched.map(lp => Object.assign({}, lp)),
@@ -2676,8 +3071,8 @@
       entries: payload.entries || [],
       showCheckbox: payload.showCheckbox !== false,
       collapsed: payload.collapsed || false,
+      title: payload.title != null ? payload.title : null,
     };
-    if (payload.title != null) opts.title = payload.title;
 
     if (instance.deckLegendControl) {
       // Update existing legend

@@ -638,16 +638,12 @@ class TestUpdateLegend:
         import asyncio
         from shiny_deckgl import MapWidget
         w = MapWidget("legend-test")
-        sent = []
-        class FakeSession:
-            async def send_custom_message(self, type_, data):
-                sent.append((type_, data))
-        session = FakeSession()
+        session = _FakeSession()
         asyncio.run(w.update_legend(session, entries=[
             {"layer_id": "pts", "label": "Points", "color": [255, 0, 0]},
         ], title="My Legend"))
-        assert len(sent) == 1
-        msg_type, payload = sent[0]
+        assert len(session.messages) == 1
+        msg_type, payload = session.messages[0]
         assert msg_type == "deck_update_legend"
         assert payload["id"] == "legend-test"
         assert len(payload["entries"]) == 1
@@ -659,13 +655,9 @@ class TestUpdateLegend:
         import asyncio
         from shiny_deckgl import MapWidget
         w = MapWidget("legend-pos")
-        sent = []
-        class FakeSession:
-            async def send_custom_message(self, type_, data):
-                sent.append((type_, data))
-        session = FakeSession()
+        session = _FakeSession()
         asyncio.run(w.update_legend(session, entries=[], position="top-left"))
-        assert sent[0][1]["position"] == "top-left"
+        assert session.messages[0][1]["position"] == "top-left"
 
 
 class TestSetAnimation:
@@ -675,14 +667,10 @@ class TestSetAnimation:
         import asyncio
         from shiny_deckgl import MapWidget
         w = MapWidget("anim-test")
-        sent = []
-        class FakeSession:
-            async def send_custom_message(self, type_, data):
-                sent.append((type_, data))
-        session = FakeSession()
+        session = _FakeSession()
         asyncio.run(w.set_animation(session, layer_id="turbines", enabled=True))
-        assert len(sent) == 1
-        msg_type, payload = sent[0]
+        assert len(session.messages) == 1
+        msg_type, payload = session.messages[0]
         assert msg_type == "deck_set_animation"
         assert payload["id"] == "anim-test"
         assert payload["layerId"] == "turbines"
@@ -692,10 +680,6 @@ class TestSetAnimation:
         import asyncio
         from shiny_deckgl import MapWidget
         w = MapWidget("anim-off")
-        sent = []
-        class FakeSession:
-            async def send_custom_message(self, type_, data):
-                sent.append((type_, data))
-        session = FakeSession()
+        session = _FakeSession()
         asyncio.run(w.set_animation(session, layer_id="turbines", enabled=False))
-        assert sent[0][1]["enabled"] is False
+        assert session.messages[0][1]["enabled"] is False

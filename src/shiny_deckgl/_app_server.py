@@ -32,6 +32,7 @@ from .widgets import (
     splitter_widget,
     stats_widget,
     view_selector_widget,
+    layer_legend_widget,
 )
 from ._transitions import transition
 from .controls import (
@@ -91,7 +92,6 @@ from ._demo_data import (
     make_gallery_text_data,
     make_gallery_icon_data,
     make_gallery_column_data,
-    LAYER_LEGEND_META,
     make_seal_trips,
     make_seal_trips_ibm,
     make_seal_haulout_data,
@@ -946,6 +946,116 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             "\nClick again to see transitions animate with new values."
         )
 
+    # Property animation demos (v1.7.0) ---------------------------------
+    from ._animation import animate_prop
+
+    @reactive.Effect
+    @reactive.event(input.push_anim_rotate)
+    async def _push_anim_rotate():
+        """Push an IconLayer with continuously rotating icons."""
+        icon_data = [
+            {
+                "position": [p["lon"], p["lat"]],
+                "name": p["name"],
+                "cargo_mt": p["cargo_mt"],
+                "layerType": "Animated Icon",
+            }
+            for p in PORTS
+        ]
+        animated_lyr = icon_layer(
+            "anim-icons",
+            data=icon_data,
+            coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
+            getPosition="@@=d.position",
+            iconAtlas="https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png",
+            iconMapping={
+                "marker": {"x": 0, "y": 0, "width": 128,
+                           "height": 128, "anchorY": 64},
+            },
+            getIcon="marker",
+            getSize=36,
+            getAngle=animate_prop(prop="rotation", speed=90, loop=True),
+            pickable=True,
+        )
+        layers = [
+            lyr for lyr in _adv_layers.get()
+            if lyr.get("id") not in ("anim-icons", "anim-pulse")
+        ] + [animated_lyr]
+        _adv_layers.set(layers)
+        await adv_widget.update(session, layers)
+        _advanced_log.set(
+            "Rotating icons pushed!\n"
+            "  Layer: anim-icons (IconLayer)\n"
+            "  getAngle: animate_prop(speed=90) \u2014 90\u00b0/sec\n"
+            "  Animation runs client-side at 60 fps.\n"
+            "\n\u23F8 Use Pause/Resume to control."
+        )
+
+    @reactive.Effect
+    @reactive.event(input.push_anim_pulse)
+    async def _push_anim_pulse():
+        """Push a ScatterplotLayer with pulsing radius."""
+        pulse_data = [
+            {
+                "position": [p["lon"], p["lat"]],
+                "name": p["name"],
+                "cargo_mt": p["cargo_mt"],
+                "layerType": "Pulsing Circle",
+            }
+            for p in PORTS
+        ]
+        animated_lyr = scatterplot_layer(
+            "anim-pulse",
+            data=pulse_data,
+            getPosition="@@=d.position",
+            getFillColor=[65, 182, 196, 140],
+            getLineColor=[0, 100, 120, 200],
+            stroked=True,
+            lineWidthMinPixels=2,
+            getRadius=animate_prop(
+                prop="pulse", speed=8000, loop=True,
+                range_min=3000, range_max=15000,
+            ),
+            radiusMinPixels=4,
+            radiusMaxPixels=50,
+            pickable=True,
+        )
+        layers = [
+            lyr for lyr in _adv_layers.get()
+            if lyr.get("id") not in ("anim-icons", "anim-pulse")
+        ] + [animated_lyr]
+        _adv_layers.set(layers)
+        await adv_widget.update(session, layers)
+        _advanced_log.set(
+            "Pulsing circles pushed!\n"
+            "  Layer: anim-pulse (ScatterplotLayer)\n"
+            "  getRadius: animate_prop(speed=8000, range 3k\u201315k)\n"
+            "  Animation runs client-side at 60 fps.\n"
+            "\n\u23F8 Use Pause/Resume to control."
+        )
+
+    @reactive.Effect
+    @reactive.event(input.stop_anim)
+    async def _stop_anim():
+        """Pause all property animations."""
+        for lid in ("anim-icons", "anim-pulse"):
+            try:
+                await adv_widget.set_animation(session, layer_id=lid, enabled=False)
+            except Exception:
+                pass
+        _advanced_log.set("Animation paused.\n\u25B6 Click Resume to restart.")
+
+    @reactive.Effect
+    @reactive.event(input.resume_anim)
+    async def _resume_anim():
+        """Resume all property animations."""
+        for lid in ("anim-icons", "anim-pulse"):
+            try:
+                await adv_widget.set_animation(session, layer_id=lid, enabled=True)
+            except Exception:
+                pass
+        _advanced_log.set("Animation resumed!")
+
     # =================================================================
     # Tab 6 — Export & Serialisation
     # =================================================================
@@ -1581,6 +1691,36 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             ))
         if input.wg_view_selector():
             widgets.append(view_selector_widget(initialViewMode="map"))
+        # Layer legend widget
+        if input.wg_layer_legend():
+            if input.wg_auto_legend():
+                # Auto-introspect mode: no manual entries needed
+                widgets.append(layer_legend_widget(
+                    placement="top-left",
+                    title="Layers (auto)",
+                    show_checkbox=True,
+                    auto_introspect=True,
+                    label_map={
+                        "wg-ports": "Ports",
+                        "wg-heat": "Heatmap",
+                        "wg-arcs": "Arcs",
+                        "wg-routes": "Routes",
+                        "wg-columns": "3-D Columns",
+                        "wg-hexagons": "Hexagons",
+                    },
+                ))
+            else:
+                meta = _WG_LAYER_META.get(input.wg_layer_combo())
+                if meta:
+                    layer_id, label, color, shape = meta
+                    widgets.append(layer_legend_widget(
+                        entries=[{"layer_id": layer_id, "label": label,
+                                  "color": color, "shape": shape}],
+                        placement="top-left",
+                        title="Active Layer",
+                        show_checkbox=True,
+                        collapsed=False,
+                    ))
         return widgets
 
     # -- Reactive: build layer list from dropdown -----------------------
@@ -1594,7 +1734,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 "wg-ports",
                 _port_data_simple,
                 getPosition="@@=d.position",
-                getRadius="@@=d.cargo_mt * 80",
+                getRadius="@@=d.radius",
                 getFillColor=[20, 130, 180, 180],
                 radiusMinPixels=4,
                 radiusMaxPixels=30,
@@ -1635,7 +1775,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 "wg-columns",
                 _port_data_simple,
                 getPosition="@@=d.position",
-                getElevation="@@=d.cargo_mt * 500",
+                getElevation="@@=d.elevation",
                 getFillColor=[14, 145, 155, 200],
                 radius=8000,
                 elevationScale=1,
@@ -1654,6 +1794,28 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )]
         return []
 
+    # -- Legend for active layer scenario ---------------------------------
+
+    _WG_LAYER_META: dict[str, tuple[str, str, list[int], str]] = {
+        "ports": ("wg-ports", "Ports (ScatterplotLayer)", [20, 130, 180], "circle"),
+        "heatmap": ("wg-heat", "Heatmap (HeatmapLayer)", [255, 80, 0], "gradient"),
+        "arcs": ("wg-arcs", "Arcs (ArcLayer)", [0, 128, 255], "arc"),
+        "routes": ("wg-routes", "Routes (PathLayer)", [180, 100, 60], "line"),
+        "3d_columns": ("wg-columns", "3-D Columns (ColumnLayer)", [14, 145, 155], "rect"),
+        "hexagons": ("wg-hexagons", "Hexagons (HexagonLayer)", [80, 160, 80], "rect"),
+    }
+
+    # -- Init: send default widgets + layers on first load ----------------
+
+    @reactive.Effect
+    async def _wg_init():
+        """Send initial widget + layer state on session start."""
+        widgets = _wg_active_widgets()
+        layers = _wg_layers()
+        await widgets_gallery_widget.update(
+            session, layers, widgets=widgets,
+        )
+
     # -- Push widgets + layers to the map --------------------------------
 
     @reactive.Effect
@@ -1664,7 +1826,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.wg_theme, input.wg_timeline, input.wg_geocoder,
         input.wg_context_menu, input.wg_info, input.wg_splitter,
         input.wg_stats, input.wg_view_selector,
-        input.wg_layer_combo,
+        input.wg_layer_combo, input.wg_layer_legend,
+        input.wg_auto_legend,
     )
     async def _wg_update_map():
         widgets = _wg_active_widgets()
@@ -1677,13 +1840,14 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         standard = [n for n in names if not n.startswith("_") or n in (
             "_ScaleWidget", "_FpsWidget", "_LoadingWidget",
             "_TimelineWidget", "_GeocoderWidget", "_ThemeWidget",
+            "_DeckLayerLegendWidget",
         )]
         experimental = [n for n in names if n in (
             "_ContextMenuWidget", "_InfoWidget", "_SplitterWidget",
             "_StatsWidget", "_ViewSelectorWidget",
         )]
         status_lines = [
-            f"Active widgets: {len(widgets)} / 17",
+            f"Active widgets: {len(widgets)} / 18",
             f"Layer: {input.wg_layer_combo()}",
             "",
         ]
@@ -1886,9 +2050,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_scenegraph":    [("gl-scenegraph", "ScenegraphLayer")],
     }
 
-    # Legend colour map for gallery layers
-    _GL_LEGEND_META = LAYER_LEGEND_META
-
     # 3-D layer names that need pitched view
     _GL_3D_NAMES = {
         "TerrainLayer", "PointCloudLayer", "SimpleMeshLayer",
@@ -1909,7 +2070,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             "gl-scatter", _gl_port_data,
             coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPosition="@@=d.position",
-            getRadius="@@=d.cargo_mt * 80",
+            getRadius="@@=d.radius",
             getFillColor=[20, 130, 180, 200],
             radiusMinPixels=4,
             radiusMaxPixels=30,
@@ -2101,8 +2262,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             "gl-a5", _gl_a5_data,
             coordinateSystem=COORDINATE_SYSTEM.LNGLAT,
             getPentagon="@@=d.pentagon",
-            getFillColor="@@=d.color",
-            extruded=False,
+            getFillColor=[255, 140, 0, 180],
+            getElevation="@@=d.count",
+            elevationScale=50,
+            extruded=True,
             pickable=True,
         ))
         _add("gl_geohash", geohash_layer(
@@ -2271,7 +2434,15 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # -- Compute view state from active layer names ----------------------
 
+    _SF_VIEW: dict = {
+        "longitude": -122.42, "latitude": 37.78, "zoom": 12,
+        "pitch": 45, "bearing": 0,
+    }
+
     def _gl_view_state(active_names: set[str]) -> dict:
+        # A5Layer uses SF bike-parking data — fly there
+        if "A5Layer" in active_names:
+            return _SF_VIEW
         needs_3d = bool(_GL_3D_NAMES & active_names)
         if "SimpleMeshLayer" in active_names and _CURONIAN_GRD_STR:
             return {**SHYFEM_VIEW, "pitch": 50, "bearing": -15} if needs_3d else SHYFEM_VIEW
@@ -2292,6 +2463,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             zoom_widget(), compass_widget(),
             fullscreen_widget(), scale_widget(),
             loading_widget(label="Loading layers…"),
+            layer_legend_widget(
+                placement="bottom-right",
+                title="Active Layers",
+                show_checkbox=True,
+                auto_introspect=True,
+            ),
         ]
 
         active_names: set[str] = set()
@@ -2306,36 +2483,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             view_state=vs, transition_duration=800,
         )
 
-        # Initial legend + status
-        await _gl_update_legend(active_names)
+        # Initial status
         _gl_update_status(active_names)
         _gl_initialized.set(True)
 
-    # -- Legend + status helpers (lightweight, no layer data) -------------
-
-    async def _gl_update_legend(active_names: set[str]) -> None:
-        legend_entries = []
-        for name in sorted(active_names):
-            meta = _GL_LEGEND_META.get(name, ([128, 128, 128], "circle"))
-            legend_entries.append({
-                "layer_id": name,
-                "label": name,
-                "color": meta[0],
-                "shape": meta[1],
-            })
-        if legend_entries:
-            await gallery_widget.set_controls(
-                session,
-                [deck_legend_control(
-                    entries=legend_entries,
-                    position="bottom-right",
-                    title="Active Layers",
-                    show_checkbox=False,
-                    collapsed=False,
-                )],
-            )
-        else:
-            await gallery_widget.set_controls(session, [])
+    # -- Status helper (lightweight, no layer data) ----------------------
 
     def _gl_update_status(active_names: set[str]) -> None:
         lines = [f"Active layers: {len(active_names)} / 24", ""]
@@ -2358,6 +2510,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.gl_h3_hexagon, input.gl_trips,
         input.gl_tile, input.gl_bitmap, input.gl_mvt, input.gl_wms,
         input.gl_point_cloud, input.gl_simple_mesh, input.gl_terrain,
+        # v1.6.0 layers
+        input.gl_grid_cell, input.gl_lt_bathy, input.gl_solid_polygon,
+        input.gl_a5, input.gl_geohash, input.gl_h3_cluster,
+        input.gl_quadkey, input.gl_s2, input.gl_tile_3d,
+        input.gl_scenegraph,
     )
     async def _gl_toggle():
         # Skip toggles until initial data has been sent
@@ -2388,8 +2545,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             bearing=vs.get("bearing"),
         )
 
-        # Update legend and status (no layer data resent)
-        await _gl_update_legend(active_names)
+        # Update status (legend auto-refreshes via introspection)
         _gl_update_status(active_names)
 
 

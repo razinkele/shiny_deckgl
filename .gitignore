@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Playwright MCP console logs
+.playwright-mcp/
+
 # Distribution / packaging
 build/
 dist/

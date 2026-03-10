@@ -281,7 +281,8 @@ def build_ui():
                             "deck.gl \u2014 Renders A5 pentagon cells "
                             "(icosahedral grid system). Use for: global "
                             "climate models, atmospheric data. "
-                            "\U0001F4E6 Data: generated (A5 cells).",
+                            "\U0001F310 Source: SF bike parking (deck.gl sample). "
+                            "Note: view flies to San Francisco.",
                         ),
                         ui.tooltip(
                             ui.input_switch(
@@ -777,6 +778,30 @@ def build_ui():
                         ui.input_slider(
                             "v1_brush_radius", "Brush radius (m)",
                             min=5000, max=200000, value=50000, step=5000,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F3A1 Property Animation (v1.7.0)",
+                        sidebar_hint(
+                            "Client-side animation via animate_prop(). "
+                            "No server round-trips \u2014 the browser drives "
+                            "the animation loop at 60 fps."
+                        ),
+                        ui.input_action_button(
+                            "push_anim_rotate",
+                            "\U0001F300 Rotating Icons",
+                        ),
+                        ui.input_action_button(
+                            "push_anim_pulse",
+                            "\U0001F4AB Pulsing Circles",
+                        ),
+                        ui.input_action_button(
+                            "stop_anim",
+                            "\u23F8 Pause Animation",
+                        ),
+                        ui.input_action_button(
+                            "resume_anim",
+                            "\u25B6 Resume Animation",
                         ),
                     ),
                     ui.accordion_panel(
@@ -1341,6 +1366,12 @@ def build_ui():
                             },
                             selected="ports",
                         ),
+                        ui.input_switch(
+                            "wg_layer_legend", "Layer legend widget", True,
+                        ),
+                        ui.input_switch(
+                            "wg_auto_legend", "Auto-introspect layers", False,
+                        ),
                     ),
                     id="tab13_accordion",
                     open=["\U0001F527 Standard Widgets"],
@@ -1350,7 +1381,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F9E9 Widget Gallery - All 17 deck.gl Widgets"
+                    "\U0001F9E9 Widget Gallery - All 18 deck.gl Widgets"
                 ),
                 widgets_gallery_widget.ui(height="60vh"),
             ),

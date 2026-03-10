@@ -242,7 +242,7 @@ def depth_color(
     list[int]
         ``[R, G, B, A]`` color.
     """
-    t = min(elevation / max_depth, 1.0) if max_depth else 0.0
+    t = max(0.0, min(elevation / max_depth, 1.0)) if max_depth else 0.0
     r = int(10 + 40 * (1 - t))
     g = int(60 + 120 * (1 - t))
     b = int(120 + 135 * t)

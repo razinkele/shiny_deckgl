@@ -750,6 +750,7 @@ class MapWidget:
             Control position (default ``"bottom-right"``).  Only used
             when creating a new legend; ignored if one already exists.
         """
+        _validate_choice(position, CONTROL_POSITIONS, "position", _CONTROL_POSITIONS_SORTED)
         await session.send_custom_message("deck_update_legend", {
             "id": self.id,
             "entries": list(entries),

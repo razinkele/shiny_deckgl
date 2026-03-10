@@ -333,6 +333,8 @@ def make_port_data_simple() -> list[dict]:
             "name": p["name"],
             "country": p["country"],
             "cargo_mt": p["cargo_mt"],
+            "radius": p["cargo_mt"] * 80,
+            "elevation": p["cargo_mt"] * 500,
         }
         for p in PORTS
     ]
@@ -1463,6 +1465,7 @@ def make_gallery_port_data() -> list[dict]:
             "name": p["name"],
             "country": p["country"],
             "cargo_mt": p["cargo_mt"],
+            "radius": p["cargo_mt"] * 80,
             "layerType": "ScatterplotLayer",
         }
         for p in PORTS
@@ -1916,20 +1919,14 @@ def make_solid_polygon_data() -> list[dict]:
 
 
 @functools.lru_cache(maxsize=32)
-def make_a5_data() -> list[dict]:
-    """Generate A5 pentagon cell data (synthetic)."""
-    # A5 uses base32-encoded pentagon IDs
-    # These are synthetic demo values for visualization
-    return [
-        {
-            "pentagon": f"8{i:07x}",  # Synthetic A5 cell IDs
-            "value": random.randint(10, 100),
-            "color": [255, 140, 0, 180],
-            "name": f"A5 Cell {i}",
-            "layerType": "A5Layer",
-        }
-        for i in range(7)
-    ]
+def make_a5_data() -> str:
+    """Return URL to real A5 pentagon cell data (SF bike parking).
+
+    A5 cell IDs are 16-char hex strings that encode geographic locations.
+    We use the official deck.gl sample dataset because generating valid
+    A5 indices requires the ``a5`` library.
+    """
+    return "https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/sf.bike.parking.a5.json"
 
 
 @functools.lru_cache(maxsize=32)

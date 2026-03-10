@@ -6496,7 +6496,7 @@ class TestWidgetExports:
 
     def test_widgets_module_all(self):
         from shiny_deckgl.widgets import __all__ as widgets_all
-        assert len(widgets_all) == 17
+        assert len(widgets_all) == 18
 
     def test_widgets_importable_from_components(self):
         """Backward-compat: widgets importable from components shim."""
@@ -7465,3 +7465,26 @@ class TestAnimateProp:
         result = animate_prop(prop="rotation", speed=40)
         serialized = json.dumps(result)
         assert '"@@animate": true' in serialized
+
+    def test_animate_prop_rejects_empty_prop(self):
+        import pytest
+        from shiny_deckgl import animate_prop
+        with pytest.raises(ValueError, match="non-empty string"):
+            animate_prop(prop="")
+
+    def test_animate_prop_rejects_zero_speed(self):
+        import pytest
+        from shiny_deckgl import animate_prop
+        with pytest.raises(ValueError, match="non-zero"):
+            animate_prop(prop="rotation", speed=0)
+
+    def test_animate_prop_rejects_inverted_range(self):
+        import pytest
+        from shiny_deckgl import animate_prop
+        with pytest.raises(ValueError, match="range_min"):
+            animate_prop(prop="rotation", range_min=360, range_max=0)
+
+    def test_animate_prop_allows_negative_speed(self):
+        from shiny_deckgl import animate_prop
+        result = animate_prop(prop="rotation", speed=-10)
+        assert result["speed"] == -10

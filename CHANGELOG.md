@@ -9,6 +9,15 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`layer_legend_widget()` with auto-introspection** — New deck.gl widget that
+  generates a legend panel from active layers at runtime. Detects layer type → swatch
+  shape (circle, rect, line, arc, gradient) and extracts colors from layer props
+  (`getFillColor`, `getSourceColor`/`getTargetColor`, `colorRange`), data items, or
+  layer-type defaults. Supports manual entries, visibility checkboxes, collapsible
+  header, `exclude_layers`, and `label_map` overrides.
+- **Auto-introspect legend in Layer Gallery demo** — Tab 1 now uses
+  `layer_legend_widget(auto_introspect=True)` instead of the old manual
+  `deck_legend_control`, with live legend updates as layers are toggled.
 - **Performance & visualization patterns guide** — New `docs/performance-patterns.md`
   documenting the static/dynamic layer split pattern (`update()` vs `partial_update()`)
   and categorical data visualization with `scatterplot_layer`. Docstrings on `update()`,

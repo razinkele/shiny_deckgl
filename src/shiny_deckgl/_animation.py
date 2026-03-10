@@ -51,6 +51,16 @@ def animate_prop(
     ...     getAngle=animate_prop(prop="rotation", speed=40, loop=True),
     ... )
     """
+    if not prop or not isinstance(prop, str):
+        raise ValueError(f"prop must be a non-empty string, got {prop!r}")
+    if speed == 0:
+        raise ValueError("speed must be non-zero; use set_animation(enabled=False) to pause")
+    if not isinstance(speed, (int, float)) or speed != speed:  # NaN check
+        raise ValueError(f"speed must be a finite number, got {speed!r}")
+    if range_min >= range_max:
+        raise ValueError(
+            f"range_min ({range_min}) must be less than range_max ({range_max})"
+        )
     return {
         "@@animate": True,
         "prop": prop,

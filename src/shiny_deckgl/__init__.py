@@ -179,6 +179,7 @@ from .widgets import (  # noqa: F401
     splitter_widget,
     stats_widget,
     view_selector_widget,
+    layer_legend_widget,
 )
 
 # --- controls ---

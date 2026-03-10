@@ -20,6 +20,7 @@ __all__ = [
     "splitter_widget",
     "stats_widget",
     "view_selector_widget",
+    "layer_legend_widget",
 ]
 
 
@@ -164,3 +165,83 @@ def view_selector_widget(placement: str = "top-left", **kwargs) -> dict:
         Widget properties, e.g. ``initialViewMode``.
     """
     return {"@@widgetClass": "_ViewSelectorWidget", "placement": placement, **kwargs}
+
+
+# ---------------------------------------------------------------------------
+# shiny_deckgl custom widgets
+# ---------------------------------------------------------------------------
+
+def layer_legend_widget(
+    entries: list[dict] | None = None,
+    placement: str = "top-left",
+    *,
+    show_checkbox: bool = True,
+    collapsed: bool = False,
+    title: str | None = None,
+    auto_introspect: bool = False,
+    exclude_layers: list[str] | None = None,
+    label_map: dict[str, str] | None = None,
+    **kwargs,
+) -> dict:
+    """Create a layer legend **widget** for deck.gl overlay layers.
+
+    Unlike :func:`~shiny_deckgl.controls.deck_legend_control` (which is a
+    MapLibre IControl), this is a deck.gl widget that participates in the
+    widget system alongside ``ZoomWidget``, ``CompassWidget``, etc.  It can
+    be toggled on/off via the ``widgets`` list passed to
+    :meth:`~shiny_deckgl.MapWidget.update`.
+
+    Parameters
+    ----------
+    entries
+        List of legend entry dicts.  When provided, these are used as-is
+        (manual mode).  When ``None`` or empty **and** ``auto_introspect``
+        is ``True``, the widget reads the active deck.gl layers at runtime
+        and generates entries automatically.
+
+        Each entry supports:
+
+        * ``layer_id`` — deck.gl layer id (used for the visibility checkbox).
+        * ``label`` — human-readable display label.
+        * ``color`` — ``[r, g, b]`` or ``[r, g, b, a]`` or CSS color string.
+        * ``shape`` — swatch shape: ``"circle"`` (default), ``"rect"``,
+          ``"line"``, ``"arc"``, or ``"gradient"``.
+        * ``color2`` — second color for ``"arc"`` shape.
+        * ``colors`` — list of colors for ``"gradient"`` shape.
+
+    placement
+        Widget placement (default ``"top-left"``).
+    show_checkbox
+        Show a checkbox per entry to toggle deck.gl layer visibility.
+    collapsed
+        Start the panel in collapsed state.
+    title
+        Optional header text.  When provided the panel is collapsible.
+    auto_introspect
+        When ``True`` and no manual ``entries`` are given, the widget
+        introspects active deck.gl layers on the client side and generates
+        legend entries automatically.  It detects layer type → swatch shape,
+        and extracts static colors from layer props (``getFillColor``,
+        ``getColor``, ``colorRange``, etc.).
+    exclude_layers
+        Layer IDs to exclude from auto-introspected legend.
+    label_map
+        ``{layer_id: display_label}`` overrides for auto-introspected labels.
+    """
+    opts: dict = {
+        "@@widgetClass": "_DeckLayerLegendWidget",
+        "id": "deck-layer-legend",
+        "placement": placement,
+        "entries": list(entries) if entries else [],
+        "showCheckbox": show_checkbox,
+        "collapsed": collapsed,
+        "autoIntrospect": auto_introspect,
+        **kwargs,
+    }
+    if title is not None:
+        opts["title"] = title
+    if exclude_layers:
+        opts["excludeLayers"] = list(exclude_layers)
+    if label_map:
+        opts["labelMap"] = dict(label_map)
+    return opts

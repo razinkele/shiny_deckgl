@@ -104,7 +104,7 @@ browser, all without Java dependencies.
 
 | Capability | Details |
 | --- | --- |
-| **deck.gl widgets** | `set_widgets()` with 17 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `fps_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()` + 5 experimental. |
+| **deck.gl widgets** | `set_widgets()` with 18 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `fps_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()`, `layer_legend_widget()` + 5 experimental. |
 | **Camera transitions** | `fly_to(longitude, latitude, zoom, speed)` — smooth MapLibre flyTo animation. |
 | | `ease_to(longitude, latitude, zoom, duration)` — linear easeTo animation. |
 | **Transition helper** | `transition(duration, easing, type)` — animate layer property changes on data update. |
@@ -126,6 +126,17 @@ browser, all without Java dependencies.
 | **Client-side animation** | `requestAnimationFrame`-based TripsLayer animation loop — no server polling. |
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
+
+### v1.7.0 — Layer Legend Widget, Animation API & Color Ramps
+
+| Capability | Details |
+| --- | --- |
+| **`layer_legend_widget()`** | Auto-introspecting deck.gl legend widget — reads active layers at runtime, detects layer type → swatch shape, extracts colors from props/data. Supports manual entries, visibility checkboxes, collapsible header, `exclude_layers`, `label_map`. |
+| **Layer Gallery auto-legend** | Tab 1 demo now uses `layer_legend_widget(auto_introspect=True)` with live updates as layers are toggled. |
+| **Color ramp constants** | 5 new palettes (`PALETTE_BLUES`, `PALETTE_GREENS`, `PALETTE_REDS`, `PALETTE_YELLOW_RED`, `PALETTE_BLUE_WHITE`) + 7 short-name aliases (`VIRIDIS`, `OCEAN_DEPTH`, etc.). |
+| **`update_legend()` method** | Dynamically update/create deck.gl legend control without resending all controls. |
+| **Client-side animation API** | `animate_prop()` + `set_animation()` for `requestAnimationFrame`-based visual animations with zero server round-trips. |
+| **Performance patterns guide** | New `docs/performance-patterns.md` with static/dynamic split pattern and data visualization recipes. |
 
 ### v1.6.2 — Security & Error Handling
 

@@ -217,14 +217,33 @@ views = [orthographic_view()]
 - Screenshot, FPS counter
 - Loading indicator
 - Timeline (for animations)
+- Layer legend (with auto-introspection)
 
 ```python
-from shiny_deckgl import zoom_widget, compass_widget, scale_widget
+from shiny_deckgl import zoom_widget, compass_widget, scale_widget, layer_legend_widget
 
 await map_widget.set_widgets(session, [
     zoom_widget(),
     compass_widget(),
     scale_widget(),
+])
+```
+
+**Auto-introspecting legend** — The `layer_legend_widget()` reads active deck.gl
+layers at runtime and generates legend entries with appropriate swatch shapes and
+colors, eliminating the need for manual legend maintenance:
+
+```python
+from shiny_deckgl import layer_legend_widget
+
+await map_widget.update(session, layers, widgets=[
+    zoom_widget(),
+    compass_widget(),
+    layer_legend_widget(
+        title="Active Layers",
+        auto_introspect=True,
+        label_map={"gl-scatter": "Ports", "gl-arcs": "Routes"},
+    ),
 ])
 ```
 

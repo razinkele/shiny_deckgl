@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.6.2** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
+> **Version 1.7.0** — A Shiny for Python bridge to deck.gl (v9.2.10) and MapLibre GL JS (v5.3.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -2703,6 +2703,76 @@ await widget.set_widgets(session, [
     fps_widget(placement="top-left"),
     loading_widget(),
 ])
+```
+
+### `layer_legend_widget()`
+
+**Custom shiny\_deckgl widget** — a deck.gl widget that displays a legend panel for
+overlay layers, with optional auto-introspection of active layers at runtime.
+
+```python
+layer_legend_widget(
+    entries: list[dict] | None = None,
+    placement: str = "top-left",
+    *,
+    show_checkbox: bool = True,
+    collapsed: bool = False,
+    title: str | None = None,
+    auto_introspect: bool = False,
+    exclude_layers: list[str] | None = None,
+    label_map: dict[str, str] | None = None,
+    **kwargs,
+) -> dict
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `entries` | `list[dict] \| None` | `None` | Manual legend entries. Each dict supports: `layer_id`, `label`, `color` (`[r,g,b]` or CSS), `shape` (`"circle"`, `"rect"`, `"line"`, `"arc"`, `"gradient"`), `color2` (for arcs), `colors` (for gradients). |
+| `placement` | `str` | `"top-left"` | Widget placement position. |
+| `show_checkbox` | `bool` | `True` | Show per-entry checkbox to toggle deck.gl layer visibility. |
+| `collapsed` | `bool` | `False` | Start the panel in collapsed state. |
+| `title` | `str \| None` | `None` | Optional header text. Makes the panel collapsible. |
+| `auto_introspect` | `bool` | `False` | When `True` and no manual `entries`, reads active deck.gl layers at runtime and generates entries automatically. Detects layer type → swatch shape and extracts colors from layer props. |
+| `exclude_layers` | `list[str] \| None` | `None` | Layer IDs to exclude from auto-introspected legend. |
+| `label_map` | `dict[str, str] \| None` | `None` | `{layer_id: display_label}` overrides for auto-introspected labels. |
+
+**Auto-introspection color extraction priority:**
+
+1. `colorRange` → gradient swatch (aggregation layers)
+2. `getSourceColor` / `getTargetColor` → arc gradient (arc layers)
+3. `getFillColor` → `getColor` → `getLineColor` (standard layers)
+4. First data item's `.color` field (accessor-based layers like `@@=d.color`)
+5. Layer-type default color (e.g. HeatmapLayer → orange, HexagonLayer → teal)
+6. Grey `[150, 150, 150]` fallback
+
+**Example — auto-introspect:**
+
+```python
+await widget.update(session, layers, widgets=[
+    zoom_widget(),
+    compass_widget(),
+    layer_legend_widget(
+        title="Active Layers",
+        auto_introspect=True,
+        exclude_layers=["background-tiles"],
+        label_map={"gl-scatter": "Ports", "gl-arcs": "Shipping Routes"},
+    ),
+])
+```
+
+**Example — manual entries:**
+
+```python
+layer_legend_widget(
+    title="Legend",
+    entries=[
+        {"layer_id": "ports", "label": "Ports", "color": [0, 128, 255], "shape": "circle"},
+        {"layer_id": "routes", "label": "Routes", "color": [255, 100, 0], "shape": "line"},
+        {"layer_id": "density", "label": "Density", "colors": VIRIDIS, "shape": "gradient"},
+    ],
+)
 ```
 
 ---

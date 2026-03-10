@@ -781,13 +781,13 @@
             prop: val.prop,
             speed: val.speed || 1,
             loop: val.loop !== false,
-            rangeMin: val.range_min || 0,
-            rangeMax: val.range_max || 360,
+            rangeMin: val.range_min != null ? val.range_min : 0,
+            rangeMax: val.range_max != null ? val.range_max : 360,
           };
           // Replace with accessor that reads the animated global
           var globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           if (window[globalKey] === undefined) {
-            window[globalKey] = val.range_min || 0;
+            window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
           // Assign current value as a plain number (not an accessor function).
           // This works because buildDeckLayers() is called every frame by the
@@ -1095,7 +1095,8 @@
         for (var propKey of Object.keys(layerConfigs)) {
           var cfg = layerConfigs[propKey];
           var globalKey = '_deckgl_anim_' + mapId + '_' + cfg.prop;
-          var val = (window[globalKey] || cfg.rangeMin) + cfg.speed * dt;
+          var current = window[globalKey];
+          var val = (current != null ? current : cfg.rangeMin) + cfg.speed * dt;
           if (cfg.loop) {
             var range = cfg.rangeMax - cfg.rangeMin;
             val = cfg.rangeMin + ((val - cfg.rangeMin) % range);

@@ -12,6 +12,18 @@ __all__ = [
     "PALETTE_OCEAN",
     "PALETTE_THERMAL",
     "PALETTE_CHLOROPHYLL",
+    "PALETTE_BLUES",
+    "PALETTE_GREENS",
+    "PALETTE_REDS",
+    "PALETTE_YELLOW_RED",
+    "PALETTE_BLUE_WHITE",
+    "VIRIDIS",
+    "OCEAN_DEPTH",
+    "BLUES",
+    "GREENS",
+    "REDS",
+    "YELLOW_RED",
+    "BLUE_WHITE",
     "color_range",
     "color_bins",
     "color_quantiles",
@@ -53,6 +65,35 @@ PALETTE_CHLOROPHYLL: list[list[int]] = [
     [255, 255, 229], [194, 230, 153], [120, 198, 121],
     [49, 163, 84], [0, 104, 55], [0, 69, 41],
 ]
+PALETTE_BLUES: list[list[int]] = [
+    [198, 219, 239], [158, 202, 225], [107, 174, 214],
+    [66, 146, 198], [33, 113, 181], [8, 69, 148],
+]
+PALETTE_GREENS: list[list[int]] = [
+    [199, 233, 192], [161, 217, 155], [116, 196, 118],
+    [65, 171, 93], [35, 139, 69], [0, 90, 50],
+]
+PALETTE_REDS: list[list[int]] = [
+    [254, 229, 217], [252, 174, 145], [251, 106, 74],
+    [239, 59, 44], [203, 24, 29], [153, 0, 13],
+]
+PALETTE_YELLOW_RED: list[list[int]] = [
+    [255, 255, 178], [254, 204, 92], [253, 141, 60],
+    [240, 59, 32], [189, 0, 38], [128, 0, 38],
+]
+PALETTE_BLUE_WHITE: list[list[int]] = [
+    [8, 48, 107], [33, 113, 181], [66, 146, 198],
+    [146, 197, 222], [209, 229, 240], [247, 251, 255],
+]
+
+# --- Short-name aliases ---
+VIRIDIS = PALETTE_VIRIDIS
+OCEAN_DEPTH = PALETTE_OCEAN
+BLUES = PALETTE_BLUES
+GREENS = PALETTE_GREENS
+REDS = PALETTE_REDS
+YELLOW_RED = PALETTE_YELLOW_RED
+BLUE_WHITE = PALETTE_BLUE_WHITE
 
 
 def color_range(

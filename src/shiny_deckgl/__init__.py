@@ -134,6 +134,18 @@ from .colors import (  # noqa: F401
     PALETTE_OCEAN,
     PALETTE_THERMAL,
     PALETTE_CHLOROPHYLL,
+    PALETTE_BLUES,
+    PALETTE_GREENS,
+    PALETTE_REDS,
+    PALETTE_YELLOW_RED,
+    PALETTE_BLUE_WHITE,
+    VIRIDIS,
+    OCEAN_DEPTH,
+    BLUES,
+    GREENS,
+    REDS,
+    YELLOW_RED,
+    BLUE_WHITE,
 )
 
 # --- _data_utils ---
@@ -322,6 +334,20 @@ __all__ = [
     "PALETTE_OCEAN",
     "PALETTE_THERMAL",
     "PALETTE_CHLOROPHYLL",
+    # New palettes (v1.7.0)
+    "PALETTE_BLUES",
+    "PALETTE_GREENS",
+    "PALETTE_REDS",
+    "PALETTE_YELLOW_RED",
+    "PALETTE_BLUE_WHITE",
+    # Short-name aliases (v1.7.0)
+    "VIRIDIS",
+    "OCEAN_DEPTH",
+    "BLUES",
+    "GREENS",
+    "REDS",
+    "YELLOW_RED",
+    "BLUE_WHITE",
     # Binary data transport
     "encode_binary_attribute",
     # Views

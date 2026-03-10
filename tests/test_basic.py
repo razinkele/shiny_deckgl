@@ -130,6 +130,11 @@ def test_public_api_exports():
         "color_range", "color_bins", "color_quantiles",
         "PALETTE_VIRIDIS", "PALETTE_PLASMA", "PALETTE_OCEAN",
         "PALETTE_THERMAL", "PALETTE_CHLOROPHYLL",
+        # v1.7.0 color ramps
+        "PALETTE_BLUES", "PALETTE_GREENS", "PALETTE_REDS",
+        "PALETTE_YELLOW_RED", "PALETTE_BLUE_WHITE",
+        "VIRIDIS", "OCEAN_DEPTH", "BLUES", "GREENS", "REDS",
+        "YELLOW_RED", "BLUE_WHITE",
         "encode_binary_attribute",
         "map_view", "orthographic_view", "first_person_view", "globe_view",
         "CONTROL_TYPES", "CONTROL_POSITIONS",
@@ -7350,3 +7355,74 @@ class TestDemoSynthetic:
         # Should complete without raising
         demo_synthetic()
 
+
+class TestNewPalettes:
+    """Tests for new color ramp constants added in v1.7.0."""
+
+    def test_palette_blues_has_6_stops(self):
+        from shiny_deckgl import PALETTE_BLUES
+        assert len(PALETTE_BLUES) == 6
+
+    def test_palette_greens_has_6_stops(self):
+        from shiny_deckgl import PALETTE_GREENS
+        assert len(PALETTE_GREENS) == 6
+
+    def test_palette_reds_has_6_stops(self):
+        from shiny_deckgl import PALETTE_REDS
+        assert len(PALETTE_REDS) == 6
+
+    def test_palette_yellow_red_has_6_stops(self):
+        from shiny_deckgl import PALETTE_YELLOW_RED
+        assert len(PALETTE_YELLOW_RED) == 6
+
+    def test_palette_blue_white_has_6_stops(self):
+        from shiny_deckgl import PALETTE_BLUE_WHITE
+        assert len(PALETTE_BLUE_WHITE) == 6
+
+    def test_new_palettes_are_rgb_triples(self):
+        from shiny_deckgl import (
+            PALETTE_BLUES, PALETTE_GREENS, PALETTE_REDS,
+            PALETTE_YELLOW_RED, PALETTE_BLUE_WHITE,
+        )
+        for pal in (PALETTE_BLUES, PALETTE_GREENS, PALETTE_REDS,
+                    PALETTE_YELLOW_RED, PALETTE_BLUE_WHITE):
+            for stop in pal:
+                assert len(stop) == 3
+                assert all(0 <= v <= 255 for v in stop)
+
+    def test_new_palettes_work_with_color_range(self):
+        from shiny_deckgl import PALETTE_BLUES, color_range
+        result = color_range(4, palette=PALETTE_BLUES)
+        assert len(result) == 4
+
+
+class TestColorAliases:
+    """Tests for short-name aliases."""
+
+    def test_viridis_alias(self):
+        from shiny_deckgl import VIRIDIS, PALETTE_VIRIDIS
+        assert VIRIDIS is PALETTE_VIRIDIS
+
+    def test_ocean_depth_alias(self):
+        from shiny_deckgl import OCEAN_DEPTH, PALETTE_OCEAN
+        assert OCEAN_DEPTH is PALETTE_OCEAN
+
+    def test_blues_alias(self):
+        from shiny_deckgl import BLUES, PALETTE_BLUES
+        assert BLUES is PALETTE_BLUES
+
+    def test_greens_alias(self):
+        from shiny_deckgl import GREENS, PALETTE_GREENS
+        assert GREENS is PALETTE_GREENS
+
+    def test_reds_alias(self):
+        from shiny_deckgl import REDS, PALETTE_REDS
+        assert REDS is PALETTE_REDS
+
+    def test_yellow_red_alias(self):
+        from shiny_deckgl import YELLOW_RED, PALETTE_YELLOW_RED
+        assert YELLOW_RED is PALETTE_YELLOW_RED
+
+    def test_blue_white_alias(self):
+        from shiny_deckgl import BLUE_WHITE, PALETTE_BLUE_WHITE
+        assert BLUE_WHITE is PALETTE_BLUE_WHITE

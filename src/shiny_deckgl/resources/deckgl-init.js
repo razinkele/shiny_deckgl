@@ -773,9 +773,9 @@
       resolveBinaryAttributes(layerProps);
 
       // Detect @@animate markers and extract animation configs (v1.7.0)
-      var animConfigs = {};
-      for (var key of Object.keys(layerProps)) {
-        var val = layerProps[key];
+      const animConfigs = {};
+      for (const key of Object.keys(layerProps)) {
+        const val = layerProps[key];
         if (val && typeof val === 'object' && val['@@animate'] === true) {
           animConfigs[key] = {
             prop: val.prop,
@@ -785,7 +785,7 @@
             rangeMax: val.range_max != null ? val.range_max : 360,
           };
           // Replace with accessor that reads the animated global
-          var globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
+          const globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
@@ -1061,9 +1061,9 @@
   // -----------------------------------------------------------------------
   function startPropertyAnimations(instance, mapId) {
     // Collect animation configs from all layers
-    var allConfigs = {};
-    for (var i = 0; i < instance.lastLayers.length; i++) {
-      var lp = instance.lastLayers[i];
+    const allConfigs = {};
+    for (let i = 0; i < instance.lastLayers.length; i++) {
+      const lp = instance.lastLayers[i];
       if (lp._animConfigs) {
         allConfigs[lp.id] = lp._animConfigs;
       }
@@ -1083,22 +1083,22 @@
 
     // Merge into existing animations (don't overwrite in-flight configs)
     instance.animations = Object.assign(instance.animations || {}, allConfigs);
-    var lastTime = performance.now();
+    let lastTime = performance.now();
 
     function tick(now) {
-      var dt = (now - lastTime) / 1000; // seconds
+      const dt = (now - lastTime) / 1000; // seconds
       lastTime = now;
 
       // Update each animated value
-      for (var layerId of Object.keys(instance.animations)) {
-        var layerConfigs = instance.animations[layerId];
-        for (var propKey of Object.keys(layerConfigs)) {
-          var cfg = layerConfigs[propKey];
-          var globalKey = '_deckgl_anim_' + mapId + '_' + cfg.prop;
-          var current = window[globalKey];
-          var val = (current != null ? current : cfg.rangeMin) + cfg.speed * dt;
+      for (const layerId of Object.keys(instance.animations)) {
+        const layerConfigs = instance.animations[layerId];
+        for (const propKey of Object.keys(layerConfigs)) {
+          const cfg = layerConfigs[propKey];
+          const globalKey = '_deckgl_anim_' + mapId + '_' + cfg.prop;
+          const current = window[globalKey];
+          let val = (current != null ? current : cfg.rangeMin) + cfg.speed * dt;
           if (cfg.loop) {
-            var range = cfg.rangeMax - cfg.rangeMin;
+            const range = cfg.rangeMax - cfg.rangeMin;
             val = cfg.rangeMin + ((val - cfg.rangeMin) % range);
             if (val < cfg.rangeMin) val += range; // handle negative speed
           } else {
@@ -1109,7 +1109,7 @@
       }
 
       // Rebuild layers with updated values
-      var deckLayers = buildDeckLayers(
+      const deckLayers = buildDeckLayers(
         instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
         mapId,
         instance.tooltipConfig
@@ -1126,11 +1126,11 @@
   function cleanupAnimations(instance, mapId, currentLayerIds) {
     if (!instance.animations) return;
     // Remove configs for layers that no longer exist
-    for (var layerId of Object.keys(instance.animations)) {
+    for (const layerId of Object.keys(instance.animations)) {
       if (!currentLayerIds.has(layerId)) {
         // Clean up window globals
-        var configs = instance.animations[layerId];
-        for (var propKey of Object.keys(configs)) {
+        const configs = instance.animations[layerId];
+        for (const propKey of Object.keys(configs)) {
           delete window['_deckgl_anim_' + mapId + '_' + configs[propKey].prop];
         }
         delete instance.animations[layerId];
@@ -1334,7 +1334,7 @@
     // Start property animations if any layers have @@animate markers (v1.7.0)
     startPropertyAnimations(instance, targetId);
     // Clean up animations for removed layers
-    var currentIds = new Set(instance.lastLayers.map(function (l) { return l.id; }));
+    const currentIds = new Set(instance.lastLayers.map(function (l) { return l.id; }));
     cleanupAnimations(instance, targetId, currentIds);
   });
 
@@ -2699,11 +2699,11 @@
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_set_animation", function (payload) {
     if (!payload || !payload.id) return;
-    var instance = ensureInstance(payload.id);
+    const instance = ensureInstance(payload.id);
     if (!instance) return;
 
-    var layerId = payload.layerId;
-    var enabled = payload.enabled !== false;
+    const layerId = payload.layerId;
+    const enabled = payload.enabled !== false;
 
     if (!enabled) {
       // Freeze: cancel RAF if this was the last animated layer

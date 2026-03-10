@@ -5,6 +5,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.7.0] — 2026-03-10
+
+### Added
+
+- **Performance & visualization patterns guide** — New `docs/performance-patterns.md`
+  documenting the static/dynamic layer split pattern (`update()` vs `partial_update()`)
+  and categorical data visualization with `scatterplot_layer`. Docstrings on `update()`,
+  `partial_update()`, and `patch_layer()` now include performance tips and cross-references.
+  README links to the new guide.
+- **Color ramp constants** — Five new palettes: `PALETTE_BLUES`, `PALETTE_GREENS`,
+  `PALETTE_REDS`, `PALETTE_YELLOW_RED`, `PALETTE_BLUE_WHITE` (6-stop RGB, ColorBrewer-inspired).
+  Seven short-name aliases: `VIRIDIS`, `OCEAN_DEPTH`, `BLUES`, `GREENS`, `REDS`,
+  `YELLOW_RED`, `BLUE_WHITE`.
+- **`update_legend()` method** — Dynamically update or create a deck.gl legend control
+  without resending the full controls list. Useful for GIS editor patterns where users
+  switch between layers with different color schemes.
+- **Client-side animation API** — `animate_prop()` helper creates marker dicts that the
+  JS widget recognises, starting a `requestAnimationFrame` loop for purely visual
+  animations (e.g., rotating turbine blades) with zero server round-trips.
+  `set_animation()` method starts/stops animations per layer.
+
+---
 ## [1.6.2] — 2026-03-06
 
 ### Fixed

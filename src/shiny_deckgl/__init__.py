@@ -196,6 +196,9 @@ from .controls import (  # noqa: F401
 # --- _transitions ---
 from ._transitions import transition  # noqa: F401
 
+# --- _animation ---
+from ._animation import animate_prop  # noqa: F401
+
 # --- extensions ---
 from .extensions import (  # noqa: F401
     Extension,
@@ -434,6 +437,8 @@ __all__ = [
     "ViewType",
     "LightType",
     "PostProcessShader",
+    # Animation (v1.7.0)
+    "animate_prop",
     # Version
     "__version__",
 ]

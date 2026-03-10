@@ -148,6 +148,8 @@ def test_public_api_exports():
         "geolocate_control", "globe_control", "terrain_control",
         "legend_control", "opacity_control", "deck_legend_control",
         "transition",
+        # v1.7.0 animation
+        "animate_prop",
         # v0.9.0
         "trips_layer", "great_circle_layer", "contour_layer",
         "grid_layer", "screen_grid_layer", "mvt_layer", "wms_layer",
@@ -7426,3 +7428,40 @@ class TestColorAliases:
     def test_blue_white_alias(self):
         from shiny_deckgl import BLUE_WHITE, PALETTE_BLUE_WHITE
         assert BLUE_WHITE is PALETTE_BLUE_WHITE
+
+
+class TestAnimateProp:
+    """Tests for the animate_prop() helper function."""
+
+    def test_animate_prop_returns_marker_dict(self):
+        from shiny_deckgl import animate_prop
+        result = animate_prop(prop="rotation", speed=40)
+        assert result["@@animate"] is True
+        assert result["prop"] == "rotation"
+        assert result["speed"] == 40
+        assert result["loop"] is True
+        assert result["range_min"] == 0
+        assert result["range_max"] == 360
+
+    def test_animate_prop_custom_range(self):
+        from shiny_deckgl import animate_prop
+        result = animate_prop(prop="scale", speed=1.0, loop=False,
+                             range_min=0.5, range_max=2.0)
+        assert result["loop"] is False
+        assert result["range_min"] == 0.5
+        assert result["range_max"] == 2.0
+
+    def test_animate_prop_defaults(self):
+        from shiny_deckgl import animate_prop
+        result = animate_prop(prop="angle")
+        assert result["speed"] == 1.0
+        assert result["loop"] is True
+        assert result["range_min"] == 0
+        assert result["range_max"] == 360
+
+    def test_animate_prop_is_json_serializable(self):
+        import json
+        from shiny_deckgl import animate_prop
+        result = animate_prop(prop="rotation", speed=40)
+        serialized = json.dumps(result)
+        assert '"@@animate": true' in serialized

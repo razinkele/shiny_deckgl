@@ -772,6 +772,34 @@
       resolveExtensions(layerProps);
       resolveBinaryAttributes(layerProps);
 
+      // Detect @@animate markers and extract animation configs (v1.7.0)
+      var animConfigs = {};
+      for (var key of Object.keys(layerProps)) {
+        var val = layerProps[key];
+        if (val && typeof val === 'object' && val['@@animate'] === true) {
+          animConfigs[key] = {
+            prop: val.prop,
+            speed: val.speed || 1,
+            loop: val.loop !== false,
+            rangeMin: val.range_min || 0,
+            rangeMax: val.range_max || 360,
+          };
+          // Replace with accessor that reads the animated global
+          var globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
+          if (window[globalKey] === undefined) {
+            window[globalKey] = val.range_min || 0;
+          }
+          // Assign current value as a plain number (not an accessor function).
+          // This works because buildDeckLayers() is called every frame by the
+          // animation RAF loop, so the value is refreshed each frame. deck.gl
+          // detects the change via numeric shallow comparison.
+          layerProps[key] = window[globalKey];
+        }
+      }
+      if (Object.keys(animConfigs).length > 0) {
+        layerProps._animConfigs = animConfigs;
+      }
+
       // Resolve @@easing in transitions specs (v0.8.0)
       if (layerProps.transitions) {
         for (const prop in layerProps.transitions) {
@@ -1028,6 +1056,94 @@
     return heads;
   }
 
+  // -----------------------------------------------------------------------
+  // Property animation loop (v1.7.0)
+  // -----------------------------------------------------------------------
+  function startPropertyAnimations(instance, mapId) {
+    // Collect animation configs from all layers
+    var allConfigs = {};
+    for (var i = 0; i < instance.lastLayers.length; i++) {
+      var lp = instance.lastLayers[i];
+      if (lp._animConfigs) {
+        allConfigs[lp.id] = lp._animConfigs;
+      }
+    }
+
+    if (Object.keys(allConfigs).length === 0) {
+      // No animations — cancel any existing loop
+      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
+        cancelAnimationFrame(instance.propertyAnimation.rafId);
+        instance.propertyAnimation = null;
+      }
+      return;
+    }
+
+    // Don't restart if already running
+    if (instance.propertyAnimation && instance.propertyAnimation.rafId) return;
+
+    // Merge into existing animations (don't overwrite in-flight configs)
+    instance.animations = Object.assign(instance.animations || {}, allConfigs);
+    var lastTime = performance.now();
+
+    function tick(now) {
+      var dt = (now - lastTime) / 1000; // seconds
+      lastTime = now;
+
+      // Update each animated value
+      for (var layerId of Object.keys(instance.animations)) {
+        var layerConfigs = instance.animations[layerId];
+        for (var propKey of Object.keys(layerConfigs)) {
+          var cfg = layerConfigs[propKey];
+          var globalKey = '_deckgl_anim_' + mapId + '_' + cfg.prop;
+          var val = (window[globalKey] || cfg.rangeMin) + cfg.speed * dt;
+          if (cfg.loop) {
+            var range = cfg.rangeMax - cfg.rangeMin;
+            val = cfg.rangeMin + ((val - cfg.rangeMin) % range);
+            if (val < cfg.rangeMin) val += range; // handle negative speed
+          } else {
+            val = Math.min(Math.max(val, cfg.rangeMin), cfg.rangeMax);
+          }
+          window[globalKey] = val;
+        }
+      }
+
+      // Rebuild layers with updated values
+      var deckLayers = buildDeckLayers(
+        instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
+        mapId,
+        instance.tooltipConfig
+      );
+      instance.overlay.setProps({ layers: deckLayers });
+
+      instance.propertyAnimation.rafId = requestAnimationFrame(tick);
+    }
+
+    instance.propertyAnimation = {};
+    instance.propertyAnimation.rafId = requestAnimationFrame(tick);
+  }
+
+  function cleanupAnimations(instance, mapId, currentLayerIds) {
+    if (!instance.animations) return;
+    // Remove configs for layers that no longer exist
+    for (var layerId of Object.keys(instance.animations)) {
+      if (!currentLayerIds.has(layerId)) {
+        // Clean up window globals
+        var configs = instance.animations[layerId];
+        for (var propKey of Object.keys(configs)) {
+          delete window['_deckgl_anim_' + mapId + '_' + configs[propKey].prop];
+        }
+        delete instance.animations[layerId];
+      }
+    }
+    // If no animations remain, cancel RAF
+    if (Object.keys(instance.animations).length === 0) {
+      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
+        cancelAnimationFrame(instance.propertyAnimation.rafId);
+        instance.propertyAnimation = null;
+      }
+    }
+  }
+
   function startTripsAnimation(instance, targetId) {
     // Stop any running animation first
     stopTripsAnimation(instance);
@@ -1213,6 +1329,12 @@
 
     // Start/stop TripsLayer animation if needed (v0.9.0)
     startTripsAnimation(instance, targetId);
+
+    // Start property animations if any layers have @@animate markers (v1.7.0)
+    startPropertyAnimations(instance, targetId);
+    // Clean up animations for removed layers
+    var currentIds = new Set(instance.lastLayers.map(function (l) { return l.id; }));
+    cleanupAnimations(instance, targetId, currentIds);
   });
 
   // -----------------------------------------------------------------------
@@ -2568,6 +2690,34 @@
       const pos = payload.position || 'bottom-right';
       instance.map.addControl(ctrl, pos);
       instance.deckLegendControl = ctrl;
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_set_animation — start/stop property animations for a layer
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_set_animation", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    var layerId = payload.layerId;
+    var enabled = payload.enabled !== false;
+
+    if (!enabled) {
+      // Freeze: cancel RAF if this was the last animated layer
+      if (instance.animations && instance.animations[layerId]) {
+        delete instance.animations[layerId];
+      }
+      if (!instance.animations || Object.keys(instance.animations).length === 0) {
+        if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
+          cancelAnimationFrame(instance.propertyAnimation.rafId);
+          instance.propertyAnimation = null;
+        }
+      }
+    } else {
+      // Resume: re-scan layers for animation configs and restart
+      startPropertyAnimations(instance, payload.id);
     }
   });
 

@@ -759,6 +759,33 @@ class MapWidget:
             "position": position,
         })
 
+    async def set_animation(
+        self,
+        session: "Session",
+        layer_id: str,
+        enabled: bool = True,
+    ) -> None:
+        """Start or stop a client-side property animation.
+
+        Targets a layer whose properties include :func:`animate_prop`
+        markers.  Stopping freezes the animated value at its current
+        position; restarting resumes from where it stopped.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        layer_id
+            The ``id`` of the layer containing animated properties.
+        enabled
+            ``True`` to start/resume, ``False`` to freeze.
+        """
+        await session.send_custom_message("deck_set_animation", {
+            "id": self.id,
+            "layerId": layer_id,
+            "enabled": enabled,
+        })
+
     # -- Controls (v0.2.0) ---------------------------------------------------
 
     async def add_control(

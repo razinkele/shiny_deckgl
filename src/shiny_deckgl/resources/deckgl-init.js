@@ -389,6 +389,10 @@
         const pos = cfg.position || 'top-right';
         map.addControl(ctrl, pos);
         initialControls[cfg.type] = { control: ctrl, position: pos };
+        // Store deck_legend reference for dynamic updates
+        if (cfg.type === 'deck_legend') {
+          ctrl._deckLegendPosition = pos;
+        }
       }
     });
 
@@ -492,6 +496,11 @@
       // TripsLayer animation state (v0.9.0)
       tripsAnimation: null     // {rafId, loopLength, speed, startedAt}
     };
+
+    // Store deck_legend control reference if one was created at init
+    if (initialControls.deck_legend) {
+      mapInstances[mapId].deckLegendControl = initialControls.deck_legend.control;
+    }
 
     // Dismiss tooltip when the cursor is over empty map space.
     // Per-layer onHover only fires while the pointer is near that layer's
@@ -2529,6 +2538,36 @@
       );
       instance.overlay.setProps({ layers: deckLayers });
       instance.map.triggerRepaint();
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // deck_update_legend — update or create a deck.gl legend control
+  // -----------------------------------------------------------------------
+  Shiny.addCustomMessageHandler("deck_update_legend", function (payload) {
+    if (!payload || !payload.id) return;
+    const instance = ensureInstance(payload.id);
+    if (!instance) return;
+
+    const opts = {
+      entries: payload.entries || [],
+      showCheckbox: payload.showCheckbox !== false,
+      collapsed: payload.collapsed || false,
+    };
+    if (payload.title != null) opts.title = payload.title;
+
+    if (instance.deckLegendControl) {
+      // Update existing legend
+      instance.deckLegendControl._options = Object.assign(
+        instance.deckLegendControl._options, opts
+      );
+      instance.deckLegendControl._render();
+    } else {
+      // Create new legend
+      const ctrl = new DeckLegendControl(opts);
+      const pos = payload.position || 'bottom-right';
+      instance.map.addControl(ctrl, pos);
+      instance.deckLegendControl = ctrl;
     }
   });
 

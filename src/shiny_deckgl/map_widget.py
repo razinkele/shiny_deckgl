@@ -717,6 +717,48 @@ class MapWidget:
             "tooltip": tooltip,
         })
 
+    async def update_legend(
+        self,
+        session: "Session",
+        entries: list[dict],
+        title: str | None = None,
+        show_checkbox: bool = True,
+        collapsed: bool = False,
+        position: str = "bottom-right",
+    ) -> None:
+        """Update or create a deck.gl legend control dynamically.
+
+        Patches the existing :class:`DeckLegendControl` on the JS side,
+        or creates one if none exists yet.  This allows switching legend
+        entries when the user toggles between layers with different color
+        schemes — without resending the full controls list.
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        entries
+            Legend entry dicts (same format as
+            :func:`~shiny_deckgl.controls.deck_legend_control`).
+        title
+            Optional header text.
+        show_checkbox
+            Show a checkbox per entry to toggle layer visibility.
+        collapsed
+            Start the panel in collapsed state.
+        position
+            Control position (default ``"bottom-right"``).  Only used
+            when creating a new legend; ignored if one already exists.
+        """
+        await session.send_custom_message("deck_update_legend", {
+            "id": self.id,
+            "entries": list(entries),
+            "title": title,
+            "showCheckbox": show_checkbox,
+            "collapsed": collapsed,
+            "position": position,
+        })
+
     # -- Controls (v0.2.0) ---------------------------------------------------
 
     async def add_control(

@@ -395,6 +395,13 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/_sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
 | `tests/test_basic.py` | 1 078 unit tests covering all features. |
 
+## Performance Patterns
+
+See [docs/performance-patterns.md](docs/performance-patterns.md) for guidance on:
+
+- **Static / Dynamic Layer Split** — use `partial_update()` for frequently-changing layers to reduce serialisation cost by 80–90 %
+- **Categorical Data** — use `scatterplot_layer` with pre-computed colors for discrete data classes
+
 ## Running Tests
 
 ```bash

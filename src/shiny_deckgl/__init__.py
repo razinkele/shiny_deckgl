@@ -199,6 +199,12 @@ from ._transitions import transition  # noqa: F401
 # --- _animation ---
 from ._animation import animate_prop  # noqa: F401
 
+# --- _viewport ---
+from ._viewport import on_viewport_change, in_bounds  # noqa: F401
+
+# --- _timeline ---
+from ._timeline import timeline_control, timeline_server  # noqa: F401
+
 # --- extensions ---
 from .extensions import (  # noqa: F401
     Extension,
@@ -438,6 +444,13 @@ __all__ = [
     "PostProcessShader",
     # Animation (v1.7.0)
     "animate_prop",
+    # Viewport-aware loading (v1.9.0)
+    "on_viewport_change",
+    "in_bounds",
+    # Timeline animation (v1.9.0)
+    "timeline_control",
+    "timeline_server",
+    "MONTH_LABELS",
     # Version
     "__version__",
 ]

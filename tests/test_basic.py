@@ -7498,3 +7498,23 @@ class TestTimelineServer:
         result = timeline_server("tl", labels=["A", "B", "C"])
         assert hasattr(result, "index")
         assert hasattr(result, "label")
+
+
+class TestTimeSpaceExports:
+    """Verify new public API is exported from the package."""
+
+    def test_in_bounds_exported(self):
+        assert hasattr(m, "in_bounds")
+
+    def test_on_viewport_change_exported(self):
+        assert hasattr(m, "on_viewport_change")
+
+    def test_timeline_control_exported(self):
+        assert hasattr(m, "timeline_control")
+
+    def test_timeline_server_exported(self):
+        assert hasattr(m, "timeline_server")
+
+    def test_month_labels_exported(self):
+        assert hasattr(m, "MONTH_LABELS")
+        assert len(m.MONTH_LABELS) == 12

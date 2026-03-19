@@ -5,6 +5,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.8.0] — 2026-03-19
+
+### Added
+
+- **Binary mesh transport for SimpleMeshLayer CustomGeometry** — When numpy
+  arrays are passed to `custom_geometry()`, vertex data (positions, normals,
+  colors, indices) is automatically base64-encoded for efficient binary
+  transfer. Plain lists still work unchanged for backward compatibility.
+  ~43x faster Python encoding, ~12x faster JS decoding, ~60x less peak
+  memory for 100k-vertex meshes.
+- **`uint32` dtype support** in `encode_binary_attribute()` — mesh indices
+  and other unsigned integer attributes now encode natively without
+  lossy float32 coercion.
+- **`decodeBinaryValue()` shared JS helper** — eliminates duplicated base64
+  decode logic between general binary attributes and mesh-specific decoding.
+- **Dynamic COLOR_0 size inference** — CustomGeometry mesh builder now infers
+  color component count (RGB=3, RGBA=4) from the data instead of hardcoding 3.
+
+### Fixed
+
+- **Critical: `resolveBinaryAttributes()` stealing mesh props** — General
+  binary attribute resolver no longer intercepts `_mesh*` keys, which are
+  handled by the SimpleMeshLayer-specific decoder.
+- **`@@CustomGeometry` spurious luma warning** — The luma geometry resolver
+  now skips `@@CustomGeometry` instead of logging a misleading warning.
+- **`getPosition` accessor prefix** — `custom_geometry()` now uses
+  `@@d.position` (property accessor) instead of `@@=d.position` (binary
+  accessor) matching the JSON data format.
+- **Mesh build failure leaves invalid string** — On failure, `mesh` is set
+  to `null` instead of leaving the raw `"@@CustomGeometry"` string that
+  deck.gl would try to fetch as a URL.
+
+### Removed
+
+- **Legacy `DeckLegendControl`** — The old `deck_legend_control()` Python API,
+  `DeckLegendControl` JS class, and `deck_update_legend` Shiny message handler
+  are removed in favor of `layer_legend_widget()` (added in v1.7.0).
+
+---
 ## [1.7.0] — 2026-03-10
 
 ### Added

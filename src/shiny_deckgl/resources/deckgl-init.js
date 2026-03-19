@@ -701,9 +701,31 @@
     });
   }
 
-  // Initialize all deckgl-map divs on page load inside shiny
+  // Initialize all deckgl-map divs on page load inside shiny.
+  // Retry until CDN libs (maplibregl, deck) are loaded AND the
+  // .deckgl-map divs exist in the DOM (Bootstrap navbar may render
+  // tab content after shiny:connected fires).
   document.addEventListener('shiny:connected', function() {
-    document.querySelectorAll('.deckgl-map').forEach(initMap);
+    var attempts = 0;
+    function tryInit() {
+      attempts++;
+      // Wait for CDN libraries to finish loading
+      if (typeof maplibregl === 'undefined' || typeof deck === 'undefined') {
+        if (attempts < 50) setTimeout(tryInit, 200);
+        return;
+      }
+      var maps = document.querySelectorAll('.deckgl-map');
+      if (maps.length === 0 && attempts < 50) {
+        setTimeout(tryInit, 200);
+        return;
+      }
+      maps.forEach(function(el) {
+        if (!mapInstances[el.id]) {
+          try { initMap(el); } catch(e) { console.warn('initMap failed for', el.id, e); }
+        }
+      });
+    }
+    tryInit();
   });
 
   // -----------------------------------------------------------------------

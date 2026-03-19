@@ -1435,7 +1435,7 @@ def build_ui():
                         "\U0001F4CA Info",
                         ui.output_text_verbatim("ts_info"),
                     ),
-                    id="tab11_accordion",
+                    id="tab_timespace_accordion",
                     open=["\U0001F4C5 Timeline"],
                     multiple=True,
                 ),

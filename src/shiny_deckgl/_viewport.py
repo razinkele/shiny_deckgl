@@ -99,8 +99,14 @@ def on_viewport_change(
 
         @reactive.Effect
         async def _viewport_watcher():
-            # Read the view state input (creates reactive dependency)
-            vs = input[widget.view_state_input_id]()
+            # Read the view state input (creates reactive dependency).
+            # On initial load, the input doesn't exist yet (no moveend
+            # has fired), so Shiny raises SilentException.  We catch it
+            # and fall back to the widget's configured view_state.
+            try:
+                vs = input[widget.view_state_input_id]()
+            except Exception:
+                vs = None
 
             if vs is not None and "bounds" in vs:
                 bounds = vs["bounds"]
@@ -118,6 +124,8 @@ def on_viewport_change(
                     "ne": [lon + span, lat + span / 2],
                 }
                 zoom = z
+                # Re-run when the input becomes available
+                reactive.invalidate_later(1.0)
 
             _generation[0] += 1
             my_gen = _generation[0]

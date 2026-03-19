@@ -7408,3 +7408,39 @@ class TestAnimateProp:
         from shiny_deckgl import animate_prop
         result = animate_prop(prop="rotation", speed=-10)
         assert result["speed"] == -10
+
+
+# ---------------------------------------------------------------------------
+# _viewport module tests
+# ---------------------------------------------------------------------------
+
+from shiny_deckgl._viewport import in_bounds
+
+
+class TestInBounds:
+    """Tests for the in_bounds() spatial filter helper."""
+
+    def test_point_inside(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 20.0, "lat": 57.0}, bounds) is True
+
+    def test_point_outside_east(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 30.0, "lat": 57.0}, bounds) is False
+
+    def test_point_outside_north(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 20.0, "lat": 65.0}, bounds) is False
+
+    def test_point_on_boundary_is_inside(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 10.0, "lat": 54.0}, bounds) is True
+        assert in_bounds({"lon": 25.0, "lat": 60.0}, bounds) is True
+
+    def test_position_list_format(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"position": [20.0, 57.0]}, bounds) is True
+        assert in_bounds({"position": [30.0, 57.0]}, bounds) is False
+
+    def test_none_bounds_returns_true(self):
+        assert in_bounds({"lon": 20.0, "lat": 57.0}, None) is True

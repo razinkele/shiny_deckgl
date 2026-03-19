@@ -252,6 +252,7 @@ from ._demo_data import (  # noqa: F401
     make_point_cloud_data,
     make_shyfem_polygon_data,
     make_shyfem_mesh_data,
+    MONTH_LABELS,
 )
 
 # --- enums ---

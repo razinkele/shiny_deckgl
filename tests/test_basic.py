@@ -7518,3 +7518,48 @@ class TestTimeSpaceExports:
     def test_month_labels_exported(self):
         assert hasattr(m, "MONTH_LABELS")
         assert len(m.MONTH_LABELS) == 12
+
+
+from shiny_deckgl._demo_data import make_sea_temperature_grid
+
+
+class TestSeaTemperatureGrid:
+    """Tests for the synthetic Baltic Sea temperature data generator."""
+
+    def test_returns_list_of_dicts(self):
+        data = make_sea_temperature_grid()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert isinstance(data[0], dict)
+
+    def test_required_keys(self):
+        data = make_sea_temperature_grid()
+        required = {"position", "temperature_c", "name", "month_label", "bin_label", "elevation"}
+        for row in data[:5]:
+            assert required.issubset(row.keys()), f"Missing keys in {row.keys()}"
+
+    def test_month_affects_temperature(self):
+        winter = make_sea_temperature_grid(month=1)  # Feb
+        summer = make_sea_temperature_grid(month=7)  # Aug
+        avg_winter = sum(d["temperature_c"] for d in winter) / len(winter)
+        avg_summer = sum(d["temperature_c"] for d in summer) / len(summer)
+        assert avg_summer > avg_winter, "Summer should be warmer than winter"
+
+    def test_bounds_filtering(self):
+        all_data = make_sea_temperature_grid()
+        bounds = {"sw": [18.0, 56.0], "ne": [22.0, 58.0]}
+        filtered = make_sea_temperature_grid(bounds=bounds)
+        assert len(filtered) < len(all_data), "Bounds should reduce point count"
+        for row in filtered:
+            lon, lat = row["position"]
+            assert 18.0 <= lon <= 22.0
+            assert 56.0 <= lat <= 58.0
+
+    def test_none_bounds_returns_all(self):
+        all_data = make_sea_temperature_grid(bounds=None)
+        assert len(all_data) > 100, "Should return many points with no bounds"
+
+    def test_month_range(self):
+        for mo in range(12):
+            data = make_sea_temperature_grid(month=mo)
+            assert len(data) > 0

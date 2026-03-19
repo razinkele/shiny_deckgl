@@ -2072,3 +2072,94 @@ LAYER_LEGEND_META: dict[str, tuple[list[int], str]] = {
     "ScenegraphLayer": ([200, 150, 100], "rect"),
 }
 """Layer-type → (colour, shape) mapping for legend entries."""
+
+
+# ---------------------------------------------------------------------------
+# Baltic Sea surface temperature grid (synthetic, seasonal)
+# ---------------------------------------------------------------------------
+
+MONTH_LABELS: list[str] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+
+# Pre-compute the grid once (immutable base positions)
+_TEMP_GRID_LON_RANGE = (10.0, 30.0)   # Baltic Sea longitude extent
+_TEMP_GRID_LAT_RANGE = (54.0, 66.0)   # Baltic Sea latitude extent
+_TEMP_GRID_STEP = 0.5                  # ~55 km at 60°N
+
+
+@functools.lru_cache(maxsize=1)
+def _temperature_grid_positions() -> list[tuple[float, float]]:
+    """Generate the fixed grid of positions covering the Baltic Sea."""
+    positions = []
+    lon = _TEMP_GRID_LON_RANGE[0]
+    while lon <= _TEMP_GRID_LON_RANGE[1]:
+        lat = _TEMP_GRID_LAT_RANGE[0]
+        while lat <= _TEMP_GRID_LAT_RANGE[1]:
+            positions.append((round(lon, 2), round(lat, 2)))
+            lat += _TEMP_GRID_STEP
+        lon += _TEMP_GRID_STEP
+    return positions
+
+
+def make_sea_temperature_grid(
+    bounds: dict | None = None,
+    month: int = 0,
+) -> list[dict]:
+    """Generate synthetic Baltic Sea surface temperature data.
+
+    Parameters
+    ----------
+    bounds
+        Optional viewport bounds ``{sw: [lon, lat], ne: [lon, lat]}``.
+        When provided, only grid cells within bounds are returned.
+    month
+        Month index (0=Jan, 11=Dec). Affects the temperature via a
+        sinusoidal seasonal cycle.
+
+    Returns
+    -------
+    list[dict]
+        Each dict has: ``position``, ``temperature_c``, ``name``,
+        ``month_label``, ``bin_label``, ``elevation``.
+    """
+    positions = _temperature_grid_positions()
+
+    # Seasonal model: sinusoidal, coldest in Feb (month=1), warmest in Aug (month=7)
+    seasonal = 10.0 + 8.0 * math.sin((month - 1) * math.pi / 6.0 - math.pi / 2.0)
+
+    month_label = MONTH_LABELS[month % 12]
+    rng = random.Random(42 + month)  # Deterministic per month
+
+    result: list[dict] = []
+    for lon, lat in positions:
+        # Spatial filter
+        if bounds is not None:
+            sw, ne = bounds["sw"], bounds["ne"]
+            if not (sw[0] <= lon <= ne[0] and sw[1] <= lat <= ne[1]):
+                continue
+
+        # Latitude gradient: colder further north
+        lat_offset = -0.5 * (lat - 57.0)
+        # Random noise (seeded by position for consistency)
+        noise = rng.gauss(0, 1.5)
+        temp = round(seasonal + lat_offset + noise, 1)
+
+        # Elevation for 3D extrusion (proportional to temperature)
+        elevation = max(0, temp) * 500
+
+        # Bin label for legend (5°C bins)
+        bin_lo = int(temp // 5) * 5
+        bin_label = f"{bin_lo}\u2013{bin_lo + 5}\u00b0C"
+
+        result.append({
+            "position": [lon, lat],
+            "temperature_c": temp,
+            "name": f"{lat:.1f}\u00b0N {lon:.1f}\u00b0E",
+            "month_label": month_label,
+            "bin_label": bin_label,
+            "elevation": elevation,
+        })
+
+    return result

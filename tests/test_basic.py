@@ -7466,3 +7466,22 @@ class TestOnViewportChange:
         widget = MapWidget("test_vp")
         decorator = on_viewport_change(widget, None, None)
         assert callable(decorator)
+
+
+from shiny_deckgl._timeline import timeline_control, timeline_server
+
+
+class TestTimelineControl:
+    """Tests for timeline_control() UI builder."""
+
+    def test_returns_tag(self):
+        ui_tag = timeline_control("tl", labels=["Jan", "Feb", "Mar"])
+        assert ui_tag is not None
+
+    def test_requires_labels(self):
+        with pytest.raises(ValueError, match="labels"):
+            timeline_control("tl", labels=[])
+
+    def test_requires_positive_interval(self):
+        with pytest.raises(ValueError, match="interval_ms"):
+            timeline_control("tl", labels=["A", "B"], interval_ms=0)

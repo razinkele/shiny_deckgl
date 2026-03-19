@@ -185,11 +185,9 @@ def layer_legend_widget(
 ) -> dict:
     """Create a layer legend **widget** for deck.gl overlay layers.
 
-    Unlike :func:`~shiny_deckgl.controls.deck_legend_control` (which is a
-    MapLibre IControl), this is a deck.gl widget that participates in the
-    widget system alongside ``ZoomWidget``, ``CompassWidget``, etc.  It can
-    be toggled on/off via the ``widgets`` list passed to
-    :meth:`~shiny_deckgl.MapWidget.update`.
+    This is a deck.gl widget that participates in the widget system alongside
+    ``ZoomWidget``, ``CompassWidget``, etc.  It can be toggled on/off via the
+    ``widgets`` list passed to :meth:`~shiny_deckgl.MapWidget.update`.
 
     Parameters
     ----------

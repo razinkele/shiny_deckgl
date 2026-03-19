@@ -100,7 +100,6 @@ class ControlType(str, Enum):
     TERRAIN = "terrain"
     LEGEND = "legend"
     OPACITY = "opacity"
-    DECK_LEGEND = "deck_legend"
 
 
 # ---------------------------------------------------------------------------

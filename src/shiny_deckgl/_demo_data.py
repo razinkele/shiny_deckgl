@@ -2071,4 +2071,4 @@ LAYER_LEGEND_META: dict[str, tuple[list[int], str]] = {
     "TerrainLayer": ([120, 160, 80], "rect"),
     "ScenegraphLayer": ([200, 150, 100], "rect"),
 }
-"""Layer-type → (colour, shape) mapping for ``deck_legend_control``."""
+"""Layer-type → (colour, shape) mapping for legend entries."""

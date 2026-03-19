@@ -189,7 +189,6 @@ from .controls import (  # noqa: F401
     terrain_control,
     legend_control,
     opacity_control,
-    deck_legend_control,
     CONTROL_TYPES,
     CONTROL_POSITIONS,
 )
@@ -384,7 +383,6 @@ __all__ = [
     "terrain_control",
     "legend_control",
     "opacity_control",
-    "deck_legend_control",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",
     # Transitions

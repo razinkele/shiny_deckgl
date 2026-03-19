@@ -8,7 +8,6 @@ __all__ = [
     "terrain_control",
     "legend_control",
     "opacity_control",
-    "deck_legend_control",
     "CONTROL_TYPES",
     "CONTROL_POSITIONS",
 ]
@@ -150,76 +149,12 @@ def opacity_control(
 
 
 # ---------------------------------------------------------------------------
-# Deck.gl legend control
-# ---------------------------------------------------------------------------
-
-def deck_legend_control(
-    entries: list[dict],
-    position: str = "bottom-right",
-    *,
-    show_checkbox: bool = True,
-    collapsed: bool = False,
-    title: str | None = None,
-) -> dict:
-    """Create a legend control for **deck.gl overlay layers**.
-
-    Unlike :func:`legend_control` (which drives the ``@watergis/maplibre-gl-legend``
-    plugin and can only see native MapLibre style layers), this control displays
-    user-defined entries with color swatches and optional visibility checkboxes
-    that toggle deck.gl layers on and off.
-
-    Parameters
-    ----------
-    entries
-        List of legend entry dicts.  Each entry supports:
-
-        * ``layer_id`` — deck.gl layer id (used for the visibility checkbox).
-        * ``label`` — human-readable display label.
-        * ``color`` — ``[r, g, b]`` or ``[r, g, b, a]`` or CSS color string.
-        * ``shape`` — swatch shape: ``"circle"`` (default), ``"rect"``,
-          ``"line"``, ``"arc"``, or ``"gradient"``.
-        * ``color2`` — second color for ``"arc"`` shape (gradient end).
-        * ``colors`` — list of colors for ``"gradient"`` shape (e.g. for
-          HeatmapLayer ``colorRange``).
-
-        Example::
-
-            entries=[
-                {"layer_id": "ports", "label": "Ports", "color": [65, 182, 196], "shape": "circle"},
-                {"layer_id": "mpa-zones", "label": "MPAs", "color": [0, 128, 0, 100], "shape": "rect"},
-                {"layer_id": "port-arcs", "label": "Arcs", "color": [255, 140, 0],
-                 "color2": [200, 0, 80], "shape": "arc"},
-                {"layer_id": "observation-heat", "label": "Heat",
-                 "colors": [[0, 25, 0], [0, 209, 0], [255, 255, 0], [255, 0, 0]],
-                 "shape": "gradient"},
-            ]
-
-    position
-        Control position (default ``"bottom-right"``).
-    show_checkbox
-        Show a checkbox per entry to toggle deck.gl layer visibility.
-    collapsed
-        Start the panel in collapsed state.
-    title
-        Optional header text.  When provided the panel is collapsible.
-    """
-    opts: dict = {
-        "entries": list(entries),
-        "showCheckbox": show_checkbox,
-        "collapsed": collapsed,
-    }
-    if title is not None:
-        opts["title"] = title
-    return {"type": "deck_legend", "position": position, "options": opts}
-
-
-# ---------------------------------------------------------------------------
 # Control type & position constants
 # ---------------------------------------------------------------------------
 
 CONTROL_TYPES = {
     "navigation", "scale", "fullscreen", "geolocate",
     "globe", "terrain", "attribution",
-    "legend", "opacity", "deck_legend",
+    "legend", "opacity",
 }
 CONTROL_POSITIONS = {"top-left", "top-right", "bottom-left", "bottom-right"}

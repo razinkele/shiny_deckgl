@@ -7444,3 +7444,25 @@ class TestInBounds:
 
     def test_none_bounds_returns_true(self):
         assert in_bounds({"lon": 20.0, "lat": 57.0}, None) is True
+
+
+from shiny_deckgl._viewport import on_viewport_change
+
+
+class TestOnViewportChange:
+    """Tests for on_viewport_change() argument validation."""
+
+    def test_rejects_negative_debounce(self):
+        with pytest.raises(ValueError, match="debounce_ms"):
+            on_viewport_change(None, None, None, debounce_ms=-1)
+
+    def test_rejects_non_widget(self):
+        with pytest.raises(TypeError, match="MapWidget"):
+            on_viewport_change("not_a_widget", None, None)
+
+    def test_returns_callable_decorator(self):
+        """With a real MapWidget, returns a decorator (callable)."""
+        from shiny_deckgl import MapWidget
+        widget = MapWidget("test_vp")
+        decorator = on_viewport_change(widget, None, None)
+        assert callable(decorator)

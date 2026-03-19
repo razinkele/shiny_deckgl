@@ -228,6 +228,23 @@ class TestEncodeBinaryAttribute:
 
         assert result["dtype"] == "int32"
 
+    def test_uint32_preserved(self, numpy):
+        """uint32 array should be preserved (common for mesh indices)."""
+        arr = numpy.array([0, 1, 2], dtype="uint32")
+        result = encode_binary_attribute(arr)
+
+        assert result["dtype"] == "uint32"
+
+    def test_uint32_roundtrip(self, numpy):
+        """uint32 encoded data should decode back to original values."""
+        original = numpy.array([0, 100, 65535, 100000], dtype="uint32")
+        result = encode_binary_attribute(original)
+
+        decoded_bytes = base64.b64decode(result["value"])
+        decoded = numpy.frombuffer(decoded_bytes, dtype="uint32")
+
+        numpy.testing.assert_array_equal(decoded, original)
+
     def test_empty_array(self, numpy):
         """Empty array should encode (edge case)."""
         arr = numpy.array([], dtype="float32")
@@ -329,3 +346,174 @@ class TestDataSerializationEdgeCases:
         # Should use DataFrame path
         assert isinstance(result, list)
         assert result[0] == {"x": 1}
+
+
+# ---------------------------------------------------------------------------
+# Test custom_geometry binary transport
+# ---------------------------------------------------------------------------
+
+class TestCustomGeometry:
+    """Tests for the custom_geometry function with binary mesh transport."""
+
+    @pytest.fixture
+    def numpy(self):
+        """Import numpy or skip test."""
+        return pytest.importorskip("numpy")
+
+    @pytest.fixture
+    def custom_geometry(self):
+        """Import custom_geometry."""
+        from shiny_deckgl.layers import custom_geometry
+        return custom_geometry
+
+    @pytest.fixture
+    def triangle_mesh(self, numpy):
+        """A minimal triangle mesh with numpy arrays."""
+        return {
+            "positions": numpy.array([0, 0, 0, 1, 0, 0, 0.5, 1, 0], dtype="float32"),
+            "indices": numpy.array([0, 1, 2], dtype="uint32"),
+        }
+
+    def test_numpy_positions_produce_binary(self, custom_geometry, triangle_mesh):
+        """Numpy positions should be encoded as @@binary dicts."""
+        result = custom_geometry(triangle_mesh)
+
+        assert result["_meshPositions"]["@@binary"] is True
+        assert result["_meshPositions"]["dtype"] == "float32"
+
+    def test_numpy_indices_encode_as_uint32(self, custom_geometry, triangle_mesh):
+        """Numpy indices should be encoded as uint32 (matching JS Uint32Array)."""
+        result = custom_geometry(triangle_mesh)
+
+        assert result["_meshIndices"]["@@binary"] is True
+        assert result["_meshIndices"]["dtype"] == "uint32"
+
+    def test_int32_indices_converted_to_uint32(self, numpy, custom_geometry):
+        """int32 indices should be automatically converted to uint32."""
+        mesh = {
+            "positions": numpy.array([0, 0, 0], dtype="float32"),
+            "indices": numpy.array([0], dtype="int32"),
+        }
+        result = custom_geometry(mesh)
+
+        assert result["_meshIndices"]["dtype"] == "uint32"
+
+    def test_list_positions_passthrough(self, custom_geometry):
+        """Plain list positions should pass through unchanged (backward compat)."""
+        mesh = {
+            "positions": [0, 0, 0, 1, 0, 0, 0.5, 1, 0],
+            "indices": [0, 1, 2],
+        }
+        result = custom_geometry(mesh)
+
+        assert isinstance(result["_meshPositions"], list)
+        assert isinstance(result["_meshIndices"], list)
+
+    def test_empty_normals_colors_passthrough(self, numpy, custom_geometry):
+        """Missing normals/colors default to empty lists."""
+        mesh = {
+            "positions": numpy.zeros(9, dtype="float32"),
+            "indices": numpy.array([0, 1, 2], dtype="uint32"),
+        }
+        result = custom_geometry(mesh)
+
+        assert result["_meshNormals"] == []
+        assert result["_meshColors"] == []
+
+    def test_numpy_normals_produce_binary(self, numpy, custom_geometry):
+        """Numpy normals should be encoded as @@binary dicts."""
+        mesh = {
+            "positions": numpy.zeros(9, dtype="float32"),
+            "indices": numpy.array([0, 1, 2], dtype="uint32"),
+            "normals": numpy.array([0, 0, 1, 0, 0, 1, 0, 0, 1], dtype="float32"),
+        }
+        result = custom_geometry(mesh)
+
+        assert result["_meshNormals"]["@@binary"] is True
+        assert result["_meshNormals"]["dtype"] == "float32"
+
+    def test_numpy_colors_produce_binary(self, numpy, custom_geometry):
+        """Numpy colors should be encoded as @@binary dicts."""
+        mesh = {
+            "positions": numpy.zeros(9, dtype="float32"),
+            "indices": numpy.array([0, 1, 2], dtype="uint32"),
+            "colors": numpy.array([1, 0, 0, 0, 1, 0, 0, 0, 1], dtype="float32"),
+        }
+        result = custom_geometry(mesh)
+
+        assert result["_meshColors"]["@@binary"] is True
+        assert result["_meshColors"]["dtype"] == "float32"
+
+    def test_missing_positions_raises(self, custom_geometry):
+        """Missing positions key should raise ValueError."""
+        with pytest.raises(ValueError, match="positions"):
+            custom_geometry({"indices": [0, 1, 2]})
+
+    def test_missing_indices_raises(self, custom_geometry):
+        """Missing indices key should raise ValueError."""
+        with pytest.raises(ValueError, match="indices"):
+            custom_geometry({"positions": [0, 0, 0]})
+
+    def test_mesh_marker_is_custom_geometry(self, custom_geometry):
+        """Result should have mesh='@@CustomGeometry' marker."""
+        mesh = {"positions": [0, 0, 0], "indices": [0]}
+        result = custom_geometry(mesh)
+
+        assert result["mesh"] == "@@CustomGeometry"
+
+    def test_coordinate_system_is_meter_offsets(self, custom_geometry):
+        """Result should use METER_OFFSETS coordinate system."""
+        from shiny_deckgl.enums import CoordinateSystem
+        mesh = {"positions": [0, 0, 0], "indices": [0]}
+        result = custom_geometry(mesh)
+
+        assert result["coordinateSystem"] == CoordinateSystem.METER_OFFSETS
+
+    def test_custom_position_origin(self, custom_geometry):
+        """Custom position should override the center."""
+        mesh = {"positions": [0, 0, 0], "indices": [0], "center": [10, 20]}
+        result = custom_geometry(mesh, position=[30, 40])
+
+        assert result["coordinateOrigin"] == [30, 40]
+
+    def test_center_used_as_default_origin(self, custom_geometry):
+        """Center from mesh_data should be used as default origin."""
+        mesh = {"positions": [0, 0, 0], "indices": [0], "center": [10, 20]}
+        result = custom_geometry(mesh)
+
+        assert result["coordinateOrigin"] == [10, 20]
+
+    def test_binary_roundtrip_positions(self, numpy, custom_geometry):
+        """Binary-encoded positions should roundtrip correctly."""
+        original = numpy.array([1.5, 2.5, 3.5, 4.5, 5.5, 6.5], dtype="float32")
+        mesh = {
+            "positions": original,
+            "indices": numpy.array([0, 1], dtype="uint32"),
+        }
+        result = custom_geometry(mesh)
+
+        decoded_bytes = base64.b64decode(result["_meshPositions"]["value"])
+        decoded = numpy.frombuffer(decoded_bytes, dtype="float32")
+
+        numpy.testing.assert_array_equal(decoded, original)
+
+    def test_binary_roundtrip_indices(self, numpy, custom_geometry):
+        """Binary-encoded indices should roundtrip correctly as uint32."""
+        original = numpy.array([0, 1, 2, 2, 3, 0], dtype="uint32")
+        mesh = {
+            "positions": numpy.zeros(12, dtype="float32"),
+            "indices": original,
+        }
+        result = custom_geometry(mesh)
+
+        decoded_bytes = base64.b64decode(result["_meshIndices"]["value"])
+        decoded = numpy.frombuffer(decoded_bytes, dtype="uint32")
+
+        numpy.testing.assert_array_equal(decoded, original)
+
+    def test_get_position_uses_property_accessor(self, custom_geometry):
+        """getPosition should use @@d.position (property accessor, not binary)."""
+        mesh = {"positions": [0, 0, 0], "indices": [0]}
+        result = custom_geometry(mesh)
+
+        assert result["getPosition"] == "@@d.position"

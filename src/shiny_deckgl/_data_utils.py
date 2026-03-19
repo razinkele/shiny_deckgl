@@ -43,7 +43,9 @@ def encode_binary_attribute(array: "np.ndarray") -> dict:
     Parameters
     ----------
     array
-        A ``numpy.ndarray`` (float32 or float64).
+        A ``numpy.ndarray``.  Supported dtypes: ``float32``, ``float64``,
+        ``uint8``, ``int32``, ``uint32``.  Other dtypes are silently
+        coerced to ``float32``.
 
     Returns
     -------
@@ -73,9 +75,8 @@ def encode_binary_attribute(array: "np.ndarray") -> dict:
 
     arr = np.ascontiguousarray(array)
     dtype_str = str(arr.dtype)
-    if dtype_str not in ("float32", "float64", "uint8", "int32"):
-        # astype always copies; ascontiguousarray above already
-        # ensured C-contiguity, so replace arr in-place reference.
+    SUPPORTED_DTYPES = ("float32", "float64", "uint8", "int32", "uint32")
+    if dtype_str not in SUPPORTED_DTYPES:
         arr = arr.astype("float32", copy=False)
         dtype_str = "float32"
     encoded = base64.b64encode(arr.tobytes()).decode("ascii")

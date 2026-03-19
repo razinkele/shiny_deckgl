@@ -1117,6 +1117,16 @@ COORDINATE_SYSTEM = CoordinateSystem
 # Custom mesh geometry helper
 # ---------------------------------------------------------------------------
 
+def _maybe_encode(arr: Any, dtype: str) -> Any:
+    """Encode numpy arrays as binary; pass lists through unchanged."""
+    import numpy as np  # noqa: local import — numpy is optional
+
+    if isinstance(arr, np.ndarray):
+        from ._data_utils import encode_binary_attribute
+        return encode_binary_attribute(arr.astype(dtype))
+    return arr
+
+
 def custom_geometry(
     mesh_data: dict,
     *,
@@ -1132,12 +1142,18 @@ def custom_geometry(
     The JS runtime detects the ``"@@CustomGeometry"`` mesh marker and
     constructs a ``luma.Geometry`` from the inline vertex arrays.
 
+    When values are **numpy arrays**, they are automatically encoded as
+    base64 binary transport dicts (``@@binary``) for efficient transfer
+    to the browser.  Plain **lists** are passed through as JSON for
+    backward compatibility.
+
     Parameters
     ----------
     mesh_data
         Dict with keys ``positions``, ``normals``, ``colors``,
         ``indices``, and ``center`` (as returned by
-        :func:`~shiny_deckgl.parsers.parse_shyfem_mesh`).
+        :func:`~shiny_deckgl.parsers.parse_shyfem_mesh`).  Values may
+        be plain Python lists or numpy arrays.
     position
         Override the coordinate origin ``[lon, lat]``.  Defaults to
         ``mesh_data["center"]``.  The single data instance is placed at
@@ -1163,18 +1179,18 @@ def custom_geometry(
             raise ValueError(f"mesh_data must contain '{key}'")
 
     ctr = mesh_data.get("center", [0, 0])
-    origin = position if position is not None else [ctr[0], ctr[1]]
+    origin = position if position is not None else list(ctr[:2])
 
     return {
         # Single instance at the origin (0 m offset)
         "data": [{"position": [0, 0, 0], "layerType": "Custom Mesh"}],
-        "getPosition": "@@=d.position",
+        "getPosition": "@@d.position",
         "getColor": [255, 255, 255, 255],
         "mesh": "@@CustomGeometry",
-        "_meshPositions": mesh_data["positions"],
-        "_meshNormals": mesh_data.get("normals", []),
-        "_meshColors": mesh_data.get("colors", []),
-        "_meshIndices": mesh_data["indices"],
+        "_meshPositions": _maybe_encode(mesh_data["positions"], "float32"),
+        "_meshNormals": _maybe_encode(mesh_data.get("normals", []), "float32"),
+        "_meshColors": _maybe_encode(mesh_data.get("colors", []), "float32"),
+        "_meshIndices": _maybe_encode(mesh_data["indices"], "uint32"),
         "sizeScale": 1,
         "coordinateSystem": COORDINATE_SYSTEM.METER_OFFSETS,
         "coordinateOrigin": origin,

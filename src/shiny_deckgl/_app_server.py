@@ -109,6 +109,10 @@ from ._demo_data import (
 from .ibm import ICON_ATLAS, ICON_MAPPING, trips_animation_server
 from .colors import depth_color as _bathy_color
 
+from ._viewport import on_viewport_change
+from ._timeline import timeline_server
+from ._demo_data import make_sea_temperature_grid, MONTH_LABELS
+
 from .extensions import (
     brushing_extension,
     data_filter_extension,
@@ -125,6 +129,7 @@ from ._app_widgets import (
     three_d_widget,
     seal_widget,
     widgets_gallery_widget,
+    timespace_widget,
 )
 
 def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-defined]
@@ -2523,6 +2528,92 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             _gl_log.get()
             or "Toggle layers in the sidebar to see them on the map."
         )
+
+
+    # ===================================================================
+    # Tab 11: Time & Space (viewport-aware loading + timeline)
+    # ===================================================================
+
+    # Wire the timeline_control() UI using the reusable timeline_server()
+    tl = timeline_server("ts_timeline", labels=MONTH_LABELS)
+
+    @render.text
+    def ts_info():
+        vs = input[timespace_widget.view_state_input_id]()
+        if vs and "bounds" in vs:
+            b = vs["bounds"]
+            return (
+                f"Month: {tl.label()}\n"
+                f"Zoom: {vs.get('zoom', 0):.1f}\n"
+                f"Bounds: [{b['sw'][0]:.1f}, {b['sw'][1]:.1f}] "
+                f"to [{b['ne'][0]:.1f}, {b['ne'][1]:.1f}]"
+            )
+        return "Pan or zoom the map to load data"
+
+    @on_viewport_change(timespace_widget, input, session, debounce_ms=300)
+    async def _ts_load_data(bounds, zoom):
+        month_idx = tl.index()
+        data = make_sea_temperature_grid(bounds=bounds, month=month_idx)
+
+        layers: list[dict] = []
+
+        if data:
+            from .colors import color_bins, PALETTE_THERMAL
+            colors = color_bins(
+                [d["temperature_c"] for d in data],
+                n_bins=6,
+                palette=PALETTE_THERMAL,
+            )
+            for d, c in zip(data, colors):
+                d["fill_color"] = c
+
+            layers.append(
+                grid_cell_layer(
+                    "ts_temp_grid",
+                    data,
+                    getPosition="@@=d.position",
+                    getFillColor="@@=d.fill_color",
+                    cellSize=input.ts_cell_size(),
+                    extruded=input.ts_3d(),
+                    getElevation="@@=d.elevation" if input.ts_3d() else 0,
+                    elevationScale=1,
+                    pickable=True,
+                    opacity=0.8,
+                )
+            )
+
+        if input.ts_show_ports():
+            layers.append(
+                scatterplot_layer(
+                    "ts_ports",
+                    PORTS,
+                    getPosition="@@=[d.lon, d.lat]",
+                    getRadius=8000,
+                    getFillColor=[255, 140, 0, 200],
+                    getLineColor=[255, 255, 255, 200],
+                    lineWidthMinPixels=2,
+                    stroked=True,
+                    pickable=True,
+                )
+            )
+
+        await timespace_widget.update(
+            session, layers,
+            widgets=[
+                loading_widget(),
+                layer_legend_widget(
+                    title=f"SST \u2014 {MONTH_LABELS[month_idx]}",
+                    auto_introspect=True,
+                    placement="top-left",
+                ),
+            ],
+        )
+        return None  # Skip decorator's auto-update (we called update directly)
+
+    @render.text
+    def ts_status():
+        month_label = tl.label()
+        return f"Month: {month_label}"
 
 
 __all__ = ["server"]

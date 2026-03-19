@@ -7485,3 +7485,16 @@ class TestTimelineControl:
     def test_requires_positive_interval(self):
         with pytest.raises(ValueError, match="interval_ms"):
             timeline_control("tl", labels=["A", "B"], interval_ms=0)
+
+
+class TestTimelineServer:
+    """Tests for timeline_server() argument validation."""
+
+    def test_requires_labels(self):
+        with pytest.raises(ValueError, match="labels"):
+            timeline_server("tl", labels=[])
+
+    def test_accepts_valid_labels(self):
+        result = timeline_server("tl", labels=["A", "B", "C"])
+        assert hasattr(result, "index")
+        assert hasattr(result, "label")

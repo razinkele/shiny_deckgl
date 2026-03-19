@@ -151,7 +151,11 @@ def timeline_server(
             label=lambda: labels[input.step()],
         ))
 
-    _inner_server(id)
+    try:
+        _inner_server(id)
+    except RuntimeError:
+        # Called outside an active Shiny session (e.g. tests, import time)
+        pass
 
     if result_holder:
         return result_holder[0]

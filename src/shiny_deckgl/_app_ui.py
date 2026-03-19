@@ -36,7 +36,10 @@ from ._app_widgets import (
     three_d_widget,
     seal_widget,
     widgets_gallery_widget,
+    timespace_widget,
 )
+from ._timeline import timeline_control
+from ._demo_data import MONTH_LABELS
 
 
 def build_ui():
@@ -1388,6 +1391,60 @@ def build_ui():
             ui.card(
                 ui.card_header("\U0001F4DF Active Widgets"),
                 ui.output_text_verbatim("wg_status"),
+            ),
+        ),
+    ),
+
+    # -- Tab 11: Time & Space (viewport-aware loading + timeline) ----------
+    ui.nav_panel(
+        "\U0001F321\uFE0F Time & Space",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.tags.small(
+                    "v1.9.0", class_="badge text-bg-info mb-2",
+                ),
+                sidebar_hint(
+                    "Viewport-aware lazy loading + time-series animation. "
+                    "Only data within the visible map area is loaded from "
+                    "the server. Pan/zoom to load new data. Use the "
+                    "timeline to animate Baltic Sea surface temperature "
+                    "across 12 months."
+                ),
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F4C5 Timeline",
+                        timeline_control("ts_timeline", labels=MONTH_LABELS),
+                    ),
+                    ui.accordion_panel(
+                        "\u2699 Options",
+                        ui.input_switch(
+                            "ts_show_ports", "Show port markers",
+                            value=True,
+                        ),
+                        ui.input_switch(
+                            "ts_3d", "3D extrusion",
+                            value=False,
+                        ),
+                        ui.input_slider(
+                            "ts_cell_size", "Cell size (m)",
+                            min=10000, max=80000, value=40000,
+                            step=5000,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\U0001F4CA Info",
+                        ui.output_text_verbatim("ts_info"),
+                    ),
+                    id="tab11_accordion",
+                    open=["\U0001F4C5 Timeline"],
+                    multiple=True,
+                ),
+                width=280,
+            ),
+            timespace_widget.ui(height="60vh"),
+            ui.card(
+                ui.card_header("\U0001F321\uFE0F Temperature Status"),
+                ui.output_text_verbatim("ts_status"),
             ),
         ),
     ),

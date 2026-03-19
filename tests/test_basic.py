@@ -7408,3 +7408,158 @@ class TestAnimateProp:
         from shiny_deckgl import animate_prop
         result = animate_prop(prop="rotation", speed=-10)
         assert result["speed"] == -10
+
+
+# ---------------------------------------------------------------------------
+# _viewport module tests
+# ---------------------------------------------------------------------------
+
+from shiny_deckgl._viewport import in_bounds
+
+
+class TestInBounds:
+    """Tests for the in_bounds() spatial filter helper."""
+
+    def test_point_inside(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 20.0, "lat": 57.0}, bounds) is True
+
+    def test_point_outside_east(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 30.0, "lat": 57.0}, bounds) is False
+
+    def test_point_outside_north(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 20.0, "lat": 65.0}, bounds) is False
+
+    def test_point_on_boundary_is_inside(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"lon": 10.0, "lat": 54.0}, bounds) is True
+        assert in_bounds({"lon": 25.0, "lat": 60.0}, bounds) is True
+
+    def test_position_list_format(self):
+        bounds = {"sw": [10.0, 54.0], "ne": [25.0, 60.0]}
+        assert in_bounds({"position": [20.0, 57.0]}, bounds) is True
+        assert in_bounds({"position": [30.0, 57.0]}, bounds) is False
+
+    def test_none_bounds_returns_true(self):
+        assert in_bounds({"lon": 20.0, "lat": 57.0}, None) is True
+
+
+from shiny_deckgl._viewport import on_viewport_change
+
+
+class TestOnViewportChange:
+    """Tests for on_viewport_change() argument validation."""
+
+    def test_rejects_negative_debounce(self):
+        with pytest.raises(ValueError, match="debounce_ms"):
+            on_viewport_change(None, None, None, debounce_ms=-1)
+
+    def test_rejects_non_widget(self):
+        with pytest.raises(TypeError, match="MapWidget"):
+            on_viewport_change("not_a_widget", None, None)
+
+    def test_returns_callable_decorator(self):
+        """With a real MapWidget, returns a decorator (callable)."""
+        from shiny_deckgl import MapWidget
+        widget = MapWidget("test_vp")
+        decorator = on_viewport_change(widget, None, None)
+        assert callable(decorator)
+
+
+from shiny_deckgl._timeline import timeline_control, timeline_server
+
+
+class TestTimelineControl:
+    """Tests for timeline_control() UI builder."""
+
+    def test_returns_tag(self):
+        ui_tag = timeline_control("tl", labels=["Jan", "Feb", "Mar"])
+        assert ui_tag is not None
+
+    def test_requires_labels(self):
+        with pytest.raises(ValueError, match="labels"):
+            timeline_control("tl", labels=[])
+
+    def test_requires_positive_interval(self):
+        with pytest.raises(ValueError, match="interval_ms"):
+            timeline_control("tl", labels=["A", "B"], interval_ms=0)
+
+
+class TestTimelineServer:
+    """Tests for timeline_server() argument validation."""
+
+    def test_requires_labels(self):
+        with pytest.raises(ValueError, match="labels"):
+            timeline_server("tl", labels=[])
+
+    def test_accepts_valid_labels(self):
+        result = timeline_server("tl", labels=["A", "B", "C"])
+        assert hasattr(result, "index")
+        assert hasattr(result, "label")
+
+
+class TestTimeSpaceExports:
+    """Verify new public API is exported from the package."""
+
+    def test_in_bounds_exported(self):
+        assert hasattr(m, "in_bounds")
+
+    def test_on_viewport_change_exported(self):
+        assert hasattr(m, "on_viewport_change")
+
+    def test_timeline_control_exported(self):
+        assert hasattr(m, "timeline_control")
+
+    def test_timeline_server_exported(self):
+        assert hasattr(m, "timeline_server")
+
+    def test_month_labels_exported(self):
+        assert hasattr(m, "MONTH_LABELS")
+        assert len(m.MONTH_LABELS) == 12
+
+
+from shiny_deckgl._demo_data import make_sea_temperature_grid
+
+
+class TestSeaTemperatureGrid:
+    """Tests for the synthetic Baltic Sea temperature data generator."""
+
+    def test_returns_list_of_dicts(self):
+        data = make_sea_temperature_grid()
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert isinstance(data[0], dict)
+
+    def test_required_keys(self):
+        data = make_sea_temperature_grid()
+        required = {"position", "temperature_c", "name", "month_label", "bin_label", "elevation"}
+        for row in data[:5]:
+            assert required.issubset(row.keys()), f"Missing keys in {row.keys()}"
+
+    def test_month_affects_temperature(self):
+        winter = make_sea_temperature_grid(month=1)  # Feb
+        summer = make_sea_temperature_grid(month=7)  # Aug
+        avg_winter = sum(d["temperature_c"] for d in winter) / len(winter)
+        avg_summer = sum(d["temperature_c"] for d in summer) / len(summer)
+        assert avg_summer > avg_winter, "Summer should be warmer than winter"
+
+    def test_bounds_filtering(self):
+        all_data = make_sea_temperature_grid()
+        bounds = {"sw": [18.0, 56.0], "ne": [22.0, 58.0]}
+        filtered = make_sea_temperature_grid(bounds=bounds)
+        assert len(filtered) < len(all_data), "Bounds should reduce point count"
+        for row in filtered:
+            lon, lat = row["position"]
+            assert 18.0 <= lon <= 22.0
+            assert 56.0 <= lat <= 58.0
+
+    def test_none_bounds_returns_all(self):
+        all_data = make_sea_temperature_grid(bounds=None)
+        assert len(all_data) > 100, "Should return many points with no bounds"
+
+    def test_month_range(self):
+        for mo in range(12):
+            data = make_sea_temperature_grid(month=mo)
+            assert len(data) > 0

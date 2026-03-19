@@ -118,6 +118,20 @@ widgets_gallery_widget = MapWidget(
     controls=[],
 )
 
+# Tab 11 — Time & Space (viewport-aware + timeline)
+timespace_widget = MapWidget(
+    "timespace_map",
+    tooltip={
+        "html": (
+            "<b>{name}</b><br/>"
+            "Temp: {temperature_c}\u00b0C<br/>"
+            "Month: {month_label}"
+        ),
+        "style": TOOLTIP_STYLE,
+    },
+    view_state=BALTIC_VIEW,
+)
+
 __all__ = [
     "gallery_widget",
     "maplibre_widget",
@@ -128,4 +142,5 @@ __all__ = [
     "three_d_widget",
     "seal_widget",
     "widgets_gallery_widget",
+    "timespace_widget",
 ]

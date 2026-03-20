@@ -2578,17 +2578,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             for d, c in zip(data, colors):
                 d["fill_color"] = c
 
-            # Use scatterplot with large radius to fill the grid
-            # (GridCellLayer makes square cells that leave gaps with
-            # non-square lat/lon spacing)
+            # SolidPolygonLayer: each cell is a rectangle computed from
+            # the grid step — no gaps, no overlaps.
             layers.append(
-                scatterplot_layer(
+                solid_polygon_layer(
                     "ts_temp_grid",
                     data,
-                    getPosition="@@=d.position",
+                    getPolygon="@@=d.polygon",
                     getFillColor="@@=d.fill_color",
-                    getRadius=25000,
-                    radiusUnits="meters",
+                    getElevation="@@=d.elevation" if input.ts_3d() else 0,
+                    extruded=input.ts_3d(),
                     pickable=True,
                     opacity=0.85,
                 )

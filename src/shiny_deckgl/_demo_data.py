@@ -2153,8 +2153,18 @@ def make_sea_temperature_grid(
         bin_lo = int(temp // 5) * 5
         bin_label = f"{bin_lo}\u2013{bin_lo + 5}\u00b0C"
 
+        # Rectangle polygon for SolidPolygonLayer (no gaps, no overlaps)
+        half = _TEMP_GRID_STEP / 2
+        polygon = [
+            [lon - half, lat - half],
+            [lon + half, lat - half],
+            [lon + half, lat + half],
+            [lon - half, lat + half],
+        ]
+
         result.append({
             "position": [lon, lat],
+            "polygon": polygon,
             "temperature_c": temp,
             "name": f"{lat:.1f}\u00b0N {lon:.1f}\u00b0E",
             "month_label": month_label,

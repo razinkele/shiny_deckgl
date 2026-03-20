@@ -2550,6 +2550,17 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
         return "Pan or zoom the map to load data"
 
+    # Pre-compute port data with position arrays (PORTS has lon/lat keys)
+    _ts_port_data = [
+        {
+            "position": [p["lon"], p["lat"]],
+            "name": p["name"],
+            "country": p["country"],
+            "cargo_mt": p["cargo_mt"],
+        }
+        for p in PORTS
+    ]
+
     @on_viewport_change(timespace_widget, input, session, debounce_ms=300)
     async def _ts_load_data(bounds, zoom):
         month_idx = tl.index()
@@ -2567,18 +2578,19 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             for d, c in zip(data, colors):
                 d["fill_color"] = c
 
+            # Use scatterplot with large radius to fill the grid
+            # (GridCellLayer makes square cells that leave gaps with
+            # non-square lat/lon spacing)
             layers.append(
-                grid_cell_layer(
+                scatterplot_layer(
                     "ts_temp_grid",
                     data,
                     getPosition="@@=d.position",
                     getFillColor="@@=d.fill_color",
-                    cellSize=input.ts_cell_size(),
-                    extruded=input.ts_3d(),
-                    getElevation="@@=d.elevation" if input.ts_3d() else 0,
-                    elevationScale=1,
+                    getRadius=25000,
+                    radiusUnits="meters",
                     pickable=True,
-                    opacity=0.8,
+                    opacity=0.85,
                 )
             )
 
@@ -2586,11 +2598,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             layers.append(
                 scatterplot_layer(
                     "ts_ports",
-                    PORTS,
-                    getPosition="@@=[d.lon, d.lat]",
-                    getRadius=8000,
-                    getFillColor=[255, 140, 0, 200],
-                    getLineColor=[255, 255, 255, 200],
+                    _ts_port_data,
+                    getPosition="@@=d.position",
+                    getRadius=12000,
+                    getFillColor=[255, 140, 0, 220],
+                    getLineColor=[255, 255, 255, 255],
                     lineWidthMinPixels=2,
                     stroked=True,
                     pickable=True,

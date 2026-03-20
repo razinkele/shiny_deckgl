@@ -1215,6 +1215,14 @@
         }
       }
 
+      // Use pre-rasterised canvas for SVG icon atlases (cache populated
+      // by rasteriseIconAtlas during animation setup or prior render).
+      if (layerProps.iconAtlas && typeof layerProps.iconAtlas === 'string'
+          && layerProps.iconAtlas.indexOf('data:image/svg+xml') === 0
+          && _svgAtlasCache[layerProps.iconAtlas]) {
+        layerProps.iconAtlas = _svgAtlasCache[layerProps.iconAtlas];
+      }
+
       return new LayerClass(layerProps);
     }).filter(l => l !== null);
   }
@@ -1294,6 +1302,41 @@
       });
     }
     return heads;
+  }
+
+  // -----------------------------------------------------------------------
+  // SVG atlas rasteriser — deck.gl needs a raster texture, not raw SVG
+  // -----------------------------------------------------------------------
+  var _svgAtlasCache = {};
+
+  /**
+   * If *src* is an SVG data-URI, rasterise it to an off-screen canvas and
+   * return a Promise that resolves to the canvas.  The result is cached so
+   * subsequent frames reuse the same object.  Non-SVG sources are returned
+   * as-is (wrapped in a resolved promise).
+   */
+  function rasteriseIconAtlas(src) {
+    if (typeof src !== 'string' || src.indexOf('data:image/svg+xml') !== 0) {
+      return Promise.resolve(src);
+    }
+    if (_svgAtlasCache[src]) return Promise.resolve(_svgAtlasCache[src]);
+
+    return new Promise(function (resolve) {
+      var img = new Image();
+      img.onload = function () {
+        var canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        _svgAtlasCache[src] = canvas;
+        resolve(canvas);
+      };
+      img.onerror = function () {
+        console.warn('[shiny_deckgl] Failed to rasterise SVG atlas, using raw URI');
+        resolve(src);           // fall back to the raw data-URI
+      };
+      img.src = src;
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -1428,68 +1471,83 @@
     }
     if (tripsConfigs.length === 0) return;
 
-    // Preserve accumulated time when resuming from a pause
-    const timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
-                       ? instance.tripsAnimation.pausedAt : 0;
-    const startedAt = performance.now();
-    function tick() {
-      const elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
-      // Update currentTime on each TripsLayer
-      for (let c = 0; c < tripsConfigs.length; c++) {
-        const cfg = tripsConfigs[c];
-        const t = (elapsed * cfg.speed) % cfg.loopLength;
-        layersData[cfg.index].currentTime = t;
-      }
-
-      // Re-build and push layers
-      const deckLayers = buildDeckLayers(
-        deepClone(layersData),
-        targetId,
-        instance.tooltipConfig
-      );
-
-      // Append head-icon layers for TripsLayers with _tripsHeadIcons
-      // Species-colored SVG atlas — each silhouette has its own fill.
-      for (let c = 0; c < tripsConfigs.length; c++) {
-        const cfg = tripsConfigs[c];
-        if (!cfg.headIcons) continue;
-        const lp = layersData[cfg.index];
-        const hi = cfg.headIcons;
-        const heads = interpolateTripHeads(
-          lp.data, lp.currentTime, hi.iconField || 'species'
+    // Pre-rasterise any SVG icon atlases before starting the RAF loop.
+    var atlasPromises = [];
+    for (let c = 0; c < tripsConfigs.length; c++) {
+      const cfg = tripsConfigs[c];
+      if (cfg.headIcons && cfg.headIcons.iconAtlas) {
+        atlasPromises.push(
+          rasteriseIconAtlas(cfg.headIcons.iconAtlas).then(function (raster) {
+            cfg.headIcons._rasterAtlas = raster;
+          })
         );
-        if (heads.length > 0) {
-          deckLayers.push(new deck.IconLayer({
-            id: (lp.id || 'trips') + '_heads',
-            data: heads,
-            iconAtlas: hi.iconAtlas,
-            iconMapping: hi.iconMapping,
-            getPosition: function(d) { return d.position; },
-            getIcon: function(d) { return d.icon; },
-            getColor: function(d) { return d.color; },
-            getAngle: function(d) { return d.angle || 0; },
-            getSize: hi.getSize || 24,
-            sizeScale: hi.sizeScale || 1,
-            sizeMinPixels: hi.sizeMinPixels || 10,
-            sizeMaxPixels: hi.sizeMaxPixels || 64,
-            billboard: false,
-            pickable: false,
-          }));
-        }
       }
+    }
 
-      instance.overlay.setProps({ layers: deckLayers });
+    Promise.all(atlasPromises).then(function () {
+      // Preserve accumulated time when resuming from a pause
+      const timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
+                         ? instance.tripsAnimation.pausedAt : 0;
+      const startedAt = performance.now();
+      function tick() {
+        const elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
+        // Update currentTime on each TripsLayer
+        for (let c = 0; c < tripsConfigs.length; c++) {
+          const cfg = tripsConfigs[c];
+          const t = (elapsed * cfg.speed) % cfg.loopLength;
+          layersData[cfg.index].currentTime = t;
+        }
 
+        // Re-build and push layers
+        const deckLayers = buildDeckLayers(
+          deepClone(layersData),
+          targetId,
+          instance.tooltipConfig
+        );
+
+        // Append head-icon layers for TripsLayers with _tripsHeadIcons
+        // Uses pre-rasterised canvas instead of raw SVG data-URI.
+        for (let c = 0; c < tripsConfigs.length; c++) {
+          const cfg = tripsConfigs[c];
+          if (!cfg.headIcons) continue;
+          const lp = layersData[cfg.index];
+          const hi = cfg.headIcons;
+          const heads = interpolateTripHeads(
+            lp.data, lp.currentTime, hi.iconField || 'species'
+          );
+          if (heads.length > 0) {
+            deckLayers.push(new deck.IconLayer({
+              id: (lp.id || 'trips') + '_heads',
+              data: heads,
+              iconAtlas: hi._rasterAtlas || hi.iconAtlas,
+              iconMapping: hi.iconMapping,
+              getPosition: function(d) { return d.position; },
+              getIcon: function(d) { return d.icon; },
+              getColor: function(d) { return d.color; },
+              getAngle: function(d) { return d.angle || 0; },
+              getSize: hi.getSize || 24,
+              sizeScale: hi.sizeScale || 1,
+              sizeMinPixels: hi.sizeMinPixels || 10,
+              sizeMaxPixels: hi.sizeMaxPixels || 64,
+              billboard: false,
+              pickable: false,
+            }));
+          }
+        }
+
+        instance.overlay.setProps({ layers: deckLayers });
+
+        instance.tripsAnimation = instance.tripsAnimation || {};
+        instance.tripsAnimation.rafId = requestAnimationFrame(tick);
+        instance.tripsAnimation.startedAt = startedAt;
+        instance.tripsAnimation.timeOffset = timeOffset;
+      }
+      // Initial kickoff (only runs once when animation starts)
       instance.tripsAnimation = instance.tripsAnimation || {};
       instance.tripsAnimation.rafId = requestAnimationFrame(tick);
       instance.tripsAnimation.startedAt = startedAt;
       instance.tripsAnimation.timeOffset = timeOffset;
-    }
-    // Initial kickoff (only runs once when animation starts)
-    instance.tripsAnimation = instance.tripsAnimation || {};
-    instance.tripsAnimation.rafId = requestAnimationFrame(tick);
-    instance.tripsAnimation.startedAt = startedAt;
-    instance.tripsAnimation.timeOffset = timeOffset;
+    });
   }
 
   function pauseTripsAnimation(instance) {
@@ -1563,6 +1621,19 @@
     const layersData = payload.layers || [];
     instance.lastLayers = layersData;
     if (instance._legendWidget) instance._legendWidget._refresh();
+
+    // Pre-rasterise any SVG icon atlases so the cache is warm before
+    // buildDeckLayers runs (it checks the cache synchronously).
+    var svgAtlasPreloads = [];
+    for (let li = 0; li < layersData.length; li++) {
+      var la = layersData[li].iconAtlas;
+      if (la && typeof la === 'string' && la.indexOf('data:image/svg+xml') === 0) {
+        svgAtlasPreloads.push(rasteriseIconAtlas(la));
+      }
+    }
+
+    // Wait for all SVG atlases to rasterise (instant if cache hit or none).
+    Promise.all(svgAtlasPreloads).then(function () {
     const deckLayers = buildDeckLayers(
       deepClone(layersData),
       targetId,
@@ -1598,6 +1669,7 @@
     // Clean up animations for removed layers
     const currentIds = new Set(instance.lastLayers.map(function (l) { return l.id; }));
     cleanupAnimations(instance, targetId, currentIds);
+    }); // end SVG atlas preload .then()
   });
 
   // -----------------------------------------------------------------------

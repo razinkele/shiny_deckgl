@@ -140,8 +140,9 @@ def timeline_server(
             from shiny import ui as _ui
             _ui.update_slider("step", value=next_val, session=inner_session)
 
-        @output
-        @reactive.event(input.step)
+        from shiny import render
+
+        @render.text
         def current_label():
             idx = input.step()
             return f"{labels[idx]}"

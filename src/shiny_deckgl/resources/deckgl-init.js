@@ -455,7 +455,7 @@
           return Object.assign({}, lp, { visible: visible });
         });
         var deckLayers = buildDeckLayers(
-          inst.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
+          cloneLayersData(inst.lastLayers),
           this._mapId
         );
         inst.overlay.setProps({ layers: deckLayers });
@@ -1518,7 +1518,7 @@
 
       // Rebuild layers with updated values
       const deckLayers = buildDeckLayers(
-        instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
+        cloneLayersData(instance.lastLayers),
         mapId
       );
       instance.overlay.setProps({ layers: deckLayers });
@@ -1682,20 +1682,9 @@
   // replayed when the tab becomes visible (see shown.bs.tab handler).
   var _deferredMessages = {};  // mapId → [{handler, payload}, ...]
 
-  function ensureInstance(targetId, silent) {
-    var instance = mapInstances[targetId];
-    if (instance) return instance;
-
-    var el = document.getElementById(targetId);
-    if (el && isInVisibleTab(el)) {
-      safeInitMap(el);
-      instance = mapInstances[targetId];
-    }
-    if (!instance && !silent && (!el || isInVisibleTab(el))) {
-      console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
-    }
-    return instance || null;
-  }
+  // ensureInstance() removed — addDeferrable() already guarantees the map is
+  // initialised (or the message is deferred) before invoking the handler.
+  // Handlers now use mapInstances[id] directly.
 
   // Queue a Shiny message for a deferred (hidden-tab) map.
   function deferMessage(mapId, handler, payload) {
@@ -2027,7 +2016,7 @@
     if (instance._legendWidget) instance._legendWidget._refresh();
 
     const deckLayers = buildDeckLayers(
-      patched.map(lp => Object.assign({}, lp)),
+      cloneLayersData(patched),
       targetId
     );
     instance.overlay.setProps({ layers: deckLayers });

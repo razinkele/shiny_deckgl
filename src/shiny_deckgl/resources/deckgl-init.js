@@ -8,6 +8,13 @@
     ? structuredClone
     : function (obj) { return JSON.parse(JSON.stringify(obj)); };
 
+  // Shallow-clone an array of layer-props objects.  Unlike deepClone /
+  // structuredClone this handles non-cloneable values such as Canvas
+  // elements (used for rasterised SVG icon atlases).
+  function cloneLayersData(layersData) {
+    return layersData.map(function (lp) { return Object.assign({}, lp); });
+  }
+
   // -----------------------------------------------------------------------
   // Tooltip helper
   // -----------------------------------------------------------------------
@@ -1551,7 +1558,7 @@
 
         // Re-build and push layers
         const deckLayers = buildDeckLayers(
-          deepClone(layersData),
+          cloneLayersData(layersData),
           targetId
         );
 
@@ -1767,7 +1774,7 @@
     if (instance._legendWidget) instance._legendWidget._refresh();
 
     const deckLayers = buildDeckLayers(
-      deepClone(merged),
+      cloneLayersData(merged),
       targetId
     );
     instance.overlay.setProps({ layers: deckLayers });
@@ -3020,7 +3027,7 @@
           // Re-apply current layers to force deck.gl re-render
           if (inst.overlay && inst.lastLayers && inst.lastLayers.length) {
             const deckLayers = buildDeckLayers(
-              deepClone(inst.lastLayers),
+              cloneLayersData(inst.lastLayers),
               el.id
             );
             inst.overlay.setProps({ layers: deckLayers });

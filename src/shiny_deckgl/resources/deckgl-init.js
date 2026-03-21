@@ -2363,7 +2363,7 @@
       const clickHandler = function (e) {
         if (!e.features || !e.features.length) return;
         const props = e.features[0].properties || {};
-        const html = interpolateTemplate(template, props);
+        const html = sanitizeHtml(interpolateTemplate(template, props));
 
         const popupOpts = {
           closeButton: payload.closeButton !== false,

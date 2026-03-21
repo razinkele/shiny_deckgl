@@ -5241,7 +5241,7 @@ class TestIBMModuleImports:
             trips_animation_ui,
             trips_animation_server,
         )
-        assert len(SPECIES_COLORS) == 3
+        assert len(SPECIES_COLORS) == 9
         assert callable(format_trips)
 
     def test_simulation_NOT_in_ibm(self):
@@ -5321,7 +5321,7 @@ class TestSpeciesColors:
 
     def test_three_species(self):
         from shiny_deckgl.ibm import SPECIES_COLORS
-        assert len(SPECIES_COLORS) == 3
+        assert len(SPECIES_COLORS) == 9
 
     def test_rgba_format(self):
         from shiny_deckgl.ibm import SPECIES_COLORS

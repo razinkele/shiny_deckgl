@@ -106,7 +106,7 @@ from ._demo_data import (
     make_s2_data,
     make_scenegraph_data,
 )
-from .ibm import ICON_ATLAS, ICON_MAPPING, trips_animation_server
+from .ibm import ICON_ATLAS, ICON_MAPPING, SPECIES_COLORS, trips_animation_server
 from .colors import depth_color as _bathy_color
 
 from ._viewport import on_viewport_change
@@ -1459,12 +1459,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             loop_length=_SEAL_LOOP,
         )
 
+    # Map shape selector values to the 3 species in each group
+    _SHAPE_SPECIES = {
+        "seal":    ["Grey seal", "Ringed seal", "Harbour seal"],
+        "dolphin": ["Harbour porpoise", "Bottlenose dolphin", "White-beaked dolphin"],
+        "fish":    ["Atlantic cod", "Baltic herring", "Atlantic salmon"],
+    }
+
     @reactive.Effect
     @reactive.event(
         input.seal_model_type,
         input.seal_n_individuals,
         input.seal_sim_hours,
         input.seal_species,
+        input.seal_icon_shape,
         seal_anim.speed,
         seal_anim.trail,
         input.seal_bathymetry,
@@ -1512,6 +1520,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # Animated seal tracks (TripsLayer) with head icons
         filtered_trips = [t for t in trips if t["species"] in selected]
         if filtered_trips:
+            # Build icon mapping for the selected shape — remap seal species
+            # names to the chosen animal group's icons so the trips data
+            # (which uses "Grey seal" etc.) picks up the right sprite.
+            shape = input.seal_icon_shape()
+            seal_names = _SHAPE_SPECIES["seal"]
+            shape_names = _SHAPE_SPECIES.get(shape, seal_names)
+            head_mapping = {}
+            for seal_name, shape_name in zip(seal_names, shape_names):
+                head_mapping[seal_name] = ICON_MAPPING[shape_name]
+
             layers.append(
                 trips_layer(
                     "seal_trips",
@@ -1525,7 +1543,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     },
                     _tripsHeadIcons={
                         "iconAtlas": ICON_ATLAS,
-                        "iconMapping": ICON_MAPPING,
+                        "iconMapping": head_mapping,
                         "iconField": "species",
                         "getSize": 24,
                         "sizeScale": 1,

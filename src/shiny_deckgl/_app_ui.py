@@ -1137,6 +1137,15 @@ def build_ui():
                                 "Harbour seal",
                             ],
                         ),
+                        ui.input_select(
+                            "seal_icon_shape", "Head icon shape",
+                            choices={
+                                "seal": "\U0001F9AD Seal (default)",
+                                "dolphin": "\U0001F42C Dolphin",
+                                "fish": "\U0001F41F Fish",
+                            },
+                            selected="seal",
+                        ),
                     ),
                     ui.accordion_panel(
                         "\u23F1 Animation Controls",

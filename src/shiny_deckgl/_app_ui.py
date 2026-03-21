@@ -1093,7 +1093,8 @@ def build_ui():
                     choices={
                         "seal": "\U0001F9AD Seal (default)",
                         "dolphin": "\U0001F42C Dolphin",
-                        "fish": "\U0001F41F Fish",
+                        "fish_large": "\U0001F41F Fish (cod/salmon)",
+                        "fish_small": "\U0001F420 Fish (herring/smelt)",
                     },
                     selected="seal",
                 ),

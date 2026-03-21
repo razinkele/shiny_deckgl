@@ -1461,9 +1461,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # Map shape selector values to the 3 species in each group
     _SHAPE_SPECIES = {
-        "seal":    ["Grey seal", "Ringed seal", "Harbour seal"],
-        "dolphin": ["Harbour porpoise", "Bottlenose dolphin", "White-beaked dolphin"],
-        "fish":    ["Atlantic cod", "Baltic herring", "Atlantic salmon"],
+        "seal":       ["Grey seal", "Ringed seal", "Harbour seal"],
+        "dolphin":    ["Harbour porpoise", "Bottlenose dolphin", "White-beaked dolphin"],
+        "fish_large": ["Atlantic cod", "Atlantic salmon", "Atlantic cod"],
+        "fish_small": ["Baltic herring", "European smelt", "Baltic herring"],
     }
 
     @reactive.Effect

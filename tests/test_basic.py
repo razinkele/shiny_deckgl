@@ -5241,7 +5241,7 @@ class TestIBMModuleImports:
             trips_animation_ui,
             trips_animation_server,
         )
-        assert len(SPECIES_COLORS) == 9
+        assert len(SPECIES_COLORS) == 10
         assert callable(format_trips)
 
     def test_simulation_NOT_in_ibm(self):
@@ -5321,7 +5321,7 @@ class TestSpeciesColors:
 
     def test_three_species(self):
         from shiny_deckgl.ibm import SPECIES_COLORS
-        assert len(SPECIES_COLORS) == 9
+        assert len(SPECIES_COLORS) == 10
 
     def test_rgba_format(self):
         from shiny_deckgl.ibm import SPECIES_COLORS
@@ -5360,7 +5360,8 @@ class TestIconAtlas:
 
     def test_is_data_uri(self):
         from shiny_deckgl.ibm import ICON_ATLAS
-        assert ICON_ATLAS.startswith("data:image/svg+xml;base64,")
+        assert ICON_ATLAS.startswith("data:image/png;base64,") or \
+               ICON_ATLAS.startswith("data:image/svg+xml;base64,")
 
     def test_valid_base64(self):
         import base64
@@ -5369,37 +5370,23 @@ class TestIconAtlas:
         raw = base64.b64decode(b64)
         assert len(raw) > 100
 
-    def test_svg_content(self):
-        import base64
+    def test_atlas_dimensions(self):
+        """Atlas should be 640x64 (10 icons at 64px each)."""
+        import base64, io
+        from PIL import Image
         from shiny_deckgl.ibm import ICON_ATLAS
         b64 = ICON_ATLAS.split(",", 1)[1]
-        svg = base64.b64decode(b64).decode("utf-8")
-        assert "<svg" in svg
-        assert 'width="576"' in svg
-        assert 'height="64"' in svg
-
-    def test_species_colours_in_svg(self):
-        import base64
-        from shiny_deckgl.ibm import ICON_ATLAS
-        b64 = ICON_ATLAS.split(",", 1)[1]
-        svg = base64.b64decode(b64).decode("utf-8")
-        assert "#7a8a8a" in svg  # Grey seal
-        assert "#4a8cdc" in svg  # Ringed seal
-        assert "#c8a050" in svg  # Harbour seal
-        assert "#5a7a8a" in svg  # Harbour porpoise
-        assert "#6a9ab0" in svg  # Bottlenose dolphin
-        assert "#8ab0c0" in svg  # White-beaked dolphin
-        assert "#8a7a5a" in svg  # Atlantic cod
-        assert "#7a8aaa" in svg  # Baltic herring
-        assert "#c08060" in svg  # Atlantic salmon
+        img = Image.open(io.BytesIO(base64.b64decode(b64)))
+        assert img.width == 640
+        assert img.height == 64
 
 
 class TestIconMapping:
     """Validate icon-mapping dict."""
 
-    def test_nine_species(self):
+    def test_ten_species(self):
         from shiny_deckgl.ibm import ICON_MAPPING
-        assert len(ICON_MAPPING) == 9
+        assert len(ICON_MAPPING) == 10
 
     def test_species_keys(self):
         from shiny_deckgl.ibm import ICON_MAPPING
@@ -5407,6 +5394,7 @@ class TestIconMapping:
             "Grey seal", "Ringed seal", "Harbour seal",
             "Harbour porpoise", "Bottlenose dolphin", "White-beaked dolphin",
             "Atlantic cod", "Baltic herring", "Atlantic salmon",
+            "European smelt",
         }
         assert set(ICON_MAPPING.keys()) == expected
 
@@ -5422,7 +5410,7 @@ class TestIconMapping:
     def test_non_overlapping_x(self):
         from shiny_deckgl.ibm import ICON_MAPPING
         xs = [m["x"] for m in ICON_MAPPING.values()]
-        assert len(set(xs)) == 9  # all unique
+        assert len(set(xs)) == 10  # all unique
 
 
 class TestMakeSealTrips:

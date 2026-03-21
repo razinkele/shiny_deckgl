@@ -39,7 +39,13 @@ _CONTROL_POSITIONS_SORTED: tuple[str, ...] = tuple(sorted(CONTROL_POSITIONS))
 
 def _validate_tooltip(tooltip: dict | None) -> None:
     """Validate tooltip config — shared by constructor and update_tooltip."""
-    if tooltip is not None and "html" not in tooltip:
+    if tooltip is None:
+        return
+    if not isinstance(tooltip, dict):
+        raise TypeError(
+            f"tooltip must be a dict or None, got {type(tooltip).__name__!r}"
+        )
+    if "html" not in tooltip:
         raise ValueError(
             "tooltip dict must contain an 'html' key with a template string, "
             f"got keys: {list(tooltip.keys())}"

@@ -116,6 +116,10 @@
   // DeckLayerLegendWidget is created lazily via createDeckLayerLegendWidget()
   // because deck.Widget may not be available when this script first loads.
   var _DeckLayerLegendWidgetClass = null;
+  var LEGEND_DEFAULTS = {
+    entries: [], showCheckbox: true, collapsed: false, title: null,
+    autoIntrospect: false, excludeLayers: [], labelMap: {},
+  };
 
   function createDeckLayerLegendWidget(props) {
     if (!_DeckLayerLegendWidgetClass) {
@@ -145,10 +149,7 @@
         this.id = (p && p.id) || 'deck-layer-legend';
         this.placement = (p && p.placement) || 'top-left';
         this.viewId = (p && p.viewId) || null;
-        this._legendProps = Object.assign({
-          entries: [], showCheckbox: true, collapsed: false, title: null,
-          autoIntrospect: false, excludeLayers: [], labelMap: {},
-        }, p);
+        this._legendProps = Object.assign({}, LEGEND_DEFAULTS, p);
         this._mapId = null;
         this._rootEl = null;
       };
@@ -158,16 +159,13 @@
       proto.onRenderHTML = function (el) {
         el.classList.add('deck-legend-ctrl', 'deck-layer-legend-widget');
         // Lift bottom-placed widgets above the MapLibre attribution bar
-        if (this.placement && this.placement.indexOf('bottom') === 0) {
+        if (this.placement && this.placement.startsWith('bottom')) {
           el.style.marginBottom = '34px';
         }
         this._rootEl = el;
         // Sync _legendProps from this.props (kept updated by base setProps)
         if (this.props) {
-          this._legendProps = Object.assign({
-            entries: [], showCheckbox: true, collapsed: false, title: null,
-            autoIntrospect: false, excludeLayers: [], labelMap: {},
-          }, this.props);
+          this._legendProps = Object.assign({}, LEGEND_DEFAULTS, this.props);
         }
         this._resolveMapId();
         // Register this widget on the mapInstance for refresh callbacks
@@ -1700,6 +1698,13 @@
   function replayDeferredMessages(mapId) {
     var queue = _deferredMessages[mapId];
     if (!queue || !queue.length) return;
+    // Only consume the queue if the map was successfully initialised;
+    // otherwise keep it for a future retry on the next tab show.
+    if (!mapInstances[mapId]) {
+      console.warn('[shiny_deckgl] replayDeferredMessages: map "' + mapId +
+        '" not initialised — keeping ' + queue.length + ' queued messages');
+      return;
+    }
     delete _deferredMessages[mapId];
     queue.forEach(function (msg) {
       var fn = _handlerFns[msg.handler];
@@ -1748,8 +1753,9 @@
   // deck_update — main layer push
   // -----------------------------------------------------------------------
   addDeferrable("deck_update", function (payload) {
+    if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = mapInstances[targetId];
+    const instance = ensureInstance(targetId);
     if (!instance) return;
 
     const { map, overlay } = instance;
@@ -1833,7 +1839,7 @@
   addDeferrable("deck_partial_update", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
+    const instance = mapInstances[targetId];
     if (!instance) return;
 
     const patches = payload.layers || [];
@@ -1895,7 +1901,7 @@
   addDeferrable("deck_trips_control", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = mapInstances[targetId];
+    const instance = ensureInstance(targetId);
     if (!instance) return;
     const action = payload.action || 'pause';
 
@@ -1918,7 +1924,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_widgets", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
@@ -1932,7 +1938,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_fly_to", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     const vs = payload.viewState || {};
     const opts = {
@@ -1951,7 +1957,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_ease_to", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     const vs = payload.viewState || {};
     const opts = {
@@ -1969,7 +1975,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_controller", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     const ctrl = payload.controller;
     // MapboxOverlay exposes controller via setProps
@@ -1982,7 +1988,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_cooperative_gestures", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     const map = instance.map;
     if (payload.enabled) {
@@ -2002,7 +2008,7 @@
   addDeferrable("deck_layer_visibility", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
+    const instance = mapInstances[targetId];
     if (!instance) return;
 
     const visMap = payload.visibility || {};
@@ -2029,7 +2035,7 @@
   addDeferrable("deck_add_drag_marker", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
+    const instance = mapInstances[targetId];
     if (!instance) return;
 
     const map = instance.map;
@@ -2070,7 +2076,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_style", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     if (instance.nativeLayers && Object.keys(instance.nativeLayers).length > 0) {
       console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
@@ -2120,7 +2126,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_control", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const type = payload.controlType;
@@ -2145,7 +2151,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_control", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const type = payload.controlType;
@@ -2160,7 +2166,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_controls", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     // Defer until style is loaded so that native sources/layers added
@@ -2202,7 +2208,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_fit_bounds", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const bounds = payload.bounds;  // [[sw_lng, sw_lat], [ne_lng, ne_lat]]
@@ -2228,7 +2234,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_source", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -2258,7 +2264,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -2281,7 +2287,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -2297,7 +2303,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_source", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -2312,7 +2318,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_source_data", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function() {
@@ -2328,7 +2334,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_image", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       const map = instance.map;
@@ -2364,7 +2370,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_image", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       if (instance.map.hasImage(payload.imageId)) {
@@ -2378,7 +2384,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_has_image", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       const exists = instance.map.hasImage(payload.imageId);
@@ -2394,7 +2400,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_paint_property", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setPaintProperty(payload.layerId, payload.name, payload.value);
@@ -2406,7 +2412,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_layout_property", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setLayoutProperty(payload.layerId, payload.name, payload.value);
@@ -2418,7 +2424,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_filter", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     whenStyleReady(instance.map, function() {
       instance.map.setFilter(payload.layerId, payload.filter || null);
@@ -2430,7 +2436,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_projection", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     if (typeof instance.map.setProjection === 'function') {
@@ -2447,7 +2453,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_terrain", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     if (typeof instance.map.setTerrain === 'function') {
@@ -2464,7 +2470,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_sky", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     if (typeof instance.map.setSky === 'function') {
@@ -2479,7 +2485,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_popup", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const map = instance.map;
@@ -2548,7 +2554,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_popup", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.popupHandlers) return;
 
     const layerId = payload.layerId;
@@ -2567,7 +2573,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_query_features", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const map = instance.map;
@@ -2608,7 +2614,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_query_at_lnglat", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const map = instance.map;
@@ -2644,7 +2650,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_marker", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     if (!instance.markers) instance.markers = {};
@@ -2697,7 +2703,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_marker", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.markers) return;
 
     if (instance.markers[payload.markerId]) {
@@ -2711,7 +2717,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_clear_markers", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.markers) return;
 
     Object.keys(instance.markers).forEach(function (mid) {
@@ -2725,7 +2731,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_enable_draw", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     if (typeof MapboxDraw === 'undefined') {
@@ -2801,7 +2807,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_disable_draw", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.draw) return;
 
     instance.map.removeControl(instance.draw);
@@ -2822,7 +2828,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_get_drawn_features", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.draw) return;
 
     const fc = instance.draw.getAll();
@@ -2834,7 +2840,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_delete_drawn", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance || !instance.draw) return;
 
     if (payload.featureIds) {
@@ -2850,7 +2856,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_feature_state", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const target = { source: payload.sourceId, id: payload.featureId };
@@ -2866,7 +2872,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_feature_state", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const target = { source: payload.sourceId };
@@ -2887,7 +2893,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_export_image", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const map = instance.map;
@@ -2922,7 +2928,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_add_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function () {
@@ -3076,7 +3082,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_remove_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     whenStyleReady(instance.map, function () {
@@ -3141,6 +3147,10 @@
         // at page load to avoid exhausting WebGL contexts.
         // After init, replay any Shiny messages that were queued.
         setTimeout(function () {
+          if (typeof maplibregl === 'undefined' || typeof deck === 'undefined') {
+            console.warn('[shiny_deckgl] CDN not ready on tab show for "' + el.id + '" — will retry on next tab show');
+            return;
+          }
           safeInitMap(el);
           replayDeferredMessages(el.id);
         }, 50);
@@ -3153,7 +3163,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_update_tooltip", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
     // onHover reads tooltipConfig from the instance at hover time,
     // so updating here is sufficient — no layer rebuild needed.
@@ -3165,7 +3175,7 @@
   // -----------------------------------------------------------------------
   addDeferrable("deck_set_animation", function (payload) {
     if (!payload || !payload.id) return;
-    const instance = ensureInstance(payload.id);
+    const instance = mapInstances[payload.id];
     if (!instance) return;
 
     const layerId = payload.layerId;

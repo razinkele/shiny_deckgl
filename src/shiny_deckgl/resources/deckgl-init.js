@@ -1080,7 +1080,7 @@
               const tooltipEl = getOrCreateTooltipEl(targetId);
               if (info.object) {
                 const src = info.object.properties || info.object;
-                tooltipEl.innerHTML = interpolateTemplate(currentTooltip.html, src);
+                tooltipEl.innerHTML = sanitizeHtml(interpolateTemplate(currentTooltip.html, src));
                 tooltipEl.style.cssText = '';
                 tooltipEl.style.display = 'block';
                 tooltipEl.style.left = (info.x || 0) + 'px';

@@ -157,6 +157,10 @@
 
       proto.onRenderHTML = function (el) {
         el.classList.add('deck-legend-ctrl', 'deck-layer-legend-widget');
+        // Lift bottom-placed widgets above the MapLibre attribution bar
+        if (this.placement && this.placement.indexOf('bottom') === 0) {
+          el.style.marginBottom = '34px';
+        }
         this._rootEl = el;
         // Sync _legendProps from this.props (kept updated by base setProps)
         if (this.props) {

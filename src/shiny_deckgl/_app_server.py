@@ -1536,6 +1536,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     "seal_trips",
                     filtered_trips,
                     trailLength=seal_anim.trail(),
+                    fadeTrail=True,
                     getColor="@@d.color",
                     widthMinPixels=3,
                     _tripsAnimation={

@@ -277,7 +277,7 @@ if (typeof Shiny === 'undefined') {{
   Object.keys(instances).forEach(function(mapId) {{
     var inst = instances[mapId];
     var deckLayers = buildDeckLayers(
-      structuredClone(layersData), mapId, inst.tooltipConfig
+      structuredClone(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);

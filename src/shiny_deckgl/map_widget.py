@@ -716,6 +716,11 @@ class MapWidget:
             New tooltip configuration dict (same format as the constructor's
             ``tooltip`` parameter), or ``None`` to disable tooltips.
         """
+        if tooltip is not None and "html" not in tooltip:
+            raise ValueError(
+                "tooltip dict must contain an 'html' key with a template string, "
+                f"got keys: {list(tooltip.keys())}"
+            )
         self.tooltip = tooltip
         await session.send_custom_message("deck_update_tooltip", {
             "id": self.id,
@@ -2124,7 +2129,7 @@ if (typeof Shiny === 'undefined') {{
   Object.keys(instances).forEach(function(mapId) {{
     var inst = instances[mapId];
     var deckLayers = buildDeckLayers(
-      structuredClone(layersData), mapId, inst.tooltipConfig
+      structuredClone(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);

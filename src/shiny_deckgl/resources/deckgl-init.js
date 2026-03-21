@@ -751,10 +751,30 @@
     });
   }
 
-  // Initialize all deckgl-map divs on page load inside shiny.
-  // Retry until CDN libs (maplibregl, deck) are loaded AND the
-  // .deckgl-map divs exist in the DOM (Bootstrap navbar may render
-  // tab content after shiny:connected fires).
+  // Check whether an element is in a currently visible Bootstrap tab panel.
+  // Elements not inside any .tab-pane are always considered visible.
+  function isInVisibleTab(el) {
+    var pane = el.closest('.tab-pane');
+    // Not inside a tab panel → always visible
+    if (!pane) return true;
+    // Bootstrap marks the active tab pane with .active and/or .show
+    return pane.classList.contains('active') || pane.classList.contains('show');
+  }
+
+  // Safely initialise a single map element with error handling.
+  function safeInitMap(el) {
+    if (mapInstances[el.id]) return; // already initialised
+    try { initMap(el); } catch(e) {
+      console.error('[shiny_deckgl] initMap failed for "' + el.id + '":', e);
+      el.innerHTML = '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
+        '[shiny_deckgl] Map failed to initialise. Check browser console.</div>';
+    }
+  }
+
+  // Initialize deckgl-map divs on page load inside shiny.
+  // Only init maps in the currently visible tab to avoid exhausting
+  // WebGL contexts.  Maps in hidden tabs are lazy-initialised when
+  // their tab is first shown (see shown.bs.tab handler below).
   document.addEventListener('shiny:connected', function() {
     var attempts = 0;
     function tryInit() {
@@ -770,12 +790,8 @@
         return;
       }
       maps.forEach(function(el) {
-        if (!mapInstances[el.id]) {
-          try { initMap(el); } catch(e) {
-            console.error('[shiny_deckgl] initMap failed for "' + el.id + '":', e);
-            el.innerHTML = '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
-              '[shiny_deckgl] Map failed to initialise. Check browser console.</div>';
-          }
+        if (isInVisibleTab(el)) {
+          safeInitMap(el);
         }
       });
     }
@@ -1629,30 +1645,84 @@
   }
 
   // -----------------------------------------------------------------------
-  // Ensure instance helper
+  // Ensure instance helper — lazy init with deferred message queue
   // -----------------------------------------------------------------------
+  // Messages that arrive for maps in hidden tabs are queued here and
+  // replayed when the tab becomes visible (see shown.bs.tab handler).
+  var _deferredMessages = {};  // mapId → [{handler, payload}, ...]
+
   function ensureInstance(targetId, silent) {
     let instance = mapInstances[targetId];
     if (!instance) {
       const el = document.getElementById(targetId);
       if (el) {
-        initMap(el);
-        instance = mapInstances[targetId];
+        // Only init if the map is in a visible tab — otherwise defer
+        // to avoid exhausting WebGL contexts.
+        if (isInVisibleTab(el)) {
+          safeInitMap(el);
+          instance = mapInstances[targetId];
+        }
       }
     }
     if (!instance && !silent) {
-      console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
+      // Don't warn for hidden-tab maps — they will be inited on tab show
+      var el2 = document.getElementById(targetId);
+      if (!el2 || isInVisibleTab(el2)) {
+        console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
+      }
     }
     return instance || null;
+  }
+
+  // Queue a Shiny message for a deferred (hidden-tab) map.
+  function deferMessage(mapId, handler, payload) {
+    if (!_deferredMessages[mapId]) _deferredMessages[mapId] = [];
+    _deferredMessages[mapId].push({handler: handler, payload: payload});
+  }
+
+  // Registered handler functions — populated by addDeferrable() below.
+  var _handlerFns = {};
+
+  // Replay all deferred messages for a map after it has been initialised.
+  function replayDeferredMessages(mapId) {
+    var queue = _deferredMessages[mapId];
+    if (!queue || !queue.length) return;
+    delete _deferredMessages[mapId];
+    queue.forEach(function (msg) {
+      var fn = _handlerFns[msg.handler];
+      if (fn) fn(msg.payload);
+    });
+  }
+
+  // Wrap a Shiny message handler to defer messages for maps in hidden tabs.
+  // Messages are queued and replayed when the tab becomes visible.
+  function addDeferrable(name, fn) {
+    _handlerFns[name] = fn;
+    Shiny.addCustomMessageHandler(name, function (payload) {
+      if (!payload || !payload.id) { fn(payload); return; }
+      // If map is already initialised, run immediately
+      if (mapInstances[payload.id]) { fn(payload); return; }
+      // Map not initialised — check if it's in a hidden tab
+      var el = document.getElementById(payload.id);
+      if (el && !isInVisibleTab(el)) {
+        deferMessage(payload.id, name, payload);
+        return;
+      }
+      // Visible but not init'd — try to init, then run
+      if (el) {
+        safeInitMap(el);
+        if (mapInstances[payload.id]) { fn(payload); return; }
+      }
+      console.warn('[shiny_deckgl] Map "' + payload.id + '" not found — "' + name + '" ignored');
+    });
   }
 
   // -----------------------------------------------------------------------
   // deck_update — main layer push
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_update", function (payload) {
-    if (!payload || !payload.id) return;
+  addDeferrable("deck_update", function (payload) {
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
+    const instance = mapInstances[targetId];
     if (!instance) return;
 
     const { map, overlay } = instance;
@@ -1692,7 +1762,7 @@
     // Wait for all SVG atlases to rasterise (instant if cache hit or none).
     Promise.all(svgAtlasPreloads).then(function () {
     const deckLayers = buildDeckLayers(
-      deepClone(layersData),
+      cloneLayersData(layersData),
       targetId
     );
     const overlayProps = { layers: deckLayers };
@@ -1731,7 +1801,7 @@
   // -----------------------------------------------------------------------
   // deck_partial_update — lightweight layer patch (merge into cached layers)
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_partial_update", function (payload) {
+  addDeferrable("deck_partial_update", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = ensureInstance(targetId);
@@ -1793,7 +1863,7 @@
   // deck_trips_control — pause / resume / reset TripsLayer animation
   // -----------------------------------------------------------------------
   // payload: { id: "map_id", action: "pause" | "resume" | "reset" }
-  Shiny.addCustomMessageHandler("deck_trips_control", function (payload) {
+  addDeferrable("deck_trips_control", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = mapInstances[targetId];
@@ -1817,7 +1887,7 @@
   // -----------------------------------------------------------------------
   // deck_set_widgets — update widgets without resending layers (v0.8.0)
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_widgets", function (payload) {
+  addDeferrable("deck_set_widgets", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -1831,7 +1901,7 @@
   // -----------------------------------------------------------------------
   // deck_fly_to — smooth flyTo camera transition (v0.8.0)
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_fly_to", function (payload) {
+  addDeferrable("deck_fly_to", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -1850,7 +1920,7 @@
   // -----------------------------------------------------------------------
   // deck_ease_to — smooth easeTo camera transition (v0.8.0)
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_ease_to", function (payload) {
+  addDeferrable("deck_ease_to", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -1868,7 +1938,7 @@
   // -----------------------------------------------------------------------
   // deck_set_controller — configure map controller behaviour
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_controller", function (payload) {
+  addDeferrable("deck_set_controller", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -1881,7 +1951,7 @@
   // -----------------------------------------------------------------------
   // deck_set_cooperative_gestures — toggle cooperative gestures
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_cooperative_gestures", function (payload) {
+  addDeferrable("deck_set_cooperative_gestures", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -1900,7 +1970,7 @@
   // -----------------------------------------------------------------------
   // deck_layer_visibility — toggle without resending data
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_layer_visibility", function (payload) {
+  addDeferrable("deck_layer_visibility", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = ensureInstance(targetId);
@@ -1927,7 +1997,7 @@
   // -----------------------------------------------------------------------
   // deck_add_drag_marker — draggable MapLibre marker → Shiny input
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_drag_marker", function (payload) {
+  addDeferrable("deck_add_drag_marker", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = ensureInstance(targetId);
@@ -1969,7 +2039,7 @@
   // -----------------------------------------------------------------------
   // deck_set_style — change the basemap style dynamically
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_style", function (payload) {
+  addDeferrable("deck_set_style", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2019,7 +2089,7 @@
   // -----------------------------------------------------------------------
   // deck_add_control — add a MapLibre control
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_control", function (payload) {
+  addDeferrable("deck_add_control", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2044,7 +2114,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_control — remove a MapLibre control
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_control", function (payload) {
+  addDeferrable("deck_remove_control", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2059,7 +2129,7 @@
   // -----------------------------------------------------------------------
   // deck_set_controls — replace all MapLibre controls at once
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_controls", function (payload) {
+  addDeferrable("deck_set_controls", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2101,7 +2171,7 @@
   // -----------------------------------------------------------------------
   // deck_fit_bounds — fit map to geographic bounds
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_fit_bounds", function (payload) {
+  addDeferrable("deck_fit_bounds", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2127,7 +2197,7 @@
   // -----------------------------------------------------------------------
   // deck_add_source — add a native MapLibre source
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_source", function (payload) {
+  addDeferrable("deck_add_source", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2157,7 +2227,7 @@
   // -----------------------------------------------------------------------
   // deck_add_maplibre_layer — add a native MapLibre rendering layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_maplibre_layer", function (payload) {
+  addDeferrable("deck_add_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2180,7 +2250,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_maplibre_layer — remove a native MapLibre layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_maplibre_layer", function (payload) {
+  addDeferrable("deck_remove_maplibre_layer", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2196,7 +2266,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_source — remove a native MapLibre source
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_source", function (payload) {
+  addDeferrable("deck_remove_source", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2211,7 +2281,7 @@
   // -----------------------------------------------------------------------
   // deck_set_source_data — update GeoJSON source data
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_source_data", function (payload) {
+  addDeferrable("deck_set_source_data", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2227,7 +2297,7 @@
   // -----------------------------------------------------------------------
   // deck_add_image — load a remote image into the map style for symbol layers
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_image", function (payload) {
+  addDeferrable("deck_add_image", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2263,7 +2333,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_image — remove a named image from the map style
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_image", function (payload) {
+  addDeferrable("deck_remove_image", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2277,7 +2347,7 @@
   // -----------------------------------------------------------------------
   // deck_has_image — check if image is loaded, report back via Shiny input
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_has_image", function (payload) {
+  addDeferrable("deck_has_image", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2293,7 +2363,7 @@
   // -----------------------------------------------------------------------
   // deck_set_paint_property — set paint property on a MapLibre layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_paint_property", function (payload) {
+  addDeferrable("deck_set_paint_property", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2305,7 +2375,7 @@
   // -----------------------------------------------------------------------
   // deck_set_layout_property — set layout property on a MapLibre layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_layout_property", function (payload) {
+  addDeferrable("deck_set_layout_property", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2317,7 +2387,7 @@
   // -----------------------------------------------------------------------
   // deck_set_filter — set data-driven filter on a MapLibre layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_filter", function (payload) {
+  addDeferrable("deck_set_filter", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2329,7 +2399,7 @@
   // -----------------------------------------------------------------------
   // deck_set_projection — switch between mercator and globe
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_projection", function (payload) {
+  addDeferrable("deck_set_projection", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2346,7 +2416,7 @@
   // -----------------------------------------------------------------------
   // deck_set_terrain — enable/disable 3D terrain
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_terrain", function (payload) {
+  addDeferrable("deck_set_terrain", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2363,7 +2433,7 @@
   // -----------------------------------------------------------------------
   // deck_set_sky — atmosphere/sky properties
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_sky", function (payload) {
+  addDeferrable("deck_set_sky", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2378,7 +2448,7 @@
   // -----------------------------------------------------------------------
   // deck_add_popup — attach click popup to a native MapLibre layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_popup", function (payload) {
+  addDeferrable("deck_add_popup", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2447,7 +2517,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_popup — detach popup handler from a native layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_popup", function (payload) {
+  addDeferrable("deck_remove_popup", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.popupHandlers) return;
@@ -2466,7 +2536,7 @@
   // -----------------------------------------------------------------------
   // deck_query_features — query rendered features and return to Shiny
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_query_features", function (payload) {
+  addDeferrable("deck_query_features", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2507,7 +2577,7 @@
   // -----------------------------------------------------------------------
   // deck_query_at_lnglat — project to pixels then query
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_query_at_lnglat", function (payload) {
+  addDeferrable("deck_query_at_lnglat", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2543,7 +2613,7 @@
   // -----------------------------------------------------------------------
   // deck_add_marker — add or replace a named marker
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_marker", function (payload) {
+  addDeferrable("deck_add_marker", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2596,7 +2666,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_marker — remove a named marker
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_marker", function (payload) {
+  addDeferrable("deck_remove_marker", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.markers) return;
@@ -2610,7 +2680,7 @@
   // -----------------------------------------------------------------------
   // deck_clear_markers — remove all named markers
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_clear_markers", function (payload) {
+  addDeferrable("deck_clear_markers", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.markers) return;
@@ -2624,7 +2694,7 @@
   // -----------------------------------------------------------------------
   // deck_enable_draw — add MapboxDraw to the map
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_enable_draw", function (payload) {
+  addDeferrable("deck_enable_draw", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2700,7 +2770,7 @@
   // -----------------------------------------------------------------------
   // deck_disable_draw — remove draw control
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_disable_draw", function (payload) {
+  addDeferrable("deck_disable_draw", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
@@ -2721,7 +2791,7 @@
   // -----------------------------------------------------------------------
   // deck_get_drawn_features — request current features
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_get_drawn_features", function (payload) {
+  addDeferrable("deck_get_drawn_features", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
@@ -2733,7 +2803,7 @@
   // -----------------------------------------------------------------------
   // deck_delete_drawn — delete specific or all drawn features
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_delete_drawn", function (payload) {
+  addDeferrable("deck_delete_drawn", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance || !instance.draw) return;
@@ -2749,7 +2819,7 @@
   // -----------------------------------------------------------------------
   // deck_set_feature_state
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_feature_state", function (payload) {
+  addDeferrable("deck_set_feature_state", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2765,7 +2835,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_feature_state
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_feature_state", function (payload) {
+  addDeferrable("deck_remove_feature_state", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2786,7 +2856,7 @@
   // -----------------------------------------------------------------------
   // deck_export_image — screenshot the map canvas
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_export_image", function (payload) {
+  addDeferrable("deck_export_image", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2821,7 +2891,7 @@
   // -----------------------------------------------------------------------
   // deck_add_cluster_layer — convenience: GeoJSON source + cluster layers
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_add_cluster_layer", function (payload) {
+  addDeferrable("deck_add_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -2973,7 +3043,7 @@
   // -----------------------------------------------------------------------
   // deck_remove_cluster_layer — remove cluster source + all its layers
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_remove_cluster_layer", function (payload) {
+  addDeferrable("deck_remove_cluster_layer", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -3022,6 +3092,7 @@
     panel.querySelectorAll('.deckgl-map').forEach(function (el) {
       const inst = mapInstances[el.id];
       if (inst && inst.map) {
+        // Already initialised — just resize and re-render
         setTimeout(function () {
           inst.map.resize();
           // Re-apply current layers to force deck.gl re-render
@@ -3034,6 +3105,14 @@
             inst.map.triggerRepaint();
           }
         }, 50);
+      } else {
+        // Lazy-init: this map was deferred because its tab was hidden
+        // at page load to avoid exhausting WebGL contexts.
+        // After init, replay any Shiny messages that were queued.
+        setTimeout(function () {
+          safeInitMap(el);
+          replayDeferredMessages(el.id);
+        }, 50);
       }
     });
   });
@@ -3041,7 +3120,7 @@
   // -----------------------------------------------------------------------
   // deck_update_tooltip — change tooltip config (no layer rebuild needed)
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_update_tooltip", function (payload) {
+  addDeferrable("deck_update_tooltip", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
@@ -3053,7 +3132,7 @@
   // -----------------------------------------------------------------------
   // deck_set_animation — start/stop property animations for a layer
   // -----------------------------------------------------------------------
-  Shiny.addCustomMessageHandler("deck_set_animation", function (payload) {
+  addDeferrable("deck_set_animation", function (payload) {
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;

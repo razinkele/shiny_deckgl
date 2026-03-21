@@ -127,6 +127,19 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.9.0 — Security Hardening, Lazy Init & Expanded Sprite Library
+
+| Capability | Details |
+| --- | --- |
+| **XSS hardening** | `sanitizeHtml` DOM-based sanitizer (replaces regex) strips 12 tag types, all `on*` event handlers, and `javascript:` URIs. Applied to tooltip `innerHTML`, marker popups, and native popups. |
+| **Tooltip validation** | `MapWidget` constructor and `update_tooltip()` raise `ValueError` when the `tooltip` dict is missing the required `"html"` key. Shared `_validate_tooltip()` helper enforces the same rules in both places. |
+| **Lazy map initialization** | Maps in hidden Bootstrap tabs defer WebGL context creation until the tab is first shown. Deferred messages are queued and replayed automatically, preventing wasted GPU contexts and blank-canvas bugs. |
+| **Sprite library — 10 dorsal silhouettes** | `ICON_ATLAS` and `ICON_MAPPING` expanded from 3 side-view SVG seals to 10 top-down PNG species: Grey seal, Ringed seal, Harbour seal, Harbour porpoise, Bottlenose dolphin, White-beaked dolphin, Atlantic cod, Baltic herring, Atlantic salmon, European smelt. Species-specific scaling reflects real body size proportions. |
+| **`sprites/build_atlas.py`** | Sprite build pipeline — drop source PNGs into `sprites/src/`, run the script, and it auto-generates the atlas PNG and `ICON_MAPPING` dict. |
+| **Error visibility** | `initMap` and CDN timeout failures now surface a styled in-map error banner instead of only logging to the console. |
+| **Robustness** | `replayDeferredMessages` uses per-handler try/catch so one bad message cannot abort the queue. `isInVisibleTab` walks the full Bootstrap ancestor chain. `cloneLayersData` performs a 2-level deep clone of transition specs. |
+| **Test infrastructure** | `_FakeSession` consolidated into shared `conftest.py`. 10 new XSS/validation tests in `test_tooltip_xss.py`. |
+
 ### v1.7.0 — Layer Legend Widget, Animation API & Color Ramps
 
 | Capability | Details |
@@ -404,7 +417,9 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/resources/styles.css` | Minimal layout + tooltip styles for `.deckgl-map` containers. |
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
 | `src/shiny_deckgl/_sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
+| `sprites/build_atlas.py` | Sprite build pipeline — drop source PNGs into `sprites/src/`, auto-generates atlas PNG and `ICON_MAPPING` dict. |
 | `tests/test_basic.py` | 1 078 unit tests covering all features. |
+| `tests/test_tooltip_xss.py` | 10 XSS/validation tests covering `sanitizeHtml`, tooltip validation, and hyphenated field templates. |
 
 ## Performance Patterns
 

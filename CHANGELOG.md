@@ -5,6 +5,82 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.9.0] — 2026-03-21
+
+### Added
+
+- **DOM-based HTML sanitizer (`sanitizeHtml`)** — Replaces the previous regex
+  approach with a `DOMParser`-based sanitizer that strips 12 dangerous tag types
+  (`script`, `iframe`, `object`, `embed`, `form`, `input`, `button`, `link`,
+  `meta`, `base`, `style`, `svg`), all `on*` event-handler attributes, and
+  `javascript:` URI schemes.  Applied to all three HTML injection paths: tooltip
+  `innerHTML`, marker popup content, and native popup content.
+- **Lazy map initialization per Bootstrap tab** — Maps inside hidden Bootstrap
+  tabs defer WebGL context creation until the tab is first shown.  Deferred
+  messages are queued and replayed automatically on tab activation, preventing
+  wasted GPU contexts and invisible-canvas bugs.
+- **Sprite library expanded to 10 dorsal silhouettes** — `ICON_ATLAS` and
+  `ICON_MAPPING` now cover ten Baltic/North Sea species rendered as top-down
+  PNG silhouettes: Grey seal, Ringed seal, Harbour seal, Harbour porpoise,
+  Bottlenose dolphin, White-beaked dolphin, Atlantic cod, Baltic herring,
+  Atlantic salmon, European smelt.  Species-specific scaling reflects real body
+  size proportions.
+- **`sprites/build_atlas.py` sprite build pipeline** — Drop source PNGs into
+  `sprites/src/`, run `build_atlas.py`, and the script auto-generates a new
+  atlas PNG and `ICON_MAPPING` dict.
+- **Tooltip template support for hyphenated GeoJSON fields** — Template regex
+  now matches `{iso-a3}` style placeholders in addition to plain `{field}` names.
+- **`_validate_tooltip()` shared helper** — DRY validation used by both the
+  `MapWidget` constructor and `update_tooltip()`.  Raises `ValueError` if the
+  tooltip dict is missing the required `"html"` key.
+- **10 XSS/validation tests in `test_tooltip_xss.py`** — Covers
+  `sanitizeHtml` stripping, `javascript:` URI rejection, hyphenated placeholder
+  expansion, and constructor/`update_tooltip` validation.
+- **`_FakeSession` consolidated into `conftest.py`** — Shared test fixture
+  replaces per-file duplicates across the test suite.
+
+### Fixed
+
+- **`initMap` now shows a visible error banner on failure** — Previously only
+  logged `console.warn`; now surfaces a styled in-map error message.
+- **CDN timeout shows visible error after 10 s** — Users see a clear message
+  when CDN scripts fail to load rather than a blank map.
+- **CDN race guard in `addDeferrable`** — If a deferrable message arrives before
+  CDN libs are ready, it is deferred instead of crashing the message handler.
+- **`replayDeferredMessages` per-handler try/catch** — A single failing handler
+  no longer aborts the replay of subsequent queued messages.
+- **`getOrCreateTooltipEl` returns `null` on missing container** — Prevents
+  orphan DOM tooltip nodes when the map container has been removed.
+- **`isInVisibleTab` walks the full ancestor chain** — Correctly handles maps
+  nested inside multiple levels of Bootstrap tabs.
+- **`cloneLayersData` performs a 2-level deep clone of transition specs** —
+  Prevents shared-reference mutations when transitions are applied across
+  multiple layer updates.
+- **`tooltipConfig` read at hover time** — Tooltip configuration is now read
+  from the widget instance at the moment of hover rather than being captured at
+  layer-build time; eliminates unnecessary layer rebuilds when tooltip config
+  changes.
+- **Dead `tooltipConfig` parameter removed from `buildDeckLayers`** — Cleans up
+  the internal API.
+- **`Promise.all` `.catch()` handlers** added to `deck_update` and
+  `startTripsAnimation` message handlers.
+- **Cluster expansion zoom `.catch()` handler** added.
+- **Legend color parse errors** demoted to `console.debug` to reduce noise.
+- **Unknown `trips_control` actions** now log a `console.warn` listing valid
+  values.
+- **Tooltip inline style reset** before each new config is applied, preventing
+  stale style properties from persisting across tooltip config changes.
+- **Bottom-placed legend widget** now applies `marginBottom` to clear the
+  MapLibre attribution bar.
+
+### Changed
+
+- **`ICON_ATLAS`** format changed from base64-encoded SVG to PNG for reliable
+  WebGL texture upload across all browsers.
+- **`update_tooltip()` validation** now matches constructor validation
+  (uses shared `_validate_tooltip` helper).
+
+---
 ## [1.8.0] — 2026-03-19
 
 ### Added

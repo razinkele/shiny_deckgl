@@ -540,7 +540,12 @@
     let tooltipConfig = null;
     if (el.dataset.tooltip) {
       try {
-        tooltipConfig = JSON.parse(el.dataset.tooltip);
+        var parsed = JSON.parse(el.dataset.tooltip);
+        if (parsed && typeof parsed.html === 'string') {
+          tooltipConfig = parsed;
+        } else {
+          console.warn('[shiny_deckgl] data-tooltip JSON must have an "html" string key, got:', typeof parsed.html);
+        }
       } catch (e) {
         console.warn('[shiny_deckgl] Failed to parse data-tooltip JSON:', e.message);
       }

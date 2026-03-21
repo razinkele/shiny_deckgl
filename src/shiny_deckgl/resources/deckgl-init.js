@@ -39,7 +39,7 @@
 
   function interpolateTemplate(template, obj) {
     if (!template || !obj) return '';
-    return template.replace(/\{(\w+(?:\.\w+)*)\}/g, function (_match, path) {
+    return template.replace(/\{([\w-]+(?:\.[\w-]+)*)\}/g, function (_match, path) {
       let val = obj;
       for (const key of path.split('.')) {
         if (val == null) return '';

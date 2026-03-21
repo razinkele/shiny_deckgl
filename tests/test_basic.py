@@ -5375,7 +5375,7 @@ class TestIconAtlas:
         b64 = ICON_ATLAS.split(",", 1)[1]
         svg = base64.b64decode(b64).decode("utf-8")
         assert "<svg" in svg
-        assert 'width="192"' in svg
+        assert 'width="576"' in svg
         assert 'height="64"' in svg
 
     def test_species_colours_in_svg(self):
@@ -5386,18 +5386,29 @@ class TestIconAtlas:
         assert "#7a8a8a" in svg  # Grey seal
         assert "#4a8cdc" in svg  # Ringed seal
         assert "#c8a050" in svg  # Harbour seal
+        assert "#5a7a8a" in svg  # Harbour porpoise
+        assert "#6a9ab0" in svg  # Bottlenose dolphin
+        assert "#8ab0c0" in svg  # White-beaked dolphin
+        assert "#8a7a5a" in svg  # Atlantic cod
+        assert "#7a8aaa" in svg  # Baltic herring
+        assert "#c08060" in svg  # Atlantic salmon
 
 
 class TestIconMapping:
     """Validate icon-mapping dict."""
 
-    def test_three_species(self):
+    def test_nine_species(self):
         from shiny_deckgl.ibm import ICON_MAPPING
-        assert len(ICON_MAPPING) == 3
+        assert len(ICON_MAPPING) == 9
 
     def test_species_keys(self):
         from shiny_deckgl.ibm import ICON_MAPPING
-        assert set(ICON_MAPPING.keys()) == {"Grey seal", "Ringed seal", "Harbour seal"}
+        expected = {
+            "Grey seal", "Ringed seal", "Harbour seal",
+            "Harbour porpoise", "Bottlenose dolphin", "White-beaked dolphin",
+            "Atlantic cod", "Baltic herring", "Atlantic salmon",
+        }
+        assert set(ICON_MAPPING.keys()) == expected
 
     def test_icon_dimensions(self):
         from shiny_deckgl.ibm import ICON_MAPPING
@@ -5411,7 +5422,7 @@ class TestIconMapping:
     def test_non_overlapping_x(self):
         from shiny_deckgl.ibm import ICON_MAPPING
         xs = [m["x"] for m in ICON_MAPPING.values()]
-        assert len(set(xs)) == 3  # all unique
+        assert len(set(xs)) == 9  # all unique
 
 
 class TestMakeSealTrips:

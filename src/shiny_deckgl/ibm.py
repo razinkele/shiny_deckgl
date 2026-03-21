@@ -1,7 +1,8 @@
 """Individual-Based Model (IBM) movement-visualisation assets.
 
-This module provides **species-agnostic** visual assets and helpers for
-rendering animal movement tracks on a deck.gl map.
+This module provides visual assets and helpers for rendering animal
+movement tracks on a deck.gl map.  Nine Baltic Sea species are included:
+seals (3), dolphins (3), and fish (3).
 
 Visual Assets
 -------------
@@ -46,77 +47,181 @@ __all__ = [
 
 #: RGBA colours per species for consistent rendering across layers.
 SPECIES_COLORS: dict[str, list[int]] = {
-    "Grey seal":    [100, 100, 100, 220],   # slate grey
-    "Ringed seal":  [70, 140, 220, 220],    # icy blue
-    "Harbour seal": [180, 140, 80, 220],    # sandy brown
+    # Seals
+    "Grey seal":            [100, 100, 100, 220],  # slate grey
+    "Ringed seal":          [70, 140, 220, 220],   # icy blue
+    "Harbour seal":         [180, 140, 80, 220],   # sandy brown
+    # Dolphins
+    "Harbour porpoise":     [90, 122, 138, 220],   # steel blue-grey
+    "Bottlenose dolphin":   [106, 154, 176, 220],  # ocean blue
+    "White-beaked dolphin": [138, 176, 192, 220],  # pale blue
+    # Fish
+    "Atlantic cod":         [138, 122, 90, 220],   # olive brown
+    "Baltic herring":       [122, 138, 170, 220],  # steel blue
+    "Atlantic salmon":      [192, 128, 96, 220],   # copper
 }
 
 # ---------------------------------------------------------------------------
 # SVG icon atlas (base64-encoded sprite sheet for deck.gl IconLayer)
 # ---------------------------------------------------------------------------
-# Three 64×64 species-coloured seal silhouettes in a 192×64 strip.
-# Each species has its own fill colour, a darker accent stroke for
-# definition, a lighter belly patch, and a tiny eye dot.
+# Nine 64×64 species-coloured dorsal (top-down) silhouettes in a 576×64 strip.
+# Each species has its own fill colour, a darker stroke for definition, and a
+# midline spine accent.  All face RIGHT so the JS rotation logic (atan2) works.
 # Base64 encoding is used for reliable loading across browsers.
-# viewBox is 0 0 192 64, aligned with the on-screen sprite dimensions.
-# Each species is drawn with SVG <path> elements for a realistic
-# swimming-seal silhouette (torpedo body, rounded head, hind flippers).
 #
-# Grey seal    (x=0):   #7a8a8a slate-grey, bulky body, broad snout
-# Ringed seal  (x=64):  #4a8cdc icy blue, slender body, small head
-# Harbour seal (x=128): #c8a050 sandy gold, medium build, rounded head
+# Seals (teardrop body, 4 splayed flippers, V-tail):
+#   Grey seal         (x=0):   #7a8a8a — widest, bulky oval
+#   Ringed seal       (x=64):  #4a8cdc — slender, elongated
+#   Harbour seal      (x=128): #c8a050 — medium build
+#
+# Dolphins (streamlined torpedo, pectoral fin wings, horizontal tail flukes):
+#   Harbour porpoise  (x=192): #5a7a8a — smallest, rounded snout
+#   Bottlenose dolphin(x=256): #6a9ab0 — larger, pronounced beak
+#   White-beaked dolphin(x=320):#8ab0c0 — short beak, wider body
+#
+# Fish (fusiform body, pectoral fin wings, forked tail):
+#   Atlantic cod      (x=384): #8a7a5a — broad head, tapering
+#   Baltic herring    (x=448): #7a8aaa — slender, deeply forked
+#   Atlantic salmon   (x=512): #c08060 — robust, slightly forked
 
-#: Base64-encoded data-URI of the 192×64 SVG sprite-sheet.  Pass this as
+#: Base64-encoded data-URI of the 576×64 SVG sprite-sheet.  Pass this as
 #: ``iconAtlas`` to ``icon_layer()`` or the ``_tripsHeadIcons`` dict.
 ICON_ATLAS: str = (
     "data:image/svg+xml;base64,"
-    "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIx"
-    "OTIiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCAxOTIgNjQiPjxnIHRyYW5zZm9y"
-    "bT0idHJhbnNsYXRlKDAsMCkiPjxwYXRoIGQ9Ik0gNiwzNCBDIDQsMzAgMywyOCA2"
-    "LDI2IEwgOCwyNCBDIDEwLDIyIDEwLDI2IDEyLDI4IEMgMTYsMjIgMjQsMTggMzQs"
-    "MTggQyA0MiwxOCA0OCwyMCA1MiwyNCBDIDU2LDI2IDU4LDI4IDU4LDMwIEMgNjAs"
-    "MzEgNjAsMzMgNTgsMzQgQyA1NiwzNiA1NCwzOCA1MCwzOCBDIDQ2LDQwIDQwLDQy"
-    "IDM0LDQyIEMgMjQsNDIgMTYsNDAgMTIsMzYgQyAxMCwzOCAxMCwzNiA4LDM4IEwg"
-    "Niw0MCBDIDMsMzggNCwzNiA2LDM0IFoiIGZpbGw9IiM3YThhOGEiIHN0cm9rZT0i"
-    "IzVhNmE2YSIgc3Ryb2tlLXdpZHRoPSIwLjgiLz48cGF0aCBkPSJNIDIwLDMwIEMg"
-    "MjYsMjggNDAsMjggNDgsMzAgQyA0OCwzNCA0MCwzOCAzNCwzOCBDIDI2LDM4IDIw"
-    "LDM0IDIwLDMwIFoiIGZpbGw9IiM5NWE1YTAiIG9wYWNpdHk9IjAuNCIvPjxlbGxp"
-    "cHNlIGN4PSI0MCIgY3k9IjQwIiByeD0iNSIgcnk9IjIiIGZpbGw9IiM1YTZhNmEi"
-    "IHRyYW5zZm9ybT0icm90YXRlKC0xNSw0MCw0MCkiLz48Y2lyY2xlIGN4PSIxMCIg"
-    "Y3k9IjI2IiByPSIxLjIiIGZpbGw9IiMyMjIiIG9wYWNpdHk9IjAuNyIvPjwvZz48"
-    "ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg2NCwwKSI+PHBhdGggZD0iTSA4LDM0IEMg"
-    "NiwzMSA1LDI5IDgsMjcgTCAxMCwyNSBDIDExLDIzIDExLDI3IDE0LDI5IEMgMTgs"
-    "MjMgMjYsMjAgMzUsMjAgQyA0MiwyMCA0NywyMiA1MCwyNSBDIDUzLDI3IDU1LDI5"
-    "IDU1LDMxIEMgNTcsMzIgNTcsMzQgNTUsMzUgQyA1MywzNyA1MSwzOCA0OCwzOCBD"
-    "IDQ0LDQwIDM4LDQxIDM1LDQxIEMgMjYsNDEgMTgsMzkgMTQsMzYgQyAxMSwzNyAx"
-    "MSwzNiAxMCwzOCBMIDgsMzkgQyA1LDM4IDYsMzYgOCwzNCBaIiBmaWxsPSIjNGE4"
-    "Y2RjIiBzdHJva2U9IiMzNDZhYjAiIHN0cm9rZS13aWR0aD0iMC44Ii8+PHBhdGgg"
-    "ZD0iTSAyMiwzMCBDIDI4LDI4IDQwLDI5IDQ3LDMxIEMgNDcsMzQgMzksMzcgMzUs"
-    "MzcgQyAyNywzNyAyMiwzNCAyMiwzMCBaIiBmaWxsPSIjNmVhYWYwIiBvcGFjaXR5"
-    "PSIwLjQiLz48ZWxsaXBzZSBjeD0iMzgiIGN5PSIzOS41IiByeD0iNCIgcnk9IjEu"
-    "NSIgZmlsbD0iIzM0NmFiMCIgdHJhbnNmb3JtPSJyb3RhdGUoLTEyLDM4LDM5LjUp"
-    "Ii8+PGNpcmNsZSBjeD0iMTIiIGN5PSIyNyIgcj0iMSIgZmlsbD0iIzIyMiIgb3Bh"
-    "Y2l0eT0iMC43Ii8+PC9nPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEyOCwwKSI+"
-    "PHBhdGggZD0iTSA3LDM0IEMgNSwzMSA0LDI5IDcsMjcgTCA5LDI1IEMgMTAsMjMg"
-    "MTAsMjcgMTMsMjkgQyAxNywyMiAyNSwxOSAzNCwxOSBDIDQyLDE5IDQ3LDIxIDUx"
-    "LDI0IEMgNTQsMjYgNTYsMjggNTYsMzEgQyA1OCwzMiA1OCwzNCA1NiwzNSBDIDU0"
-    "LDM3IDUyLDM4IDQ5LDM4IEMgNDUsNDAgMzksNDIgMzQsNDIgQyAyNSw0MiAxNyw0"
-    "MCAxMywzNiBDIDEwLDM3IDEwLDM2IDksMzggTCA3LDQwIEMgNCwzOCA1LDM2IDcs"
-    "MzQgWiIgZmlsbD0iI2M4YTA1MCIgc3Ryb2tlPSIjOWE3YTMwIiBzdHJva2Utd2lk"
-    "dGg9IjAuOCIvPjxwYXRoIGQ9Ik0gMjEsMzAgQyAyNywyOCA0MCwyOCA0OCwzMSBD"
-    "IDQ4LDM0IDQwLDM4IDM0LDM4IEMgMjYsMzggMjEsMzQgMjEsMzAgWiIgZmlsbD0i"
-    "I2UwYzg3OCIgb3BhY2l0eT0iMC40Ii8+PGVsbGlwc2UgY3g9IjM5IiBjeT0iNDAi"
-    "IHJ4PSI0LjUiIHJ5PSIxLjgiIGZpbGw9IiM5YTdhMzAiIHRyYW5zZm9ybT0icm90"
-    "YXRlKC0xNCwzOSw0MCkiLz48Y2lyY2xlIGN4PSIxMSIgY3k9IjI3IiByPSIxLjEi"
-    "IGZpbGw9IiMyMjIiIG9wYWNpdHk9IjAuNyIvPjwvZz48L3N2Zz4="
+    "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1"
+    "NzYiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA1NzYgNjQiPgo8IS0tIEdyZXkg"
+    "c2VhbDogYnVsa3kgb3ZhbCwgYnJvYWQgaGVhZCwgNCBmbGlwcGVycywgVi10YWls"
+    "IC0tPgo8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLDApIj4KPHBhdGggZD0iTSAx"
+    "MCwzMiBDIDEwLDI2IDE0LDIwIDIwLDE4IEMgMjYsMTYgMzQsMTYgNDAsMTcgQyA0"
+    "NiwxOCA1MiwyMSA1NiwyNiBDIDU4LDI4IDU4LDM2IDU2LDM4IEMgNTIsNDMgNDYs"
+    "NDYgNDAsNDcgQyAzNCw0OCAyNiw0OCAyMCw0NiBDIDE0LDQ0IDEwLDM4IDEwLDMy"
+    "IFogTSA4LDI0IEwgNCwxOCBNIDgsNDAgTCA0LDQ2IE0gNTIsMjQgTCA1NiwyMCBN"
+    "IDUyLDQwIEwgNTYsNDQgTSA1NiwzMCBMIDYyLDI4IEMgNjIsMzIgNjIsMzIgNjIs"
+    "MzYgTCA1NiwzNCIgZmlsbD0iIzdhOGE4YSIgc3Ryb2tlPSIjNWE2YTZhIiBzdHJv"
+    "a2Utd2lkdGg9IjAuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CjxsaW5lIHgx"
+    "PSIxMiIgeTE9IjMyIiB4Mj0iNTYiIHkyPSIzMiIgc3Ryb2tlPSIjNWE2YTZhIiBz"
+    "dHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9IjAuNSIgc3Ryb2tlLWxpbmVjYXA9InJv"
+    "dW5kIi8+CjwvZz4KPCEtLSBSaW5nZWQgc2VhbDogc2xlbmRlciwgZWxvbmdhdGVk"
+    "LCBuYXJyb3cgaGVhZCAtLT4KPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNjQsMCki"
+    "Pgo8cGF0aCBkPSJNIDgsMzIgQyA4LDI3IDEyLDIyIDE4LDIwIEMgMjQsMTggMzIs"
+    "MTcgMzgsMTggQyA0NCwxOSA1MCwyMiA1NCwyNyBDIDU2LDI5IDU2LDM1IDU0LDM3"
+    "IEMgNTAsNDIgNDQsNDUgMzgsNDYgQyAzMiw0NyAyNCw0NiAxOCw0NCBDIDEyLDQy"
+    "IDgsMzcgOCwzMiBaIE0gNywyNSBMIDMsMjAgTSA3LDM5IEwgMyw0NCBNIDUwLDI1"
+    "IEwgNTQsMjEgTSA1MCwzOSBMIDU0LDQzIE0gNTQsMzAgTCA2MCwyOCBDIDYxLDMy"
+    "IDYxLDMyIDYwLDM2IEwgNTQsMzQiIGZpbGw9IiM0YThjZGMiIHN0cm9rZT0iIzM0"
+    "NmFiMCIgc3Ryb2tlLXdpZHRoPSIwLjgiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIv"
+    "Pgo8bGluZSB4MT0iMTAiIHkxPSIzMiIgeDI9IjU0IiB5Mj0iMzIiIHN0cm9rZT0i"
+    "IzM0NmFiMCIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAuNSIgc3Ryb2tl"
+    "LWxpbmVjYXA9InJvdW5kIi8+CjwvZz4KPCEtLSBIYXJib3VyIHNlYWw6IG1lZGl1"
+    "bSBidWlsZCwgcm91bmRlZCBoZWFkIC0tPgo8ZyB0cmFuc2Zvcm09InRyYW5zbGF0"
+    "ZSgxMjgsMCkiPgo8cGF0aCBkPSJNIDksMzIgQyA5LDI2IDEzLDIxIDE5LDE5IEMg"
+    "MjUsMTcgMzMsMTYgMzksMTcgQyA0NSwxOCA1MSwyMiA1NSwyNyBDIDU3LDI5IDU3"
+    "LDM1IDU1LDM3IEMgNTEsNDIgNDUsNDYgMzksNDcgQyAzMyw0OCAyNSw0NyAxOSw0"
+    "NSBDIDEzLDQzIDksMzggOSwzMiBaIE0gNywyNCBMIDMsMTkgTSA3LDQwIEwgMyw0"
+    "NSBNIDUxLDI0IEwgNTUsMjAgTSA1MSw0MCBMIDU1LDQ0IE0gNTUsMzAgTCA2MSwy"
+    "OCBDIDYyLDMyIDYyLDMyIDYxLDM2IEwgNTUsMzQiIGZpbGw9IiNjOGEwNTAiIHN0"
+    "cm9rZT0iIzlhN2EzMCIgc3Ryb2tlLXdpZHRoPSIwLjgiIHN0cm9rZS1saW5lY2Fw"
+    "PSJyb3VuZCIvPgo8bGluZSB4MT0iMTEiIHkxPSIzMiIgeDI9IjU1IiB5Mj0iMzIi"
+    "IHN0cm9rZT0iIzlhN2EzMCIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAu"
+    "NSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CjwvZz4KPCEtLSBIYXJib3VyIHBv"
+    "cnBvaXNlOiBzbWFsbCB0b3JwZWRvLCByb3VuZGVkIHNub3V0LCBzbWFsbCBwZWN0"
+    "b3JhbCBmaW5zLCBob3Jpem9udGFsIGZsdWtlcyAtLT4KPGcgdHJhbnNmb3JtPSJ0"
+    "cmFuc2xhdGUoMTkyLDApIj4KPHBhdGggZD0iTSA2LDMyIEMgNiwyOCAxMCwyNCAx"
+    "NiwyMiBDIDIyLDIwIDMwLDIwIDM4LDIyIEMgNDQsMjQgNTAsMjggNTQsMzIgQyA1"
+    "MCwzNiA0NCw0MCAzOCw0MiBDIDMwLDQ0IDIyLDQ0IDE2LDQyIEMgMTAsNDAgNiwz"
+    "NiA2LDMyIFoiIGZpbGw9IiM1YTdhOGEiIHN0cm9rZT0iIzNhNWE2YSIgc3Ryb2tl"
+    "LXdpZHRoPSIwLjgiLz4KPHBhdGggZD0iTSAyMCwyMiBMIDE2LDE2IE0gMjAsNDIg"
+    "TCAxNiw0OCIgc3Ryb2tlPSIjM2E1YTZhIiBzdHJva2Utd2lkdGg9IjEuMiIgc3Ry"
+    "b2tlLWxpbmVjYXA9InJvdW5kIi8+CjxwYXRoIGQ9Ik0gNTQsMzIgTCA2MiwyNiBN"
+    "IDU0LDMyIEwgNjIsMzgiIHN0cm9rZT0iIzNhNWE2YSIgc3Ryb2tlLXdpZHRoPSIx"
+    "LjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8bGluZSB4MT0iOCIgeTE9IjMy"
+    "IiB4Mj0iNTQiIHkyPSIzMiIgc3Ryb2tlPSIjM2E1YTZhIiBzdHJva2Utd2lkdGg9"
+    "IjAuOCIgb3BhY2l0eT0iMC41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9n"
+    "Pgo8IS0tIEJvdHRsZW5vc2UgZG9scGhpbjogbGFyZ2VyLCBwcm9ub3VuY2VkIGJl"
+    "YWssIGxvbmdlciBwZWN0b3JhbCBmaW5zIC0tPgo8ZyB0cmFuc2Zvcm09InRyYW5z"
+    "bGF0ZSgyNTYsMCkiPgo8cGF0aCBkPSJNIDQsMzIgQyA0LDI3IDgsMjIgMTQsMjAg"
+    "QyAyMCwxOCAyOCwxOCAzNiwyMCBDIDQyLDIyIDQ4LDI2IDUyLDMyIEMgNDgsMzgg"
+    "NDIsNDIgMzYsNDQgQyAyOCw0NiAyMCw0NiAxNCw0NCBDIDgsNDIgNCwzNyA0LDMy"
+    "IFoiIGZpbGw9IiM2YTlhYjAiIHN0cm9rZT0iIzRhN2E5MCIgc3Ryb2tlLXdpZHRo"
+    "PSIwLjgiLz4KPHBhdGggZD0iTSA1MiwzMiBMIDU4LDMyIiBzdHJva2U9IiM0YTdh"
+    "OTAiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjxw"
+    "YXRoIGQ9Ik0gMTgsMjAgTCAxMiwxMiBNIDE4LDQ0IEwgMTIsNTIiIHN0cm9rZT0i"
+    "IzRhN2E5MCIgc3Ryb2tlLXdpZHRoPSIxLjIiIHN0cm9rZS1saW5lY2FwPSJyb3Vu"
+    "ZCIvPgo8cGF0aCBkPSJNIDUyLDMyIEwgNjIsMjQgTSA1MiwzMiBMIDYyLDQwIiBz"
+    "dHJva2U9IiM0YTdhOTAiIHN0cm9rZS13aWR0aD0iMS41IiBzdHJva2UtbGluZWNh"
+    "cD0icm91bmQiLz4KPGxpbmUgeDE9IjYiIHkxPSIzMiIgeDI9IjU4IiB5Mj0iMzIi"
+    "IHN0cm9rZT0iIzRhN2E5MCIgc3Ryb2tlLXdpZHRoPSIwLjgiIG9wYWNpdHk9IjAu"
+    "NSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CjwvZz4KPCEtLSBXaGl0ZS1iZWFr"
+    "ZWQgZG9scGhpbjogc2hvcnQgYmVhaywgd2lkZXIgYm9keSAtLT4KPGcgdHJhbnNm"
+    "b3JtPSJ0cmFuc2xhdGUoMzIwLDApIj4KPHBhdGggZD0iTSA1LDMyIEMgNSwyNiAx"
+    "MCwyMSAxNiwxOSBDIDIyLDE3IDMwLDE3IDM4LDE5IEMgNDQsMjEgNTAsMjYgNTQs"
+    "MzIgQyA1MCwzOCA0NCw0MyAzOCw0NSBDIDMwLDQ3IDIyLDQ3IDE2LDQ1IEMgMTAs"
+    "NDMgNSwzOCA1LDMyIFoiIGZpbGw9IiM4YWIwYzAiIHN0cm9rZT0iIzZhOTBhMCIg"
+    "c3Ryb2tlLXdpZHRoPSIwLjgiLz4KPHBhdGggZD0iTSA1NCwzMiBMIDU4LDMyIiBz"
+    "dHJva2U9IiM2YTkwYTAiIHN0cm9rZS13aWR0aD0iMS44IiBzdHJva2UtbGluZWNh"
+    "cD0icm91bmQiLz4KPHBhdGggZD0iTSAyMCwxOSBMIDE1LDEzIE0gMjAsNDUgTCAx"
+    "NSw1MSIgc3Ryb2tlPSIjNmE5MGEwIiBzdHJva2Utd2lkdGg9IjEuMiIgc3Ryb2tl"
+    "LWxpbmVjYXA9InJvdW5kIi8+CjxwYXRoIGQ9Ik0gNTQsMzIgTCA2MiwyNSBNIDU0"
+    "LDMyIEwgNjIsMzkiIHN0cm9rZT0iIzZhOTBhMCIgc3Ryb2tlLXdpZHRoPSIxLjUi"
+    "IHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8bGluZSB4MT0iNyIgeTE9IjMyIiB4"
+    "Mj0iNTgiIHkyPSIzMiIgc3Ryb2tlPSIjNmE5MGEwIiBzdHJva2Utd2lkdGg9IjAu"
+    "OCIgb3BhY2l0eT0iMC41IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KPC9nPgo8"
+    "IS0tIEF0bGFudGljIGNvZDogYnJvYWQgaGVhZCwgdGFwZXJpbmcgYm9keSwgcm91"
+    "bmRlZCB0YWlsIGZvcmsgLS0+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDM4NCww"
+    "KSI+CjxwYXRoIGQ9Ik0gNiwzMiBDIDYsMjYgMTIsMjAgMjAsMTggQyAyOCwxNiAz"
+    "NiwxOCA0MiwyMiBDIDQ4LDI2IDUyLDMwIDU0LDMyIEMgNTIsMzQgNDgsMzggNDIs"
+    "NDIgQyAzNiw0NiAyOCw0OCAyMCw0NiBDIDEyLDQ0IDYsMzggNiwzMiBaIiBmaWxs"
+    "PSIjOGE3YTVhIiBzdHJva2U9IiM2YTVhM2EiIHN0cm9rZS13aWR0aD0iMC44Ii8+"
+    "CjxwYXRoIGQ9Ik0gMTQsMTggTCAxMCwxMiBNIDE0LDQ2IEwgMTAsNTIiIHN0cm9r"
+    "ZT0iIzZhNWEzYSIgc3Ryb2tlLXdpZHRoPSIxIiBzdHJva2UtbGluZWNhcD0icm91"
+    "bmQiLz4KPHBhdGggZD0iTSA1NCwzMiBMIDYyLDI2IEMgNjAsMzIgNjAsMzIgNjIs"
+    "MzggTCA1NCwzMiBaIiBmaWxsPSIjNmE1YTNhIiBzdHJva2U9IiM2YTVhM2EiIHN0"
+    "cm9rZS13aWR0aD0iMC41Ii8+CjxsaW5lIHgxPSI4IiB5MT0iMzIiIHgyPSI1NCIg"
+    "eTI9IjMyIiBzdHJva2U9IiM2YTVhM2EiIHN0cm9rZS13aWR0aD0iMC44IiBvcGFj"
+    "aXR5PSIwLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L2c+CjwhLS0gQmFs"
+    "dGljIGhlcnJpbmc6IHNsZW5kZXIsIGRlZXBseSBmb3JrZWQgdGFpbCAtLT4KPGcg"
+    "dHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDQ4LDApIj4KPHBhdGggZD0iTSA4LDMyIEMg"
+    "OCwyOCAxNCwyMyAyMiwyMSBDIDI4LDIwIDM0LDIwIDQwLDIyIEMgNDYsMjQgNTAs"
+    "MjggNTQsMzIgQyA1MCwzNiA0Niw0MCA0MCw0MiBDIDM0LDQ0IDI4LDQ0IDIyLDQz"
+    "IEMgMTQsNDEgOCwzNiA4LDMyIFoiIGZpbGw9IiM3YThhYWEiIHN0cm9rZT0iIzVh"
+    "NmE4YSIgc3Ryb2tlLXdpZHRoPSIwLjgiLz4KPHBhdGggZD0iTSAxOCwyMSBMIDE1"
+    "LDE2IE0gMTgsNDMgTCAxNSw0OCIgc3Ryb2tlPSIjNWE2YThhIiBzdHJva2Utd2lk"
+    "dGg9IjAuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CjxwYXRoIGQ9Ik0gNTQs"
+    "MzIgTCA2MywyNCBNIDU0LDMyIEwgNjMsNDAiIHN0cm9rZT0iIzVhNmE4YSIgc3Ry"
+    "b2tlLXdpZHRoPSIxLjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8bGluZSB4"
+    "MT0iMTAiIHkxPSIzMiIgeDI9IjU0IiB5Mj0iMzIiIHN0cm9rZT0iIzVhNmE4YSIg"
+    "c3Ryb2tlLXdpZHRoPSIwLjYiIG9wYWNpdHk9IjAuNSIgc3Ryb2tlLWxpbmVjYXA9"
+    "InJvdW5kIi8+CjwvZz4KPCEtLSBBdGxhbnRpYyBzYWxtb246IHJvYnVzdCBib2R5"
+    "LCBzbGlnaHRseSBmb3JrZWQgdGFpbCAtLT4KPGcgdHJhbnNmb3JtPSJ0cmFuc2xh"
+    "dGUoNTEyLDApIj4KPHBhdGggZD0iTSA2LDMyIEMgNiwyNiAxMiwyMSAyMCwxOSBD"
+    "IDI2LDE3IDM0LDE3IDQwLDE5IEMgNDYsMjEgNTIsMjYgNTYsMzIgQyA1MiwzOCA0"
+    "Niw0MyA0MCw0NSBDIDM0LDQ3IDI2LDQ3IDIwLDQ1IEMgMTIsNDMgNiwzOCA2LDMy"
+    "IFoiIGZpbGw9IiNjMDgwNjAiIHN0cm9rZT0iI2EwNjA0MCIgc3Ryb2tlLXdpZHRo"
+    "PSIwLjgiLz4KPHBhdGggZD0iTSAxNiwxOSBMIDEyLDEzIE0gMTYsNDUgTCAxMiw1"
+    "MSIgc3Ryb2tlPSIjYTA2MDQwIiBzdHJva2Utd2lkdGg9IjEiIHN0cm9rZS1saW5l"
+    "Y2FwPSJyb3VuZCIvPgo8cGF0aCBkPSJNIDU2LDMyIEwgNjMsMjYgQyA2MSwzMiA2"
+    "MSwzMiA2MywzOCBMIDU2LDMyIFoiIGZpbGw9IiNhMDYwNDAiIHN0cm9rZT0iI2Ew"
+    "NjA0MCIgc3Ryb2tlLXdpZHRoPSIwLjUiLz4KPGxpbmUgeDE9IjgiIHkxPSIzMiIg"
+    "eDI9IjU2IiB5Mj0iMzIiIHN0cm9rZT0iI2EwNjA0MCIgc3Ryb2tlLXdpZHRoPSIw"
+    "LjgiIG9wYWNpdHk9IjAuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CjwvZz4K"
+    "PC9zdmc+"
 )
 
 #: deck.gl icon-mapping dict keyed by species name.
 #: ``anchorY=32`` centres the icon vertically on the point.
 ICON_MAPPING: dict[str, dict] = {
-    "Grey seal":    {"x": 0,   "y": 0, "width": 64, "height": 64, "anchorY": 32},
-    "Ringed seal":  {"x": 64,  "y": 0, "width": 64, "height": 64, "anchorY": 32},
-    "Harbour seal": {"x": 128, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    # Seals
+    "Grey seal":            {"x": 0,   "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "Ringed seal":          {"x": 64,  "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "Harbour seal":         {"x": 128, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    # Dolphins
+    "Harbour porpoise":     {"x": 192, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "Bottlenose dolphin":   {"x": 256, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "White-beaked dolphin": {"x": 320, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    # Fish
+    "Atlantic cod":         {"x": 384, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "Baltic herring":       {"x": 448, "y": 0, "width": 64, "height": 64, "anchorY": 32},
+    "Atlantic salmon":      {"x": 512, "y": 0, "width": 64, "height": 64, "anchorY": 32},
 }
 
 

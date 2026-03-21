@@ -1755,8 +1755,11 @@
   addDeferrable("deck_update", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
-    if (!instance) return;
+    const instance = mapInstances[targetId];
+    if (!instance) {
+      console.warn('[shiny_deckgl] deck_update: map "' + targetId + '" not found');
+      return;
+    }
 
     const { map, overlay } = instance;
 
@@ -1901,7 +1904,7 @@
   addDeferrable("deck_trips_control", function (payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
-    const instance = ensureInstance(targetId);
+    const instance = mapInstances[targetId];
     if (!instance) return;
     const action = payload.action || 'pause';
 

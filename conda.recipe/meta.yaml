@@ -1,6 +1,7 @@
 {% set name = "shiny-deckgl" %}
-# Version must match src/shiny_deckgl/_version.py (single source of truth)
-{% set version = "1.8.0" %}
+# Read version automatically from the single source of truth
+{% set data = load_file_regex(load_file="src/shiny_deckgl/_version.py", regex_pattern='__version__ = "(?P<version>[^"]+)"') %}
+{% set version = data.version %}
 
 package:
   name: {{ name|lower }}

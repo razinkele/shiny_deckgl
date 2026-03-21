@@ -3671,7 +3671,8 @@ class TestVersionBump:
     """Version bump verification."""
 
     def test_version_is_current(self):
-        assert m.__version__ == "1.8.0"
+        from shiny_deckgl._version import __version__
+        assert m.__version__ == __version__
 
 
 # ===========================================================================

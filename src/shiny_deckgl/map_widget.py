@@ -37,6 +37,15 @@ _CONTROL_TYPES_SORTED: tuple[str, ...] = tuple(sorted(CONTROL_TYPES))
 _CONTROL_POSITIONS_SORTED: tuple[str, ...] = tuple(sorted(CONTROL_POSITIONS))
 
 
+def _validate_tooltip(tooltip: dict | None) -> None:
+    """Validate tooltip config — shared by constructor and update_tooltip."""
+    if tooltip is not None and "html" not in tooltip:
+        raise ValueError(
+            "tooltip dict must contain an 'html' key with a template string, "
+            f"got keys: {list(tooltip.keys())}"
+        )
+
+
 def _validate_choice(value: str, valid_values: set[str], name: str, sorted_values: tuple[str, ...]) -> None:
     """Validate that value is in valid_values, raising ValueError if not.
 
@@ -183,11 +192,7 @@ class MapWidget:
             "zoom": 8,
         }
         self.style = style
-        if tooltip is not None and "html" not in tooltip:
-            raise ValueError(
-                "tooltip dict must contain an 'html' key with a template string, "
-                f"got keys: {list(tooltip.keys())}"
-            )
+        _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
         self.controls = controls if controls is not None else [
@@ -716,11 +721,7 @@ class MapWidget:
             New tooltip configuration dict (same format as the constructor's
             ``tooltip`` parameter), or ``None`` to disable tooltips.
         """
-        if tooltip is not None and "html" not in tooltip:
-            raise ValueError(
-                "tooltip dict must contain an 'html' key with a template string, "
-                f"got keys: {list(tooltip.keys())}"
-            )
+        _validate_tooltip(tooltip)
         self.tooltip = tooltip
         await session.send_custom_message("deck_update_tooltip", {
             "id": self.id,
@@ -2118,6 +2119,7 @@ if (typeof Shiny === 'undefined') {{
   var instances = window.__deckgl_instances;
   var buildDeckLayers = window.__deckgl_buildDeckLayers;
   var buildEffects = window.__deckgl_buildEffects;
+  var cloneLayersData = window.__deckgl_cloneLayersData;
 
   // Trigger init manually (no shiny:connected event in standalone mode)
   document.querySelectorAll('.deckgl-map').forEach(initMap);
@@ -2129,7 +2131,7 @@ if (typeof Shiny === 'undefined') {{
   Object.keys(instances).forEach(function(mapId) {{
     var inst = instances[mapId];
     var deckLayers = buildDeckLayers(
-      structuredClone(layersData), mapId
+      cloneLayersData(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);

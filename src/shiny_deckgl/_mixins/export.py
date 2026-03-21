@@ -266,6 +266,7 @@ if (typeof Shiny === 'undefined') {{
   var instances = window.__deckgl_instances;
   var buildDeckLayers = window.__deckgl_buildDeckLayers;
   var buildEffects = window.__deckgl_buildEffects;
+  var cloneLayersData = window.__deckgl_cloneLayersData;
 
   // Trigger init manually (no shiny:connected event in standalone mode)
   document.querySelectorAll('.deckgl-map').forEach(initMap);
@@ -277,7 +278,7 @@ if (typeof Shiny === 'undefined') {{
   Object.keys(instances).forEach(function(mapId) {{
     var inst = instances[mapId];
     var deckLayers = buildDeckLayers(
-      structuredClone(layersData), mapId
+      cloneLayersData(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);

@@ -12,7 +12,13 @@
   // structuredClone this handles non-cloneable values such as Canvas
   // elements (used for rasterised SVG icon atlases).
   function cloneLayersData(layersData) {
-    return layersData.map(function (lp) { return Object.assign({}, lp); });
+    return layersData.map(function (lp) {
+      var clone = Object.assign({}, lp);
+      // Deep-clone nested objects that buildDeckLayers mutates in-place
+      if (clone.transitions) clone.transitions = Object.assign({}, clone.transitions);
+      if (clone.updateTriggers) clone.updateTriggers = Object.assign({}, clone.updateTriggers);
+      return clone;
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -46,7 +52,7 @@
   // interpolated popup templates.  Uses DOMParser so the browser's own HTML
   // parser handles edge cases (unclosed tags, nested scripts, entity encoding).
   // Fail-closed: returns '' on any error rather than passing input through.
-  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form)$/i;
+  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript)$/i;
   var SANITIZE_STRIP_ATTRS = /^on/i;
   var SANITIZE_DANGEROUS_URI = /^\s*javascript\s*:/i;
   var SANITIZE_URI_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'srcdoc', 'data', 'xlink:href']);
@@ -752,13 +758,17 @@
   }
 
   // Check whether an element is in a currently visible Bootstrap tab panel.
+  // Walks the full ancestor chain to handle nested tabs correctly.
   // Elements not inside any .tab-pane are always considered visible.
   function isInVisibleTab(el) {
     var pane = el.closest('.tab-pane');
-    // Not inside a tab panel → always visible
-    if (!pane) return true;
-    // Bootstrap marks the active tab pane with .active and/or .show
-    return pane.classList.contains('active') || pane.classList.contains('show');
+    while (pane) {
+      if (!pane.classList.contains('active') && !pane.classList.contains('show')) {
+        return false;
+      }
+      pane = pane.parentElement ? pane.parentElement.closest('.tab-pane') : null;
+    }
+    return true;
   }
 
   // Safely initialise a single map element with error handling.
@@ -781,7 +791,17 @@
       attempts++;
       // Wait for CDN libraries to finish loading
       if (typeof maplibregl === 'undefined' || typeof deck === 'undefined') {
-        if (attempts < 50) setTimeout(tryInit, 200);
+        if (attempts < 50) {
+          setTimeout(tryInit, 200);
+        } else {
+          console.error('[shiny_deckgl] CDN libraries (maplibregl/deck) failed to load after 10s');
+          document.querySelectorAll('.deckgl-map').forEach(function(el) {
+            if (!mapInstances[el.id]) {
+              el.innerHTML = '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
+                '[shiny_deckgl] Map libraries failed to load. Check network connection.</div>';
+            }
+          });
+        }
         return;
       }
       var maps = document.querySelectorAll('.deckgl-map');
@@ -1620,6 +1640,8 @@
       instance.tripsAnimation.rafId = requestAnimationFrame(tick);
       instance.tripsAnimation.startedAt = startedAt;
       instance.tripsAnimation.timeOffset = timeOffset;
+    }).catch(function (err) {
+      console.error('[shiny_deckgl] TripsLayer animation setup failed for "' + targetId + '":', err);
     });
   }
 
@@ -1652,24 +1674,16 @@
   var _deferredMessages = {};  // mapId → [{handler, payload}, ...]
 
   function ensureInstance(targetId, silent) {
-    let instance = mapInstances[targetId];
-    if (!instance) {
-      const el = document.getElementById(targetId);
-      if (el) {
-        // Only init if the map is in a visible tab — otherwise defer
-        // to avoid exhausting WebGL contexts.
-        if (isInVisibleTab(el)) {
-          safeInitMap(el);
-          instance = mapInstances[targetId];
-        }
-      }
+    var instance = mapInstances[targetId];
+    if (instance) return instance;
+
+    var el = document.getElementById(targetId);
+    if (el && isInVisibleTab(el)) {
+      safeInitMap(el);
+      instance = mapInstances[targetId];
     }
-    if (!instance && !silent) {
-      // Don't warn for hidden-tab maps — they will be inited on tab show
-      var el2 = document.getElementById(targetId);
-      if (!el2 || isInVisibleTab(el2)) {
-        console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
-      }
+    if (!instance && !silent && (!el || isInVisibleTab(el))) {
+      console.warn('[shiny_deckgl] Map instance "' + targetId + '" not found — message ignored');
     }
     return instance || null;
   }
@@ -1684,13 +1698,23 @@
   var _handlerFns = {};
 
   // Replay all deferred messages for a map after it has been initialised.
+  // Each handler is wrapped in try/catch so one failure doesn't abort the rest.
   function replayDeferredMessages(mapId) {
     var queue = _deferredMessages[mapId];
     if (!queue || !queue.length) return;
     delete _deferredMessages[mapId];
     queue.forEach(function (msg) {
       var fn = _handlerFns[msg.handler];
-      if (fn) fn(msg.payload);
+      if (fn) {
+        try {
+          fn(msg.payload);
+        } catch (e) {
+          console.error('[shiny_deckgl] Deferred "' + msg.handler +
+            '" for map "' + mapId + '" failed during replay:', e);
+        }
+      } else {
+        console.warn('[shiny_deckgl] No handler for deferred "' + msg.handler + '"');
+      }
     });
   }
 
@@ -1708,8 +1732,13 @@
         deferMessage(payload.id, name, payload);
         return;
       }
-      // Visible but not init'd — try to init, then run
+      // Visible but not init'd — try to init if CDN libs are ready
       if (el) {
+        if (typeof maplibregl === 'undefined' || typeof deck === 'undefined') {
+          // CDN not loaded yet — defer instead of destroying the DOM
+          deferMessage(payload.id, name, payload);
+          return;
+        }
         safeInitMap(el);
         if (mapInstances[payload.id]) { fn(payload); return; }
       }
@@ -1795,6 +1824,8 @@
     // Clean up animations for removed layers
     const currentIds = new Set(instance.lastLayers.map(function (l) { return l.id; }));
     cleanupAnimations(instance, targetId, currentIds);
+    }).catch(function (err) {
+      console.error('[shiny_deckgl] deck_update rendering failed for "' + targetId + '":', err);
     }); // end SVG atlas preload .then()
   });
 
@@ -3161,4 +3192,5 @@
   window.__deckgl_initMap = initMap;
   window.__deckgl_buildDeckLayers = buildDeckLayers;
   window.__deckgl_buildEffects = buildEffects;
+  window.__deckgl_cloneLayersData = cloneLayersData;
 })();

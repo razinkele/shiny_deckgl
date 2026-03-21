@@ -13,16 +13,14 @@
   // -----------------------------------------------------------------------
   function getOrCreateTooltipEl(mapId) {
     let el = document.getElementById(mapId + '__tooltip');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = mapId + '__tooltip';
-      el.className = 'deckgl-tooltip';
-      const container = document.getElementById(mapId);
-      if (container) {
-        container.style.position = 'relative';
-        container.appendChild(el);
-      }
-    }
+    if (el) return el;
+    const container = document.getElementById(mapId);
+    if (!container) return null;
+    el = document.createElement('div');
+    el.id = mapId + '__tooltip';
+    el.className = 'deckgl-tooltip';
+    container.style.position = 'relative';
+    container.appendChild(el);
     return el;
   }
 
@@ -1105,6 +1103,7 @@
             const currentTooltip = (mapInstances[targetId] || {}).tooltipConfig;
             if (currentTooltip && currentTooltip.html) {
               const tooltipEl = getOrCreateTooltipEl(targetId);
+              if (!tooltipEl) return;  // container gone — skip tooltip
               if (info.object) {
                 const src = info.object.properties || info.object;
                 tooltipEl.innerHTML = sanitizeHtml(interpolateTemplate(currentTooltip.html, src));

@@ -434,7 +434,7 @@
         });
         var deckLayers = buildDeckLayers(
           inst.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
-          this._mapId, inst.tooltipConfig
+          this._mapId
         );
         inst.overlay.setProps({ layers: deckLayers });
         inst.map.triggerRepaint();
@@ -1021,7 +1021,7 @@
   // -----------------------------------------------------------------------
   const RASTER_TYPES = new Set(["TileLayer", "BitmapLayer"]);
 
-  function buildDeckLayers(layersData, targetId, tooltipConfig) {
+  function buildDeckLayers(layersData, targetId) {
     return layersData.map(layerProps => {
       resolveAccessors(layerProps);
       resolveExtensions(layerProps);
@@ -1462,8 +1462,7 @@
       // Rebuild layers with updated values
       const deckLayers = buildDeckLayers(
         instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
-        mapId,
-        instance.tooltipConfig
+        mapId
       );
       instance.overlay.setProps({ layers: deckLayers });
 
@@ -1548,8 +1547,7 @@
         // Re-build and push layers
         const deckLayers = buildDeckLayers(
           deepClone(layersData),
-          targetId,
-          instance.tooltipConfig
+          targetId
         );
 
         // Append head-icon layers for TripsLayers with _tripsHeadIcons
@@ -1683,8 +1681,7 @@
     Promise.all(svgAtlasPreloads).then(function () {
     const deckLayers = buildDeckLayers(
       deepClone(layersData),
-      targetId,
-      tooltipConfig
+      targetId
     );
     const overlayProps = { layers: deckLayers };
 
@@ -1766,8 +1763,7 @@
 
     const deckLayers = buildDeckLayers(
       deepClone(merged),
-      targetId,
-      instance.tooltipConfig
+      targetId
     );
     instance.overlay.setProps({ layers: deckLayers });
     instance.map.triggerRepaint();
@@ -1910,8 +1906,7 @@
 
     const deckLayers = buildDeckLayers(
       patched.map(lp => Object.assign({}, lp)),
-      targetId,
-      instance.tooltipConfig
+      targetId
     );
     instance.overlay.setProps({ layers: deckLayers });
     instance.map.triggerRepaint();
@@ -3021,8 +3016,7 @@
           if (inst.overlay && inst.lastLayers && inst.lastLayers.length) {
             const deckLayers = buildDeckLayers(
               deepClone(inst.lastLayers),
-              el.id,
-              inst.tooltipConfig
+              el.id
             );
             inst.overlay.setProps({ layers: deckLayers });
             inst.map.triggerRepaint();
@@ -3033,7 +3027,7 @@
   });
 
   // -----------------------------------------------------------------------
-  // deck_update_tooltip — change tooltip config and re-render layers
+  // deck_update_tooltip — change tooltip config (no layer rebuild needed)
   // -----------------------------------------------------------------------
   Shiny.addCustomMessageHandler("deck_update_tooltip", function (payload) {
     if (!payload || !payload.id) return;

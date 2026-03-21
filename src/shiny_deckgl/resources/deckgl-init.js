@@ -14,8 +14,17 @@
   function cloneLayersData(layersData) {
     return layersData.map(function (lp) {
       var clone = Object.assign({}, lp);
-      // Deep-clone nested objects that buildDeckLayers mutates in-place
-      if (clone.transitions) clone.transitions = Object.assign({}, clone.transitions);
+      // Deep-clone nested objects that buildDeckLayers mutates in-place.
+      // transitions needs two levels: the map of prop→spec AND each spec
+      // object (buildDeckLayers writes tSpec.easing and deletes @@easing).
+      if (clone.transitions) {
+        var src = clone.transitions;
+        var t = {};
+        for (var k in src) {
+          t[k] = (src[k] && typeof src[k] === 'object') ? Object.assign({}, src[k]) : src[k];
+        }
+        clone.transitions = t;
+      }
       if (clone.updateTriggers) clone.updateTriggers = Object.assign({}, clone.updateTriggers);
       return clone;
     });

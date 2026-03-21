@@ -348,7 +348,7 @@
               if (Array.isArray(parsed) && parsed.length >= 3 && typeof parsed[0] === 'number') {
                 return parsed;
               }
-            } catch (e) { /* not valid JSON */ }
+            } catch (e) { console.debug('[shiny_deckgl] legend: color parse failed:', e.message); }
           }
           // CSS color string
           return val;
@@ -367,7 +367,7 @@
             if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0])) {
               return parsed;
             }
-          } catch (e) { /* not valid JSON */ }
+          } catch (e) { console.debug('[shiny_deckgl] legend: colorRange parse failed:', e.message); }
         }
         return null;
       };
@@ -383,7 +383,7 @@
         if (Array.isArray(c) && c.length >= 3 && typeof c[0] === 'number') return c;
         // Try JSON-encoded
         if (typeof c === 'string' && c.charAt(0) === '[') {
-          try { var p = JSON.parse(c); if (Array.isArray(p) && p.length >= 3) return p; } catch (e) {}
+          try { var p = JSON.parse(c); if (Array.isArray(p) && p.length >= 3) return p; } catch (e) { console.debug('[shiny_deckgl] legend: data color parse failed:', e.message); }
         }
         return null;
       };
@@ -761,7 +761,11 @@
       }
       maps.forEach(function(el) {
         if (!mapInstances[el.id]) {
-          try { initMap(el); } catch(e) { console.warn('initMap failed for', el.id, e); }
+          try { initMap(el); } catch(e) {
+            console.error('[shiny_deckgl] initMap failed for "' + el.id + '":', e);
+            el.innerHTML = '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
+              '[shiny_deckgl] Map failed to initialise. Check browser console.</div>';
+          }
         }
       });
     }
@@ -1798,6 +1802,8 @@
       // Full stop then restart from time 0
       stopTripsAnimation(instance);
       startTripsAnimation(instance, targetId);
+    } else {
+      console.warn('[shiny_deckgl] deck_trips_control: unknown action "' + action + '" — expected "pause", "resume", or "reset"');
     }
   });
 

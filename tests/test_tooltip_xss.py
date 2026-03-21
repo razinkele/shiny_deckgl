@@ -48,3 +48,51 @@ class TestMarkerPopupSanitisation:
         asyncio.run(w.add_marker(fake, "mk1", 21.0, 55.0,
                                  popup_html='<b>Safe</b>'))
         assert fake.messages[0][1]["popupHtml"] == "<b>Safe</b>"
+
+
+class TestTooltipXssEdgeCases:
+    """Verify Python-side tooltip serialisation handles XSS edge cases."""
+
+    def test_script_tag_in_tooltip_template_is_escaped(self):
+        """Template containing <script> should be HTML-escaped in data-attr."""
+        w = MapWidget("xss1", tooltip={"html": "<script>alert(1)</script>"})
+        html = w.to_html(layers=[])
+        # Extract only the data-tooltip attribute value and verify the angle
+        # brackets are escaped there (the full page has its own <script> tags)
+        blob = re.search(r'data-tooltip="([^"]*)"', html)
+        assert blob is not None
+        attr_value = blob.group(1)
+        assert "<script>" not in attr_value
+        assert "&lt;script&gt;" in attr_value
+
+    def test_template_with_nested_path(self):
+        """Templates with {a.b.c} dot paths should serialise correctly."""
+        w = MapWidget("xss2", tooltip={"html": "Val: {properties.name}"})
+        html = w.to_html(layers=[])
+        blob = re.search(r'data-tooltip="([^"]*)"', html)
+        assert blob is not None
+
+    def test_empty_tooltip_html(self):
+        """Empty string tooltip html should still produce a valid data attr."""
+        w = MapWidget("xss3", tooltip={"html": ""})
+        html = w.to_html(layers=[])
+        assert "data-tooltip" in html
+
+    def test_tooltip_with_style_dict(self):
+        """Tooltip with style should serialise both html and style."""
+        tip = {"html": "{name}", "style": {"backgroundColor": "red"}}
+        w = MapWidget("xss4", tooltip=tip)
+        html = w.to_html(layers=[])
+        blob = re.search(r'data-tooltip="([^"]*)"', html)
+        assert blob is not None
+        cfg = json.loads(blob.group(1).replace("&quot;", '"')
+                         .replace("&amp;", "&"))
+        assert cfg["style"]["backgroundColor"] == "red"
+
+    def test_tooltip_with_special_chars_in_template(self):
+        """Templates with quotes and ampersands should not break the HTML attr."""
+        tip = {"html": '<b>{name}</b> &amp; "info"'}
+        w = MapWidget("xss5", tooltip=tip)
+        html = w.to_html(layers=[])
+        # Must not have unescaped quotes breaking the attribute
+        assert 'data-tooltip="' in html

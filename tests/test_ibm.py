@@ -26,9 +26,9 @@ from shiny_deckgl.ibm import (
 class TestSpeciesColors:
     """Tests for the SPECIES_COLORS dictionary."""
 
-    def test_has_three_species(self):
-        """Should have exactly three seal species."""
-        assert len(SPECIES_COLORS) == 3
+    def test_has_ten_species(self):
+        """Should have all ten species."""
+        assert len(SPECIES_COLORS) == 10
 
     def test_expected_species(self):
         """Should have the expected species keys."""
@@ -60,34 +60,28 @@ class TestSpeciesColors:
 # ---------------------------------------------------------------------------
 
 class TestIconAtlas:
-    """Tests for the ICON_ATLAS base64 SVG string."""
+    """Tests for the ICON_ATLAS base64 image data-URI."""
 
     def test_is_data_uri(self):
-        """Should be a valid data URI."""
-        assert ICON_ATLAS.startswith("data:image/svg+xml;base64,")
+        """Should be a valid image data URI (PNG or SVG)."""
+        assert ICON_ATLAS.startswith("data:image/png;base64,") or \
+               ICON_ATLAS.startswith("data:image/svg+xml;base64,")
 
     def test_base64_decodable(self):
         """Base64 portion should be decodable."""
         import base64
         b64_part = ICON_ATLAS.split(",", 1)[1]
         decoded = base64.b64decode(b64_part)
-        assert len(decoded) > 0
+        assert len(decoded) > 100
 
-    def test_contains_svg(self):
-        """Decoded content should be valid SVG."""
-        import base64
+    def test_atlas_dimensions(self):
+        """Atlas should be 640x64 (10 icons at 64px each)."""
+        import base64, io
+        from PIL import Image
         b64_part = ICON_ATLAS.split(",", 1)[1]
-        decoded = base64.b64decode(b64_part).decode("utf-8")
-        assert "<svg" in decoded
-        assert "</svg>" in decoded
-
-    def test_svg_dimensions(self):
-        """SVG should have expected 192x64 dimensions."""
-        import base64
-        b64_part = ICON_ATLAS.split(",", 1)[1]
-        decoded = base64.b64decode(b64_part).decode("utf-8")
-        assert 'width="192"' in decoded
-        assert 'height="64"' in decoded
+        img = Image.open(io.BytesIO(base64.b64decode(b64_part)))
+        assert img.width == 640
+        assert img.height == 64
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +91,9 @@ class TestIconAtlas:
 class TestIconMapping:
     """Tests for the ICON_MAPPING deck.gl configuration."""
 
-    def test_has_three_species(self):
-        """Should have mappings for all three species."""
-        assert len(ICON_MAPPING) == 3
+    def test_has_ten_species(self):
+        """Should have mappings for all ten species."""
+        assert len(ICON_MAPPING) == 10
 
     def test_same_species_as_colors(self):
         """Should have same species keys as SPECIES_COLORS."""

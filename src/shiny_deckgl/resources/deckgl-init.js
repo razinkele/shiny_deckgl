@@ -31,7 +31,9 @@
           clone[key] = Object.assign({}, val);
         }
       }
-      if (clone.data && typeof clone.data === 'object') {
+      // Only deep-clone data when it's a binary-transport object (not a plain array).
+      // Object.assign({}, array) would destroy the array prototype.
+      if (clone.data && typeof clone.data === 'object' && !Array.isArray(clone.data)) {
         clone.data = Object.assign({}, clone.data);
         if (clone.data.attributes) {
           clone.data.attributes = Object.assign({}, clone.data.attributes);

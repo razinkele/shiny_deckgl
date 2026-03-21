@@ -1088,6 +1088,15 @@ def build_ui():
                 ui.tags.small(
                     "deck.gl + IBM", class_="badge text-bg-primary mb-2",
                 ),
+                ui.input_select(
+                    "seal_icon_shape", "Head icon shape",
+                    choices={
+                        "seal": "\U0001F9AD Seal (default)",
+                        "dolphin": "\U0001F42C Dolphin",
+                        "fish": "\U0001F41F Fish",
+                    },
+                    selected="seal",
+                ),
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F9AD Species & Individuals",
@@ -1136,15 +1145,6 @@ def build_ui():
                                 "Ringed seal",
                                 "Harbour seal",
                             ],
-                        ),
-                        ui.input_select(
-                            "seal_icon_shape", "Head icon shape",
-                            choices={
-                                "seal": "\U0001F9AD Seal (default)",
-                                "dolphin": "\U0001F42C Dolphin",
-                                "fish": "\U0001F41F Fish",
-                            },
-                            selected="seal",
                         ),
                     ),
                     ui.accordion_panel(

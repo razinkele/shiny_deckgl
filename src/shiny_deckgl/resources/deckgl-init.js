@@ -1648,7 +1648,7 @@
     const instance = ensureInstance(targetId);
     if (!instance) return;
 
-    const { map, overlay, tooltipConfig } = instance;
+    const { map, overlay } = instance;
 
     // Handle view state updates (flyTo if duration > 0, else jumpTo)
     if (payload.viewState) {

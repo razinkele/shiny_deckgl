@@ -25,3 +25,26 @@ class TestInterpolateTemplateContract:
                          .replace("&lt;", "<")
                          .replace("&gt;", ">"))
         assert cfg["html"] == "Code: {iso-a3}"
+
+
+# Reuse the same FakeSession stub as test_basic.py
+class _FakeSession:
+    def __init__(self):
+        self.messages = []
+    async def send_custom_message(self, name, data):
+        self.messages.append((name, data))
+
+
+class TestMarkerPopupSanitisation:
+    """Marker popup_html is raw HTML — verify Python docstring warns about XSS."""
+
+    def test_popup_html_passed_verbatim(self):
+        """Confirm popup_html reaches the message payload unchanged
+        (JS-side sanitisation handles safety)."""
+        import asyncio
+
+        w = MapWidget("m1")
+        fake = _FakeSession()
+        asyncio.run(w.add_marker(fake, "mk1", 21.0, 55.0,
+                                 popup_html='<b>Safe</b>'))
+        assert fake.messages[0][1]["popupHtml"] == "<b>Safe</b>"

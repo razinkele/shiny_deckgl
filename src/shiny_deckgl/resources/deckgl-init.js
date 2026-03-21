@@ -37,6 +37,22 @@
       .replace(/'/g, '&#39;');
   }
 
+  // Sanitize HTML: strip <script> tags, on* event handlers, and javascript: URIs.
+  // Defence-in-depth for popup_html / interpolated popup templates.
+  // Not a full security boundary — callers should still avoid interpolating
+  // untrusted user input into raw HTML strings.
+  function sanitizeHtml(html) {
+    if (!html) return '';
+    return html
+      // Remove <script>...</script> including content
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      // Remove on* event handler attributes (onclick, onerror, etc.)
+      // Uses \b word-boundary to also catch <img/onerror=...> (slash separator)
+      .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      // Neutralise javascript: URIs in href/src/action/formaction attributes
+      .replace(/(href|src|action|formaction)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '$1=""');
+  }
+
   function interpolateTemplate(template, obj) {
     if (!template || !obj) return '';
     return template.replace(/\{([\w-]+(?:\.[\w-]+)*)\}/g, function (_match, path) {
@@ -2508,7 +2524,7 @@
     // Optional popup
     if (payload.popupHtml) {
       const popup = new maplibregl.Popup({ offset: 25 })
-        .setHTML(payload.popupHtml);
+        .setHTML(sanitizeHtml(payload.popupHtml));
       marker.setPopup(popup);
     }
 

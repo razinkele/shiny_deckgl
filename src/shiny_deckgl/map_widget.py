@@ -1607,6 +1607,9 @@ class MapWidget:
             Whether the marker can be dragged by the user.
         popup_html
             HTML content for a popup shown when the marker is clicked.
+            The JS client strips ``<script>`` tags and ``on*`` event
+            handlers, but callers should still avoid interpolating
+            untrusted user input directly into this string.
         """
         await session.send_custom_message("deck_add_marker", {
             "id": self.id,

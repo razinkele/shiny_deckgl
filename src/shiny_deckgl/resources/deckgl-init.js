@@ -1073,19 +1073,20 @@
               Shiny.setInputValue(targetId + "_hover", null);
             }
 
-            if (tooltipConfig && tooltipConfig.html) {
+            // Read tooltip config from the live instance instead of the
+            // build-time closure, so updates take effect without rebuilding layers.
+            const currentTooltip = (mapInstances[targetId] || {}).tooltipConfig;
+            if (currentTooltip && currentTooltip.html) {
               const tooltipEl = getOrCreateTooltipEl(targetId);
               if (info.object) {
                 const src = info.object.properties || info.object;
-                tooltipEl.innerHTML = interpolateTemplate(tooltipConfig.html, src);
-                // Reset inline styles to CSS defaults before applying config,
-                // so stale properties from a previous tooltipConfig don't persist.
+                tooltipEl.innerHTML = interpolateTemplate(currentTooltip.html, src);
                 tooltipEl.style.cssText = '';
                 tooltipEl.style.display = 'block';
                 tooltipEl.style.left = (info.x || 0) + 'px';
                 tooltipEl.style.top = (info.y || 0) + 'px';
-                if (tooltipConfig.style) {
-                  Object.assign(tooltipEl.style, tooltipConfig.style);
+                if (currentTooltip.style) {
+                  Object.assign(tooltipEl.style, currentTooltip.style);
                 }
               } else {
                 tooltipEl.style.display = 'none';
@@ -3010,19 +3011,9 @@
     if (!payload || !payload.id) return;
     const instance = ensureInstance(payload.id);
     if (!instance) return;
+    // onHover reads tooltipConfig from the instance at hover time,
+    // so updating here is sufficient — no layer rebuild needed.
     instance.tooltipConfig = payload.tooltip || null;
-
-    // Re-render existing layers so the new tooltip config takes effect
-    // immediately (onHover closures capture tooltipConfig at build time).
-    if (instance.lastLayers && instance.lastLayers.length > 0) {
-      const deckLayers = buildDeckLayers(
-        instance.lastLayers.map(function (lp) { return Object.assign({}, lp); }),
-        payload.id,
-        instance.tooltipConfig
-      );
-      instance.overlay.setProps({ layers: deckLayers });
-      instance.map.triggerRepaint();
-    }
   });
 
   // -----------------------------------------------------------------------

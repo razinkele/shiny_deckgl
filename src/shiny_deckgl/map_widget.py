@@ -183,6 +183,11 @@ class MapWidget:
             "zoom": 8,
         }
         self.style = style
+        if tooltip is not None and "html" not in tooltip:
+            raise ValueError(
+                "tooltip dict must contain an 'html' key with a template string, "
+                f"got keys: {list(tooltip.keys())}"
+            )
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
         self.controls = controls if controls is not None else [

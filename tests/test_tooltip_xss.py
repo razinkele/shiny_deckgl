@@ -96,3 +96,23 @@ class TestTooltipXssEdgeCases:
         html = w.to_html(layers=[])
         # Must not have unescaped quotes breaking the attribute
         assert 'data-tooltip="' in html
+
+
+class TestTooltipValidation:
+    """Verify tooltip config validation on the Python side."""
+
+    def test_tooltip_missing_html_key_raises(self):
+        """Tooltip dict without 'html' key should raise ValueError."""
+        import pytest
+        with pytest.raises(ValueError, match="html"):
+            MapWidget("v1", tooltip={"template": "{name}"})
+
+    def test_tooltip_none_is_valid(self):
+        """None tooltip should not raise."""
+        w = MapWidget("v2", tooltip=None)
+        assert w.tooltip is None
+
+    def test_tooltip_with_html_key_is_valid(self):
+        """Tooltip with 'html' key should work normally."""
+        w = MapWidget("v3", tooltip={"html": "{name}"})
+        assert w.tooltip == {"html": "{name}"}

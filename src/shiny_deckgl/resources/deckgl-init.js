@@ -1078,6 +1078,9 @@
               if (info.object) {
                 const src = info.object.properties || info.object;
                 tooltipEl.innerHTML = interpolateTemplate(tooltipConfig.html, src);
+                // Reset inline styles to CSS defaults before applying config,
+                // so stale properties from a previous tooltipConfig don't persist.
+                tooltipEl.style.cssText = '';
                 tooltipEl.style.display = 'block';
                 tooltipEl.style.left = (info.x || 0) + 'px';
                 tooltipEl.style.top = (info.y || 0) + 'px';

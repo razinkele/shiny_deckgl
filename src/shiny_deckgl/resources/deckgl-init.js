@@ -37,21 +37,44 @@
       .replace(/'/g, '&#39;');
   }
 
-  // Sanitize HTML: strip <script> tags, on* event handlers, and javascript: URIs.
-  // Defence-in-depth for popup_html / interpolated popup templates.
-  // Not a full security boundary — callers should still avoid interpolating
-  // untrusted user input into raw HTML strings.
+  // Sanitize HTML via DOM parsing — defence-in-depth for popup_html and
+  // interpolated popup templates.  Uses DOMParser so the browser's own HTML
+  // parser handles edge cases (unclosed tags, nested scripts, entity encoding).
+  // Fail-closed: returns '' on any error rather than passing input through.
+  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form)$/i;
+  var SANITIZE_STRIP_ATTRS = /^on/i;
+  var SANITIZE_DANGEROUS_URI = /^\s*javascript\s*:/i;
+  var SANITIZE_URI_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'srcdoc', 'data', 'xlink:href']);
+
   function sanitizeHtml(html) {
     if (!html) return '';
-    return html
-      // Remove <script>...</script> including content
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      // Remove on* event handler attributes (onclick, onerror, etc.)
-      // Uses \b word-boundary to also catch <img/onerror=...> (slash separator)
-      .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      // Neutralise javascript: URIs in href/src/action/formaction attributes
-      // Covers quoted and unquoted attribute values
-      .replace(/(href|src|action|formaction)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]*)/gi, '$1=""');
+    html = String(html);
+    try {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      // Walk all elements and remove dangerous ones
+      var all = doc.body.querySelectorAll('*');
+      for (var i = all.length - 1; i >= 0; i--) {
+        var el = all[i];
+        if (SANITIZE_STRIP_TAGS.test(el.tagName)) {
+          el.remove();
+          continue;
+        }
+        // Remove dangerous attributes
+        for (var j = el.attributes.length - 1; j >= 0; j--) {
+          var attr = el.attributes[j];
+          if (SANITIZE_STRIP_ATTRS.test(attr.name)) {
+            el.removeAttribute(attr.name);
+          } else if (SANITIZE_URI_ATTRS.has(attr.name.toLowerCase()) &&
+                     SANITIZE_DANGEROUS_URI.test(attr.value)) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      }
+      return doc.body.innerHTML;
+    } catch (e) {
+      console.error('[shiny_deckgl] sanitizeHtml failed, blocking output:', e);
+      return '';
+    }
   }
 
   function interpolateTemplate(template, obj) {

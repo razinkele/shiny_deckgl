@@ -50,7 +50,8 @@
       // Uses \b word-boundary to also catch <img/onerror=...> (slash separator)
       .replace(/\bon\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
       // Neutralise javascript: URIs in href/src/action/formaction attributes
-      .replace(/(href|src|action|formaction)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '$1=""');
+      // Covers quoted and unquoted attribute values
+      .replace(/(href|src|action|formaction)\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]*)/gi, '$1=""');
   }
 
   function interpolateTemplate(template, obj) {

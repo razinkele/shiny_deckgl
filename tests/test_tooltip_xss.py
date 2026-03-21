@@ -9,6 +9,7 @@ import json
 import re
 
 from shiny_deckgl import MapWidget
+from conftest import _FakeSession
 
 
 class TestInterpolateTemplateContract:
@@ -25,14 +26,6 @@ class TestInterpolateTemplateContract:
                          .replace("&lt;", "<")
                          .replace("&gt;", ">"))
         assert cfg["html"] == "Code: {iso-a3}"
-
-
-# Reuse the same FakeSession stub as test_basic.py
-class _FakeSession:
-    def __init__(self):
-        self.messages = []
-    async def send_custom_message(self, name, data):
-        self.messages.append((name, data))
 
 
 class TestMarkerPopupSanitisation:

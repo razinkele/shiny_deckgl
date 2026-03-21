@@ -9,6 +9,7 @@ Tests cover:
 from __future__ import annotations
 
 import pytest
+from conftest import _FakeSession
 
 from shiny_deckgl import (
     MapWidget,
@@ -59,12 +60,8 @@ class TestMapWidgetErrors:
         """add_control with invalid type should raise ValueError."""
         import asyncio
 
-        class FakeSession:
-            async def send_custom_message(self, *args):
-                pass
-
         w = MapWidget("error_test")
-        session = FakeSession()
+        session = _FakeSession()
 
         with pytest.raises(ValueError, match="Unknown control type"):
             asyncio.run(w.add_control(session, "nonexistent_control", "top-right"))
@@ -73,12 +70,8 @@ class TestMapWidgetErrors:
         """add_control with invalid position should raise ValueError."""
         import asyncio
 
-        class FakeSession:
-            async def send_custom_message(self, *args):
-                pass
-
         w = MapWidget("error_test")
-        session = FakeSession()
+        session = _FakeSession()
 
         with pytest.raises(ValueError, match="Unknown position"):
             asyncio.run(w.add_control(session, "navigation", "invalid-position"))
@@ -87,12 +80,8 @@ class TestMapWidgetErrors:
         """set_projection with invalid value should raise ValueError."""
         import asyncio
 
-        class FakeSession:
-            async def send_custom_message(self, *args):
-                pass
-
         w = MapWidget("proj_test")
-        session = FakeSession()
+        session = _FakeSession()
 
         with pytest.raises(ValueError, match="Unknown projection"):
             asyncio.run(w.set_projection(session, "invalid_projection"))

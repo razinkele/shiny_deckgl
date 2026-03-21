@@ -46,19 +46,7 @@ from shiny_deckgl import (
     # Helpers
     transition,
 )
-
-
-class _FakeSession:
-    """Mock Shiny session for testing async methods."""
-
-    def __init__(self):
-        self.messages: list[tuple[str, dict]] = []
-
-    async def send_custom_message(self, handler: str, payload: dict):
-        self.messages.append((handler, payload))
-
-    def clear(self):
-        self.messages.clear()
+from conftest import _FakeSession
 
 
 # ---------------------------------------------------------------------------

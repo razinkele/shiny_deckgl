@@ -106,6 +106,7 @@ from shiny_deckgl.effects import (
     lighting_effect,
     post_process_effect,
 )
+from conftest import _FakeSession
 
 
 # ---------------------------------------------------------------------------
@@ -866,18 +867,6 @@ class TestViridisFixed:
     def test_last_two_stops_differ(self):
         """B1: Viridis palette last two stops must not be duplicates."""
         assert PALETTE_VIRIDIS[-1] != PALETTE_VIRIDIS[-2]
-
-
-# ---------------------------------------------------------------------------
-# Reusable fake session stub (used by tooltip, style, gestures tests)
-# ---------------------------------------------------------------------------
-
-class _FakeSession:
-    """Reusable fake session for tests requiring async message capture."""
-    def __init__(self):
-        self.messages = []
-    async def send_custom_message(self, handler, payload):
-        self.messages.append((handler, payload))
 
 
 # ---------------------------------------------------------------------------

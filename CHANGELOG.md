@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.9.1] — 2026-03-21
+
+### Fixed
+
+- **Critical: `cloneLayersData` destroyed array data** — `Object.assign({}, array)`
+  converted data arrays to plain objects, causing all deck.gl layers to render
+  blank. Added `!Array.isArray()` guard so only binary-transport data objects
+  are deep-cloned, not regular record arrays.
+- **Stale test assertions** — Updated `test_ibm.py` for 10-species PNG atlas
+  (was asserting 3 species and SVG format).
+- **Shiny 1.6.0 compatibility** — Verified all 1388 tests pass with Shiny 1.6.0.
+
+---
 ## [1.9.0] — 2026-03-21
 
 ### Added

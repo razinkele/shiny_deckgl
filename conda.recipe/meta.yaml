@@ -29,6 +29,8 @@ requirements:
 test:
   imports:
     - shiny_deckgl
+  commands:
+    - python -c "from shiny_deckgl._version import __version__; assert __version__, 'Version is empty or missing'"
 
 about:
   home: "https://github.com/razinka/shiny_deckgl"

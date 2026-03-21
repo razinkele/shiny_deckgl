@@ -3,14 +3,10 @@
   // Exposed on window for standalone HTML exports
   const mapInstances = window.__deckgl_instances = {};
 
-  // Polyfill for structuredClone (Safari < 15.4, older browsers)
-  const deepClone = typeof structuredClone === 'function'
-    ? structuredClone
-    : function (obj) { return JSON.parse(JSON.stringify(obj)); };
-
-  // Shallow-clone an array of layer-props objects.  Unlike deepClone /
-  // structuredClone this handles non-cloneable values such as Canvas
-  // elements (used for rasterised SVG icon atlases).
+  // Clone an array of layer-props objects.  Uses shallow Object.assign
+  // plus targeted deep-cloning of mutable nested objects (transitions,
+  // updateTriggers).  Handles non-cloneable values like Canvas elements
+  // (from rasterised SVG icon atlases) that structuredClone cannot copy.
   function cloneLayersData(layersData) {
     return layersData.map(function (lp) {
       var clone = Object.assign({}, lp);
@@ -1436,7 +1432,7 @@
         resolve(canvas);
       };
       img.onerror = function () {
-        console.warn('[shiny_deckgl] Failed to rasterise SVG atlas, using raw URI');
+        console.warn('[shiny_deckgl] Failed to rasterise SVG atlas, using raw URI:', src.substring(0, 80));
         resolve(src);           // fall back to the raw data-URI
       };
       img.src = src;
@@ -3057,6 +3053,8 @@
               center: features[0].geometry.coordinates,
               zoom: zoom
             });
+          }).catch(function (err) {
+            console.warn('[shiny_deckgl] Cluster expansion zoom failed:', err);
           });
       };
       map.on("click", srcId + "-clusters", clickHandler);

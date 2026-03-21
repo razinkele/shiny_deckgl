@@ -22,6 +22,24 @@
         clone.transitions = t;
       }
       if (clone.updateTriggers) clone.updateTriggers = Object.assign({}, clone.updateTriggers);
+      // Deep-clone @@binary attribute markers so resolveBinaryAttributes'
+      // delete + decode doesn't destroy the cached originals.
+      // Also deep-clone the data object which gets mutated (data.attributes).
+      for (var key in clone) {
+        var val = clone[key];
+        if (val && typeof val === 'object' && val['@@binary']) {
+          clone[key] = Object.assign({}, val);
+        }
+      }
+      if (clone.data && typeof clone.data === 'object') {
+        clone.data = Object.assign({}, clone.data);
+        if (clone.data.attributes) {
+          clone.data.attributes = Object.assign({}, clone.data.attributes);
+        }
+        if (clone.data.startIndices && Array.isArray(clone.data.startIndices)) {
+          clone.data.startIndices = clone.data.startIndices.slice();
+        }
+      }
       return clone;
     });
   }

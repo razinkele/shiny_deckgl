@@ -2173,3 +2173,168 @@ def make_sea_temperature_grid(
         })
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# HexSim hex-grid mesh (v1.9.3 — HexSim Fish demo tab)
+# ---------------------------------------------------------------------------
+
+try:
+    import sys as _sys
+    _sys.path.insert(0, r"C:\Users\DELL\OneDrive - ku.lt\HORIZON_EUROPE\HexSim")
+    from heximpy.hxnparser import Workspace as _HexSimWorkspace
+    _HEXSIM_AVAILABLE = True
+except ImportError:
+    _HEXSIM_AVAILABLE = False
+
+_COLUMBIA_WS = Path(
+    r"C:\Users\DELL\OneDrive - ku.lt\HORIZON_EUROPE\HexSim\Columbia [small]"
+)
+_HEXFISH_ORIGIN = [-121.0, 46.3]
+
+
+def _hex_neighbors_offset(row, col, ncols, nrows, n_data, flag=0):
+    """Compute flat-index neighbors for (row, col) in offset hex grid."""
+    if row % 2 == 0:
+        offsets = [(-1, -1), (-1, 0), (0, -1), (0, 1), (1, -1), (1, 0)]
+    else:
+        offsets = [(-1, 0), (-1, 1), (0, -1), (0, 1), (1, 0), (1, 1)]
+    result = []
+    for dr, dc in offsets:
+        nr, nc = row + dr, col + dc
+        if 0 <= nr < nrows and 0 <= nc < ncols:
+            if flag == 1 and nr % 2 == 1 and nc >= ncols - 1:
+                result.append(-1)
+                continue
+            if flag == 0:
+                flat = nr * ncols + nc
+            else:
+                full_pairs = nr // 2
+                flat = full_pairs * (2 * ncols - 1)
+                if nr % 2 == 1:
+                    flat += ncols
+                flat += nc
+            if flat < n_data:
+                result.append(flat)
+            else:
+                result.append(-1)
+        else:
+            result.append(-1)
+    return result
+
+
+@functools.lru_cache(maxsize=1)
+def make_hexsim_mesh():
+    """Load Columbia HexSim workspace (1/5 crop) → mesh + neighbor graph.
+
+    Returns (mesh_data, centroids, neighbors, origin_lonlat) or
+    (None, None, None, None) if heximpy is unavailable.
+    """
+    if not _HEXSIM_AVAILABLE or not _COLUMBIA_WS.exists():
+        return (None, None, None, None)
+
+    import numpy as np
+
+    ws = _HexSimWorkspace.from_dir(_COLUMBIA_WS)
+    edge = ws.grid.edge
+    extent_hm = ws.hexmaps["River [ extent ]"]
+    depth_hm = ws.hexmaps.get("River [ depth ]") or extent_hm
+
+    h, w, flag = extent_hm.height, extent_hm.width, extent_hm.flag
+    n_data = len(extent_hm.values)
+
+    # Build full row/col arrays
+    if flag == 0:
+        all_rows = np.repeat(np.arange(h), w)
+        all_cols = np.tile(np.arange(w), h)
+    else:
+        row_list, col_list = [], []
+        for r in range(h):
+            rw = w if r % 2 == 0 else w - 1
+            row_list.append(np.full(rw, r, dtype=np.int32))
+            col_list.append(np.arange(rw, dtype=np.int32))
+        all_rows = np.concatenate(row_list)
+        all_cols = np.concatenate(col_list)
+
+    # Water cells cropped to first 1/5 of columns
+    col_limit = (w + 4) // 5
+    water_mask = extent_hm.values != 0.0
+    spatial_mask = water_mask & (all_cols < col_limit)
+    cell_indices = np.where(spatial_mask)[0]
+    n_water = len(cell_indices)
+
+    # Centroids (pointy-top odd-row offset, Y-flipped)
+    rows = all_rows[cell_indices].astype(np.float64)
+    cols = all_cols[cell_indices].astype(np.float64)
+    cx = np.sqrt(3.0) * edge * (cols + 0.5 * (all_rows[cell_indices] % 2))
+    cy = 1.5 * edge * rows
+    origin_x = float(np.mean(cx))
+    origin_y = float(np.mean(cy))
+    cx_local = cx - origin_x
+    cy_local = -(cy - origin_y)  # Y-flip
+
+    centroids = np.column_stack([cx_local, cy_local])
+
+    # Neighbor graph (compact water-only indices)
+    valid_flat = set(cell_indices.tolist())
+    flat_to_compact = {int(fi): ci for ci, fi in enumerate(cell_indices)}
+
+    neighbors = np.full((n_water, 6), -1, dtype=np.int64)
+    for ci, fi in enumerate(cell_indices):
+        r, c = int(all_rows[fi]), int(all_cols[fi])
+        nbr_flat = _hex_neighbors_offset(r, c, w, h, n_data, flag)
+        for j, nf in enumerate(nbr_flat):
+            if nf >= 0 and nf in valid_flat:
+                neighbors[ci, j] = flat_to_compact[nf]
+
+    # Depth colormap: light blue (shallow) → dark blue (deep)
+    depths = depth_hm.values[cell_indices]
+    mask = depths != 0.0
+    lo = float(np.nanmin(depths[mask])) if np.any(mask) else 0.0
+    hi = float(np.nanmax(depths))
+    rng = hi - lo if hi > lo else 1.0
+    t = np.clip((depths - lo) / rng, 0.0, 1.0)
+    colors = np.empty((n_water, 4), dtype=np.float32)
+    colors[:, 0] = np.float32(0.68 - 0.65 * t)
+    colors[:, 1] = np.float32(0.85 - 0.66 * t)
+    colors[:, 2] = np.float32(1.00 - 0.58 * t)
+    colors[:, 3] = np.float32(0.95)
+    colors[~mask] = [0.0, 0.0, 0.0, 0.0]
+
+    # Build triangle mesh (7 verts per hex, 6 triangles)
+    angles = np.linspace(0, 2 * np.pi, 7)[:-1]
+    dx = (edge * np.sin(angles)).astype(np.float32)
+    dy = (edge * np.cos(angles)).astype(np.float32)
+
+    positions = np.empty((n_water * 7, 3), dtype=np.float32)
+    mesh_colors = np.empty((n_water * 7, 4), dtype=np.float32)
+    indices = np.empty(n_water * 18, dtype=np.uint32)
+
+    cx_f = cx_local.astype(np.float32)
+    cy_f = cy_local.astype(np.float32)
+    base_idx = np.arange(n_water, dtype=np.uint32) * 7
+
+    positions[base_idx, 0] = cx_f
+    positions[base_idx, 1] = cy_f
+    positions[base_idx, 2] = 0.0
+    for v in range(6):
+        positions[base_idx + 1 + v, 0] = cx_f + dx[v]
+        positions[base_idx + 1 + v, 1] = cy_f + dy[v]
+        positions[base_idx + 1 + v, 2] = 0.0
+    for v in range(7):
+        mesh_colors[base_idx + v] = colors
+
+    tri_base = np.arange(n_water, dtype=np.uint32) * 18
+    for tt in range(6):
+        indices[tri_base + tt * 3 + 0] = base_idx
+        indices[tri_base + tt * 3 + 1] = base_idx + 1 + tt
+        indices[tri_base + tt * 3 + 2] = base_idx + 1 + (tt + 1) % 6
+
+    mesh_data = {
+        "positions": positions,
+        "colors": mesh_colors,
+        "indices": indices,
+        "center": [origin_x, origin_y],
+    }
+
+    return (mesh_data, centroids, neighbors, list(_HEXFISH_ORIGIN))

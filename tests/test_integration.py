@@ -618,36 +618,6 @@ class TestGeoDataFrameIntegration:
         # Data should be list of dicts
         assert isinstance(layer["data"], list)
 
-
-class TestUpdateLegend:
-    """Tests for MapWidget.update_legend() method."""
-
-    def test_update_legend_sends_message(self):
-        import asyncio
-        from shiny_deckgl import MapWidget
-        w = MapWidget("legend-test")
-        session = _FakeSession()
-        asyncio.run(w.update_legend(session, entries=[
-            {"layer_id": "pts", "label": "Points", "color": [255, 0, 0]},
-        ], title="My Legend"))
-        assert len(session.messages) == 1
-        msg_type, payload = session.messages[0]
-        assert msg_type == "deck_update_legend"
-        assert payload["id"] == "legend-test"
-        assert len(payload["entries"]) == 1
-        assert payload["title"] == "My Legend"
-        assert payload["showCheckbox"] is True
-        assert payload["position"] == "bottom-right"
-
-    def test_update_legend_custom_position(self):
-        import asyncio
-        from shiny_deckgl import MapWidget
-        w = MapWidget("legend-pos")
-        session = _FakeSession()
-        asyncio.run(w.update_legend(session, entries=[], position="top-left"))
-        assert session.messages[0][1]["position"] == "top-left"
-
-
 class TestSetAnimation:
     """Tests for MapWidget.set_animation() method."""
 

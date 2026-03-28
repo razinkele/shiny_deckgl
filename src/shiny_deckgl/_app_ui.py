@@ -11,6 +11,7 @@ from ._demo_data import (
     BASEMAP_CHOICES,
     PALETTE_CHOICES,
     DEFAULT_TOOLTIP_HTML,
+    _HEXSIM_AVAILABLE,
 )
 from ._demo_css import MARINE_CSS, sidebar_hint, about_row as _about_row
 from ._version import __version__ as SHINY_DECKGL_VERSION
@@ -37,6 +38,7 @@ from ._app_widgets import (
     seal_widget,
     widgets_gallery_widget,
     timespace_widget,
+    hexfish_widget,
 )
 from ._timeline import timeline_control
 from ._demo_data import MONTH_LABELS
@@ -1455,6 +1457,35 @@ def build_ui():
             ui.card(
                 ui.card_header("\U0001F321\uFE0F Temperature Status"),
                 ui.output_text_verbatim("ts_status"),
+            ),
+        ),
+    ),
+
+    # -- Tab 12: HexSim Fish (hex grid + animated salmon) -----------------
+    ui.nav_panel(
+        "\U0001F41F HexSim Fish",
+        ui.layout_sidebar(
+            ui.sidebar(
+                ui.accordion(
+                    ui.accordion_panel(
+                        "\U0001F41F Fish Settings",
+                        ui.input_slider(
+                            "hexfish_n_fish", "Number of fish",
+                            min=20, max=100, value=50, step=10,
+                        ),
+                    ),
+                    ui.accordion_panel(
+                        "\u23F1 Animation Controls",
+                        trips_animation_ui("hexfish_anim"),
+                    ),
+                    open=True,
+                ),
+                width=280,
+            ),
+            hexfish_widget.ui() if _HEXSIM_AVAILABLE else ui.p(
+                "HexSim data not available. "
+                "Install heximpy and ensure the Columbia workspace is present.",
+                class_="text-muted p-3",
             ),
         ),
     ),

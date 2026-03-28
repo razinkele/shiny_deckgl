@@ -1664,7 +1664,7 @@
             lp.data, lp.currentTime, hi.iconField || 'species'
           );
           if (heads.length > 0) {
-            deckLayers.push(new deck.IconLayer({
+            var headIconProps = {
               id: (lp.id || 'trips') + '_heads',
               data: heads,
               iconAtlas: hi._rasterAtlas || hi.iconAtlas,
@@ -1679,7 +1679,16 @@
               sizeMaxPixels: hi.sizeMaxPixels || 64,
               billboard: false,
               pickable: false,
-            }));
+            };
+            // Propagate coordinate system from parent TripsLayer so
+            // head icons render correctly in METER_OFFSETS mode.
+            if (lp.coordinateSystem != null) {
+              headIconProps.coordinateSystem = lp.coordinateSystem;
+            }
+            if (lp.coordinateOrigin != null) {
+              headIconProps.coordinateOrigin = lp.coordinateOrigin;
+            }
+            deckLayers.push(new deck.IconLayer(headIconProps));
           }
         }
 

@@ -6,7 +6,7 @@ These are imported by both _app_ui.py and _app_server.py.
 
 from __future__ import annotations
 
-from .map_widget import MapWidget
+from .map_widget import MapWidget, CARTO_POSITRON
 from ._demo_data import (
     BALTIC_VIEW,
     BALTIC_VIEW_3D,
@@ -132,6 +132,14 @@ timespace_widget = MapWidget(
     view_state=BALTIC_VIEW,
 )
 
+# Tab 12 — HexSim Fish (hex grid + animated salmon trips)
+hexfish_widget = MapWidget(
+    "hexfish_map",
+    view_state={"longitude": -121.0, "latitude": 46.3, "zoom": 8, "pitch": 0},
+    style=CARTO_POSITRON,
+    animate=True,
+)
+
 __all__ = [
     "gallery_widget",
     "maplibre_widget",
@@ -143,4 +151,5 @@ __all__ = [
     "seal_widget",
     "widgets_gallery_widget",
     "timespace_widget",
+    "hexfish_widget",
 ]

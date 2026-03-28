@@ -2338,3 +2338,46 @@ def make_hexsim_mesh():
     }
 
     return (mesh_data, centroids, neighbors, list(_HEXFISH_ORIGIN))
+
+
+_FISH_COLORS = [
+    [192, 128, 96, 220],   # copper (salmon)
+    [0, 130, 200, 220],    # blue
+    [0, 180, 140, 220],    # teal
+    [200, 160, 50, 220],   # gold
+    [140, 90, 160, 220],   # purple
+]
+
+
+def make_hexsim_trips(
+    n_fish: int,
+    centroids: "np.ndarray",
+    neighbors: "np.ndarray",
+    n_steps: int = 200,
+    loop_length: int = 600,
+) -> list[dict]:
+    """Generate random-walk fish trips on the hex neighbor graph."""
+    import numpy as np
+
+    n_water = centroids.shape[0]
+    rng = random.Random(42)
+
+    paths: list[list[list[float]]] = []
+    props: list[dict] = []
+
+    for i in range(n_fish):
+        cell = rng.randrange(n_water)
+        waypoints: list[list[float]] = [centroids[cell].tolist()]
+        for _ in range(n_steps):
+            nbrs = [int(n) for n in neighbors[cell] if n >= 0]
+            if not nbrs:
+                break
+            cell = rng.choice(nbrs)
+            waypoints.append(centroids[cell].tolist())
+        paths.append(waypoints)
+        props.append({
+            "species": "Atlantic salmon",
+            "color": _FISH_COLORS[i % len(_FISH_COLORS)],
+        })
+
+    return format_trips(paths, loop_length=loop_length, properties=props)

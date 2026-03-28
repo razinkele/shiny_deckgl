@@ -60,3 +60,49 @@ class TestMakeHexsimMesh:
         from shiny_deckgl._demo_data import make_hexsim_mesh
         _, centroids, _, _ = make_hexsim_mesh()
         assert centroids.shape[0] > 5000
+
+
+FISH_COLORS = [
+    [192, 128, 96, 220],
+    [0, 130, 200, 220],
+    [0, 180, 140, 220],
+    [200, 160, 50, 220],
+    [140, 90, 160, 220],
+]
+
+
+@pytest.mark.skipif(not HEXSIM_AVAILABLE, reason="heximpy not available")
+class TestMakeHexsimTrips:
+
+    def test_returns_list_of_dicts(self):
+        from shiny_deckgl._demo_data import make_hexsim_mesh, make_hexsim_trips
+        _, centroids, neighbors, _ = make_hexsim_mesh()
+        trips = make_hexsim_trips(10, centroids, neighbors)
+        assert isinstance(trips, list)
+        assert len(trips) == 10
+
+    def test_trip_has_path_and_timestamps(self):
+        from shiny_deckgl._demo_data import make_hexsim_mesh, make_hexsim_trips
+        _, centroids, neighbors, _ = make_hexsim_mesh()
+        trips = make_hexsim_trips(5, centroids, neighbors)
+        for trip in trips:
+            assert "path" in trip
+            assert "timestamps" in trip
+            assert "species" in trip
+            assert "color" in trip
+            assert trip["species"] == "Atlantic salmon"
+
+    def test_path_length_matches_timestamps(self):
+        from shiny_deckgl._demo_data import make_hexsim_mesh, make_hexsim_trips
+        _, centroids, neighbors, _ = make_hexsim_mesh()
+        trips = make_hexsim_trips(3, centroids, neighbors, n_steps=50)
+        for trip in trips:
+            assert len(trip["path"]) == len(trip["timestamps"])
+            assert len(trip["path"][0]) == 3
+
+    def test_colors_cycle(self):
+        from shiny_deckgl._demo_data import make_hexsim_mesh, make_hexsim_trips
+        _, centroids, neighbors, _ = make_hexsim_mesh()
+        trips = make_hexsim_trips(10, centroids, neighbors)
+        for i, trip in enumerate(trips):
+            assert trip["color"] == FISH_COLORS[i % 5]

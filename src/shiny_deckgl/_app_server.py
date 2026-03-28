@@ -105,6 +105,9 @@ from ._demo_data import (
     make_quadkey_data,
     make_s2_data,
     make_scenegraph_data,
+    make_hexsim_mesh,
+    make_hexsim_trips,
+    _HEXSIM_AVAILABLE,
 )
 from .ibm import ICON_ATLAS, ICON_MAPPING, SPECIES_COLORS, trips_animation_server
 from .colors import depth_color as _bathy_color
@@ -130,6 +133,7 @@ from ._app_widgets import (
     seal_widget,
     widgets_gallery_widget,
     timespace_widget,
+    hexfish_widget,
 )
 
 def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-defined]
@@ -2645,6 +2649,63 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     def ts_status():
         month_label = tl.label()
         return f"Month: {month_label}"
+
+    # -- Tab 12: HexSim Fish ----------------------------------------------
+    if _HEXSIM_AVAILABLE:
+        _HEXFISH_LOOP = 600
+        _mesh_result = make_hexsim_mesh()
+
+        if _mesh_result[0] is not None:
+            _hf_mesh, _hf_centroids, _hf_neighbors, _hf_origin = _mesh_result
+
+            _hf_mesh_layer = simple_mesh_layer(
+                "hexsim-mesh",
+                **custom_geometry(_hf_mesh, position=_hf_origin),
+                opacity=0.95,
+                pickable=False,
+            )
+
+            hexfish_anim = trips_animation_server(
+                "hexfish_anim", widget=hexfish_widget, session=session,
+            )
+
+            @reactive.Calc
+            def _hexfish_trips():
+                n = input.hexfish_n_fish()
+                return make_hexsim_trips(
+                    n, _hf_centroids, _hf_neighbors,
+                    loop_length=_HEXFISH_LOOP,
+                )
+
+            @reactive.Effect
+            async def _hexfish_layers():
+                trips = _hexfish_trips()
+                trips_lyr = trips_layer(
+                    "fish-trips", trips,
+                    getColor="@@d.color",
+                    widthMinPixels=2,
+                    trailLength=hexfish_anim.trail(),
+                    coordinateSystem=COORDINATE_SYSTEM.METER_OFFSETS,
+                    coordinateOrigin=_hf_origin,
+                    _tripsAnimation={
+                        "loopLength": _HEXFISH_LOOP,
+                        "speed": hexfish_anim.speed(),
+                    },
+                    _tripsHeadIcons={
+                        "iconAtlas": ICON_ATLAS,
+                        "iconMapping": {
+                            "Atlantic salmon": ICON_MAPPING["Atlantic salmon"],
+                        },
+                        "iconField": "species",
+                        "getSize": 24,
+                        "sizeScale": 1,
+                        "sizeMinPixels": 10,
+                        "sizeMaxPixels": 64,
+                    },
+                )
+                await hexfish_widget.update(
+                    session, [_hf_mesh_layer, trips_lyr],
+                )
 
 
 __all__ = ["server"]

@@ -166,7 +166,7 @@ def color_bins(
     span = hi - lo if hi != lo else 1.0
     result: list[list[int]] = []
     for v in values:
-        idx = int((v - lo) / span * (n_bins - 1))
+        idx = int((v - lo) / span * n_bins)
         idx = max(0, min(idx, n_bins - 1))
         result.append(colors[idx])
     return result

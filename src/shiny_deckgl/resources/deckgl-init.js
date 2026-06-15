@@ -551,7 +551,34 @@
     if (map.isStyleLoaded() && !map._deckStyleChanging) {
       fn();
     } else {
-      map.once('style.load', fn);
+      // Queue callbacks so that multiple callers during a style swap all run
+      // when the style finishes loading (map.once would only fire one).
+      if (!map._deckStyleQueue) {
+        map._deckStyleQueue = [];
+        var drainFn = function () {
+          var queue = map._deckStyleQueue || [];
+          map._deckStyleQueue = null;
+          map._deckStyleDrainFn = null;
+          for (var i = 0; i < queue.length; i++) queue[i]();
+        };
+        map._deckStyleDrainFn = drainFn;
+        map.once('style.load', drainFn);
+      }
+      map._deckStyleQueue.push(fn);
+    }
+  }
+
+  /** Clean up the style-ready queue and its listener (used on error/timeout). */
+  function _clearStyleQueue(map) {
+    var abandoned = map._deckStyleQueue || [];
+    if (map._deckStyleDrainFn) {
+      map.off('style.load', map._deckStyleDrainFn);
+      map._deckStyleDrainFn = null;
+    }
+    map._deckStyleQueue = null;
+    if (abandoned.length > 0) {
+      console.warn('[shiny_deckgl] ' + abandoned.length
+        + ' queued style callback(s) abandoned due to style load failure');
     }
   }
 
@@ -563,13 +590,13 @@
     if (!mapId) return;
 
     // Read initial view state from data attributes (set by MapWidget)
-    const initLon = parseFloat(el.dataset.initialLongitude) || 0;
-    const initLat = parseFloat(el.dataset.initialLatitude) || 0;
-    const initZoom = parseFloat(el.dataset.initialZoom) || 1;
-    const initPitch = parseFloat(el.dataset.initialPitch) || 0;
-    const initBearing = parseFloat(el.dataset.initialBearing) || 0;
-    const initMinZoom = parseFloat(el.dataset.initialMinZoom) || 0;
-    const initMaxZoom = parseFloat(el.dataset.initialMaxZoom) || 24;
+    const initLon = isNaN(parseFloat(el.dataset.initialLongitude)) ? 0 : parseFloat(el.dataset.initialLongitude);
+    const initLat = isNaN(parseFloat(el.dataset.initialLatitude)) ? 0 : parseFloat(el.dataset.initialLatitude);
+    const initZoom = isNaN(parseFloat(el.dataset.initialZoom)) ? 1 : parseFloat(el.dataset.initialZoom);
+    const initPitch = isNaN(parseFloat(el.dataset.initialPitch)) ? 0 : parseFloat(el.dataset.initialPitch);
+    const initBearing = isNaN(parseFloat(el.dataset.initialBearing)) ? 0 : parseFloat(el.dataset.initialBearing);
+    const initMinZoom = isNaN(parseFloat(el.dataset.initialMinZoom)) ? 0 : parseFloat(el.dataset.initialMinZoom);
+    const initMaxZoom = isNaN(parseFloat(el.dataset.initialMaxZoom)) ? 24 : parseFloat(el.dataset.initialMaxZoom);
     const mapStyle = el.dataset.style ||
       'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json';
 
@@ -611,7 +638,7 @@
     // Mapbox API key: inject into tile requests if a mapbox:// style is used
     if (mapboxApiKey) {
       mapOpts.transformRequest = function(url, resourceType) {
-        if (url.indexOf('mapbox') !== -1 && url.indexOf('access_token') === -1) {
+        if ((url.startsWith('mapbox://') || url.indexOf('api.mapbox.com') !== -1) && url.indexOf('access_token') === -1) {
           const sep = url.indexOf('?') === -1 ? '?' : '&';
           return { url: url + sep + 'access_token=' + mapboxApiKey };
         }
@@ -941,8 +968,7 @@
   function decodeBinaryValue(val) {
     const ArrayCtor = TYPED_ARRAY_MAP[val.dtype] || Float32Array;
     const raw = atob(val.value);
-    const bytes = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    const bytes = Uint8Array.from(raw, function(c) { return c.charCodeAt(0); });
     return new ArrayCtor(bytes.buffer);
   }
 
@@ -1571,6 +1597,9 @@
   }
 
   function startTripsAnimation(instance, targetId) {
+    // Capture pausedAt BEFORE stopTripsAnimation nulls the object
+    var savedPausedAt = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
+                        ? instance.tripsAnimation.pausedAt : 0;
     // Stop any running animation first
     stopTripsAnimation(instance);
 
@@ -1607,8 +1636,7 @@
 
     Promise.all(atlasPromises).then(function () {
       // Preserve accumulated time when resuming from a pause
-      const timeOffset = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
-                         ? instance.tripsAnimation.pausedAt : 0;
+      const timeOffset = savedPausedAt;
       const startedAt = performance.now();
       function tick() {
         const elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
@@ -1787,10 +1815,10 @@
     if (payload.viewState) {
       const vs = payload.viewState;
       const opts = {
-        center: [vs.longitude || 0, vs.latitude || 0],
-        zoom: vs.zoom || 1,
-        pitch: vs.pitch || 0,
-        bearing: vs.bearing || 0
+        center: [vs.longitude != null ? vs.longitude : 0, vs.latitude != null ? vs.latitude : 0],
+        zoom: vs.zoom != null ? vs.zoom : 1,
+        pitch: vs.pitch != null ? vs.pitch : 0,
+        bearing: vs.bearing != null ? vs.bearing : 0
       };
       if (payload.transitionDuration && payload.transitionDuration > 0) {
         opts.duration = payload.transitionDuration;
@@ -1901,20 +1929,33 @@
     instance.lastLayers = merged;
     if (instance._legendWidget) instance._legendWidget._refresh();
 
-    const deckLayers = buildDeckLayers(
-      cloneLayersData(merged),
-      targetId
-    );
-    instance.overlay.setProps({ layers: deckLayers });
-    instance.map.triggerRepaint();
+    // Pre-rasterise SVG atlases before building layers (same as deck_update)
+    var svgAtlasPreloads = [];
+    for (var li = 0; li < merged.length; li++) {
+      var la = merged[li].iconAtlas;
+      if (la && typeof la === 'string' && la.indexOf('data:image/svg+xml') === 0) {
+        svgAtlasPreloads.push(rasteriseIconAtlas(la));
+      }
+    }
 
-    // Restart TripsLayer animation if patched layers include one (v0.9.0)
-    startTripsAnimation(instance, targetId);
+    Promise.all(svgAtlasPreloads).then(function () {
+      const deckLayers = buildDeckLayers(
+        cloneLayersData(merged),
+        targetId
+      );
+      instance.overlay.setProps({ layers: deckLayers });
+      instance.map.triggerRepaint();
 
-    // Property animations: start for new animated layers, clean up removed ones
-    startPropertyAnimations(instance, targetId);
-    const currentLayerIds = new Set(merged.map(function (lp) { return lp.id; }));
-    cleanupAnimations(instance, targetId, currentLayerIds);
+      // Restart TripsLayer animation if patched layers include one (v0.9.0)
+      startTripsAnimation(instance, targetId);
+
+      // Property animations: start for new animated layers, clean up removed ones
+      startPropertyAnimations(instance, targetId);
+      const currentLayerIds = new Set(merged.map(function (lp) { return lp.id; }));
+      cleanupAnimations(instance, targetId, currentLayerIds);
+    }).catch(function (err) {
+      console.error('[shiny_deckgl] deck_partial_update rendering failed for "' + targetId + '":', err);
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -1965,7 +2006,7 @@
     if (!instance) return;
     const vs = payload.viewState || {};
     const opts = {
-      center: [vs.longitude || 0, vs.latitude || 0],
+      center: [vs.longitude != null ? vs.longitude : 0, vs.latitude != null ? vs.latitude : 0],
       speed: payload.speed || 1.2
     };
     if (vs.zoom != null) opts.zoom = vs.zoom;
@@ -1984,7 +2025,7 @@
     if (!instance) return;
     const vs = payload.viewState || {};
     const opts = {
-      center: [vs.longitude || 0, vs.latitude || 0],
+      center: [vs.longitude != null ? vs.longitude : 0, vs.latitude != null ? vs.latitude : 0],
       duration: payload.duration || 1000
     };
     if (vs.zoom != null) opts.zoom = vs.zoom;
@@ -2110,28 +2151,39 @@
     // 'style.load' event correctly queue instead of running immediately.
     instance.map._deckStyleChanging = true;
 
+    // Clear any previous style-change timeout and style.load handler
+    // to avoid stale callbacks when deck_set_style is called rapidly.
+    if (instance._styleChangeTimeout) {
+      clearTimeout(instance._styleChangeTimeout);
+    }
+    if (instance._styleLoadHandler) {
+      instance.map.off('style.load', instance._styleLoadHandler);
+    }
+
     // Timeout fallback: clear the flag after 30s in case style.load never fires
     // (e.g., network error, invalid style URL, malformed JSON)
-    var styleChangeTimeout = setTimeout(function () {
+    instance._styleChangeTimeout = setTimeout(function () {
+      instance._styleChangeTimeout = null;
+      instance._styleLoadHandler = null;
       if (instance.map._deckStyleChanging) {
         console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
         instance.map._deckStyleChanging = false;
+        _clearStyleQueue(instance.map);
       }
     }, 30000);
 
-    instance.map.once('style.load', function () {
-      clearTimeout(styleChangeTimeout);
+    instance._styleLoadHandler = function () {
+      clearTimeout(instance._styleChangeTimeout);
+      instance._styleChangeTimeout = null;
+      instance._styleLoadHandler = null;
       instance.map._deckStyleChanging = false;
-    });
+    };
+    instance.map.once('style.load', instance._styleLoadHandler);
 
-    // Also handle error events to clear the flag
-    instance.map.once('error', function (e) {
-      if (e.error && e.error.status === 404) {
-        clearTimeout(styleChangeTimeout);
-        instance.map._deckStyleChanging = false;
-        console.warn('[shiny_deckgl] Style load failed:', e.error);
-      }
-    });
+    // Note: we rely on the 30s timeout for style-load failure recovery.
+    // A once('error') handler was removed because MapLibre fires 'error'
+    // for unrelated tile/data errors that would prematurely clear the
+    // style-change guard and abandon queued callbacks.
     const styleOpts = {};
     if (payload.diff) {
       styleOpts.diff = true;

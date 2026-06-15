@@ -49,17 +49,30 @@ def softmax(x: np.ndarray, tau: float = 1.0) -> np.ndarray:
     return np.asarray(ex / s if s > 0 else np.ones_like(x) / len(x))  # type: ignore[no-any-return]
 
 def reflect_into_bounds(xy: np.ndarray, bounds: tuple[float, float, float, float]) -> np.ndarray:
-    """Reflect a point at rectangular boundaries (xmin, xmax, ymin, ymax)."""
+    """Reflect a point at rectangular boundaries (xmin, xmax, ymin, ymax).
+
+    Handles arbitrarily large steps by iterating reflections until the
+    point lands inside the domain (bounded to 10 iterations).
+    """
     xmin, xmax, ymin, ymax = bounds
     x, y = float(xy[0]), float(xy[1])
-    if x < xmin:
-        x = xmin + (xmin - x)
-    if x > xmax:
-        x = xmax - (x - xmax)
-    if y < ymin:
-        y = ymin + (ymin - y)
-    if y > ymax:
-        y = ymax - (y - ymax)
+    for _ in range(10):
+        if x < xmin:
+            x = 2 * xmin - x
+        elif x > xmax:
+            x = 2 * xmax - x
+        else:
+            break
+    for _ in range(10):
+        if y < ymin:
+            y = 2 * ymin - y
+        elif y > ymax:
+            y = 2 * ymax - y
+        else:
+            break
+    # Safety clamp in case reflections did not converge
+    x = max(xmin, min(xmax, x))
+    y = max(ymin, min(ymax, y))
     return np.array([x, y], dtype=float)  # type: ignore[no-any-return]
 
 def gradient_field(raster: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

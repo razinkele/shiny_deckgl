@@ -39,7 +39,12 @@ def in_bounds(point: dict[str, Any], bounds: dict[str, list[float]] | None) -> b
 
     sw = bounds["sw"]
     ne = bounds["ne"]
-    return sw[0] <= lon <= ne[0] and sw[1] <= lat <= ne[1]
+    if sw[0] <= ne[0]:
+        lon_ok = sw[0] <= lon <= ne[0]
+    else:
+        # Antimeridian wrap: sw.lng > ne.lng
+        lon_ok = lon >= sw[0] or lon <= ne[0]
+    return lon_ok and sw[1] <= lat <= ne[1]
 
 
 def on_viewport_change(
@@ -135,9 +140,13 @@ def on_viewport_change(
                 import asyncio
                 await asyncio.sleep(debounce_ms / 1000.0)
 
+            # Last-write-wins: skip if a newer call started
+            if my_gen != _generation[0]:
+                return
+
             layers = await fn(bounds, zoom)
 
-            # Last-write-wins: skip if a newer call started
+            # Check again after fn() in case a newer call arrived
             if my_gen != _generation[0]:
                 return
 

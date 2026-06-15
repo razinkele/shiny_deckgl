@@ -421,12 +421,15 @@ class MapWidget:
         patch_layer : Single-layer convenience wrapper.
         """
         # Serialise any DataFrames / GeoDataFrames in patch data fields
+        # Use shallow copies so the caller's original dicts are not mutated.
+        serialised = []
         for lyr in layers:
             if "data" in lyr:
-                lyr["data"] = _serialise_data(lyr["data"])
+                lyr = {**lyr, "data": _serialise_data(lyr["data"])}
+            serialised.append(lyr)
         await session.send_custom_message("deck_partial_update", {
             "id": self.id,
-            "layers": layers,
+            "layers": serialised,
         })
 
     async def patch_layer(
@@ -2142,9 +2145,13 @@ if (typeof Shiny === 'undefined') {{
     var overlayProps = {{ layers: deckLayers }};
     var effects = buildEffects(effectsData);
     if (effects) overlayProps.effects = effects;
-    inst.map.on('load', function() {{
+    if (inst.map.isStyleLoaded()) {{
       inst.overlay.setProps(overlayProps);
-    }});
+    }} else {{
+      inst.map.once('style.load', function() {{
+        inst.overlay.setProps(overlayProps);
+      }});
+    }}
   }});
 }})();
 </script>

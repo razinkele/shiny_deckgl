@@ -140,7 +140,7 @@ def _load_mpa_geojson() -> dict:
 
     Uses ``lru_cache`` for thread-safe, one-shot caching.
     """
-    with open(_MPA_PATH) as f:
+    with open(_MPA_PATH, encoding="utf-8") as f:
         data = json.load(f)
     # Normalise property keys to lower-case for tooltip consistency
     for feat in data["features"]:
@@ -298,13 +298,13 @@ def make_arc_data() -> list[dict]:
 @functools.lru_cache(maxsize=32)
 def make_heatmap_points(n: int = 300) -> list[list[float]]:
     """Generate random observation points clustered around Baltic ports."""
-    random.seed(42)
+    rng = random.Random(42)
     pts: list[list[float]] = []
     for _ in range(n):
-        port = random.choice(PORTS)
-        lon = float(port["lon"]) + random.gauss(0, 1.5)
-        lat = float(port["lat"]) + random.gauss(0, 0.8)
-        weight = random.uniform(1, 10)
+        port = rng.choice(PORTS)
+        lon = float(port["lon"]) + rng.gauss(0, 1.5)
+        lat = float(port["lat"]) + rng.gauss(0, 0.8)
+        weight = rng.uniform(1, 10)
         pts.append([lon, lat, weight])
     return pts
 
@@ -504,15 +504,15 @@ def make_fish_observations(n: int = 80) -> list[dict]:
         ("Ringed seal",         0,  50),
     ]
 
-    random.seed(99)
+    rng = random.Random(99)
     obs: list[dict] = []
     for i in range(n):
         sp_name, d_min, d_max = species[i % len(species)]
         # Pick a random port as anchor for geographic clustering
-        port = random.choice(PORTS)
-        lon = round(port["lon"] + random.gauss(0, 1.2), 4)
-        lat = round(port["lat"] + random.gauss(0, 0.6), 4)
-        depth = round(random.uniform(d_min, d_max), 1)
+        port = rng.choice(PORTS)
+        lon = round(port["lon"] + rng.gauss(0, 1.2), 4)
+        lat = round(port["lat"] + rng.gauss(0, 0.6), 4)
+        depth = round(rng.uniform(d_min, d_max), 1)
 
         obs.append({
             "position": [lon, lat],
@@ -634,11 +634,11 @@ def make_h3_data() -> list[dict]:
         "831f66fffffffff", "830893fffffffff", "830890fffffffff",
         "830896fffffffff",
     ]
-    random.seed(42)
+    rng = random.Random(42)
     return [
         {
             "hex": h,
-            "count": random.randint(3, 20),
+            "count": rng.randint(3, 20),
             "color": [*_h3_palette[i % len(_h3_palette)], 180],
             "name": f"H3 cell {i + 1}",
             "layerType": "H3HexagonLayer",

@@ -122,7 +122,7 @@ def _read_grd(path: Path) -> tuple[
     node_depths: dict[int, float] = {}
     elements: list[dict] = []
 
-    with open(path) as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             s = line.strip()
             if not s:
@@ -131,6 +131,8 @@ def _read_grd(path: Path) -> tuple[
             rec_type = parts[0]
 
             if rec_type == "1":
+                if len(parts) < 5:
+                    continue
                 nid = int(parts[1])
                 x, y = float(parts[3]), float(parts[4])
                 raw_nodes[nid] = (x, y)
@@ -138,8 +140,12 @@ def _read_grd(path: Path) -> tuple[
                     node_depths[nid] = float(parts[5])
 
             elif rec_type == "2":
+                if len(parts) < 5:
+                    continue
                 eid = int(parts[1])
                 nvert = int(parts[3])
+                if len(parts) < 4 + nvert:
+                    continue
                 verts = [int(parts[4 + i]) for i in range(nvert)]
                 # Depth field is optional (present in some .grd flavours)
                 depth_idx = 4 + nvert

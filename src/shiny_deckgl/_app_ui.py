@@ -1437,11 +1437,6 @@ def build_ui():
                             "ts_3d", "3D extrusion",
                             value=False,
                         ),
-                        ui.input_slider(
-                            "ts_cell_size", "Cell size (m)",
-                            min=10000, max=80000, value=40000,
-                            step=5000,
-                        ),
                     ),
                     ui.accordion_panel(
                         "\U0001F4CA Info",
@@ -1484,7 +1479,8 @@ def build_ui():
             ),
             hexfish_widget.ui() if _HEXSIM_AVAILABLE else ui.p(
                 "HexSim data not available. "
-                "Install heximpy and ensure the Columbia workspace is present.",
+                "Install heximpy and set SHINY_DECKGL_HEXSIM_WORKSPACE "
+                "to the Columbia workspace.",
                 class_="text-muted p-3",
             ),
         ),

@@ -2,8 +2,8 @@
 
 ## Shiny for Python → deck.gl bridge (Java-free)
 
-A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.2.10) and
-[MapLibre GL JS](https://maplibre.org/) (v5.3.1) into
+A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.3.6) and
+[MapLibre GL JS](https://maplibre.org/) (v5.24.0) into
 [Shiny for Python](https://shiny.posit.co/py/) applications.
 Built for marine science and GIS visualisation — WMS layers, EMODnet,
 HELCOM, food web modelling — the package handles CDN asset injection, layer
@@ -36,14 +36,14 @@ browser, all without Java dependencies.
 | **HTML export** | `widget.to_html(layers, path="map.html")` — standalone HTML file viewable in any browser. |
 | **JSON spec** | `to_json()` / `from_json()` for serialising and restoring map configurations. |
 | **`@@` accessor convention** | Python strings like `"@@d"` or `"@@d.position"` are resolved to JS arrow functions on the client. |
-| **CDN-pinned assets** | deck.gl 9.2.10, MapLibre GL 5.3.1 — deterministic builds. |
+| **CDN-pinned assets** | deck.gl 9.3.6, MapLibre GL 5.24.0 — deterministic builds. |
 | **Conda recipe** | Bundled `conda.recipe/meta.yaml` for micromamba / conda-build. |
 
 ### Phase 1 — Controls & Navigation (v0.2)
 
 | Capability | Details |
 | --- | --- |
-| **MapLibre v5 upgrade** | Upgraded from MapLibre GL JS v3.6.2 to v5.3.1 (breaking API changes handled). |
+| **MapLibre v5 upgrade** | Upgraded from MapLibre GL JS v3.6.2 to v5.24.0 (breaking API changes handled). |
 | **Map controls** | `add_control(session, "NavigationControl")` — navigation, scale, fullscreen, geolocate, attribution, terrain. |
 | **`remove_control()`** | Remove previously added controls by type. |
 | **`fit_bounds()`** | Fly the camera to a bounding box with optional padding and animation. |
@@ -109,7 +109,7 @@ browser, all without Java dependencies.
 | | `ease_to(longitude, latitude, zoom, duration)` — linear easeTo animation. |
 | **Transition helper** | `transition(duration, easing, type)` — animate layer property changes on data update. |
 | **Globe view** | `globe_view()` — render the earth as a 3D globe with `GlobeView`. |
-| **deck.gl 9.2.10** | CDN upgraded from 9.1.4 to 9.2.10 with widget support. |
+| **deck.gl 9.3.6** | CDN upgraded from 9.1.4 to 9.3.6 with widget support. |
 
 ### Phase 8 — Animation, Geo-Layers & Drawing Demo (v0.9)
 
@@ -126,6 +126,24 @@ browser, all without Java dependencies.
 | **Client-side animation** | `requestAnimationFrame`-based TripsLayer animation loop — no server polling. |
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
+
+### v1.9.2 — Robustness & Correctness Fixes
+
+| Capability | Details |
+| --- | --- |
+| **`partial_update()` safety** | No longer mutates the caller's layer dicts in-place — uses shallow copies so original DataFrames survive repeated calls. |
+| **`to_html()` reliability** | Standalone HTML export now checks `isStyleLoaded()` before pushing layers, preventing silent layer loss when the style is already cached. |
+| **Style-swap robustness** | `whenStyleReady` queues all deferred callbacks (not just the first); timeout and handler cleanup prevents stale listeners on rapid `set_style()` calls. |
+| **TripsLayer resume** | Pause/resume correctly preserves playback position instead of silently restarting from time 0. |
+| **SVG atlas in partial updates** | `deck_partial_update` now pre-rasterises SVG icon atlases before building layers (matches `deck_update`). |
+| **Binary decode performance** | `decodeBinaryValue` uses `Uint8Array.from()` — eliminates per-byte string copies for large binary attributes. |
+| **Mapbox API key safety** | `transformRequest` restricted to `mapbox://` and `api.mapbox.com` URLs — no longer leaks tokens to third-party tiles containing "mapbox" in the path. |
+| **Zero-value view state** | All `parseFloat \|\| default` patterns replaced with `isNaN` guards — `zoom=0`, `longitude=0`, `latitude=0` no longer silently coerced. |
+| **`color_bins()` formula** | Corrected equal-width binning from `n_bins-1` to `n_bins` scale factor. |
+| **Antimeridian handling** | `in_bounds()` now correctly filters points when the viewport straddles the 180°/-180° line. |
+| **Viewport debounce** | Generation check before AND after `fn()` prevents wasted computation on rapid pan/zoom. |
+| **`.grd` parser hardening** | UTF-8 encoding with replace fallback; bounds checks prevent `IndexError` on malformed lines. |
+| **Thread-safe demo data** | `random.seed()` replaced with `random.Random()` instances — no global RNG mutation in cached demo functions. |
 
 ### v1.9.0 — Security Hardening, Lazy Init & Expanded Sprite Library
 
@@ -147,7 +165,6 @@ browser, all without Java dependencies.
 | **`layer_legend_widget()`** | Auto-introspecting deck.gl legend widget — reads active layers at runtime, detects layer type → swatch shape, extracts colors from props/data. Supports manual entries, visibility checkboxes, collapsible header, `exclude_layers`, `label_map`. |
 | **Layer Gallery auto-legend** | Tab 1 demo now uses `layer_legend_widget(auto_introspect=True)` with live updates as layers are toggled. |
 | **Color ramp constants** | 5 new palettes (`PALETTE_BLUES`, `PALETTE_GREENS`, `PALETTE_REDS`, `PALETTE_YELLOW_RED`, `PALETTE_BLUE_WHITE`) + 7 short-name aliases (`VIRIDIS`, `OCEAN_DEPTH`, etc.). |
-| **`update_legend()` method** | Dynamically update/create deck.gl legend control without resending all controls. |
 | **Client-side animation API** | `animate_prop()` + `set_animation()` for `requestAnimationFrame`-based visual animations with zero server round-trips. |
 | **Performance patterns guide** | New `docs/performance-patterns.md` with static/dynamic split pattern and data visualization recipes. |
 

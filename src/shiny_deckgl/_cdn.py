@@ -1,11 +1,11 @@
 """CDN URL constants — single source of truth for all external assets."""
 
-DECKGL_VERSION = "9.2.10"
-MAPLIBRE_VERSION = "5.3.1"
-MAPBOX_DRAW_VERSION = "1.4.3"
-MAPLIBRE_LEGEND_VERSION = "2.0.6"
+DECKGL_VERSION = "9.3.6"
+MAPLIBRE_VERSION = "5.24.0"
+MAPBOX_DRAW_VERSION = "1.5.1"
+MAPLIBRE_LEGEND_VERSION = "2.0.7"
 MAPLIBRE_OPACITY_VERSION = "1.8.0"
-H3_JS_VERSION = "4.1.0"
+H3_JS_VERSION = "4.5.0"
 
 DECKGL_JS = f"https://cdn.jsdelivr.net/npm/deck.gl@{DECKGL_VERSION}/dist.min.js"
 H3_JS = f"https://cdn.jsdelivr.net/npm/h3-js@{H3_JS_VERSION}/dist/h3-js.umd.js"

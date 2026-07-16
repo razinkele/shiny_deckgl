@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import math
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -11,12 +12,38 @@ if TYPE_CHECKING:
 __all__ = ["encode_binary_attribute"]
 
 
+def json_safe(obj: Any) -> Any:
+    """Recursively replace non-finite floats (``NaN``/``inf``) with ``None``.
+
+    ``json.dumps`` emits the non-standard tokens ``NaN``/``Infinity`` for such
+    values, which breaks strict ``JSON.parse`` consumers (e.g. the standalone
+    HTML export and ``to_json`` output).  This walks dicts/lists and nullifies
+    non-finite floats so the result serialises to valid JSON.
+    """
+    if isinstance(obj, float):
+        return None if (math.isnan(obj) or math.isinf(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    return obj
+
+
 def _serialise_data(data: Any) -> Any:
     """Convert pandas/geopandas objects to JSON-safe structures.
 
     - ``GeoDataFrame`` (or subclasses) → GeoJSON ``FeatureCollection`` dict
     - ``DataFrame`` (or subclasses) → list of row-dicts
     - Everything else is returned unchanged.
+
+    .. warning::
+       The conversion is unconditional and independent of the target layer.
+       A ``GeoDataFrame`` always becomes a ``FeatureCollection`` **dict**,
+       which only ``GeoJsonLayer`` consumes — passing one to an array-accessor
+       layer (e.g. ``scatterplot_layer`` with the default ``getPosition="@@d"``)
+       renders nothing.  A plain ``DataFrame`` becomes row-dicts, so array
+       accessors like ``getPosition="@@d"`` must be overridden with a property
+       accessor (``"@@d.<col>"``).
     """
     # Check class names in the MRO so subclasses are handled without
     # importing pandas/geopandas (which are optional dependencies).
@@ -66,6 +93,13 @@ def encode_binary_attribute(array: "np.ndarray") -> dict:
     TypeError
         If `array` is not a numpy ndarray.
     """
+    # Reject obvious non-ndarrays *before* importing numpy, so a bad input
+    # raises the documented TypeError even when numpy is not installed.
+    if type(array).__module__.split(".")[0] != "numpy":
+        raise TypeError(
+            f"encode_binary_attribute() expects numpy.ndarray, got {type(array).__name__}"
+        )
+
     import numpy as np  # noqa: local import — numpy is optional
 
     if not isinstance(array, np.ndarray):

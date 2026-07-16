@@ -5,6 +5,109 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.9.4] — 2026-07-16
+
+### Changed
+
+- **WebGL/CDN stack refresh** — Updated pinned CDN assets to deck.gl 9.3.6,
+  @deck.gl/widgets 9.3.6, MapLibre GL JS 5.24.0, Mapbox Draw 1.5.1,
+  maplibre-gl-legend 2.0.7, and h3-js 4.5.0.
+- **Shiny for Python baseline** — Updated package metadata to require
+  `shiny>=1.6.3`, matching the latest available PyPI release.
+
+### Fixed
+
+- **`point_cloud_layer` / `simple_mesh_layer` default accessor was unresolvable**
+  — Default `getPosition="@@=position"` failed the client accessor whitelist
+  (expressions must start with `d`), so deck.gl received a literal string.
+  Changed the default to `"@@d.position"`.
+- **Mapbox token leak via substring host match** — `transformRequest` matched
+  `api.mapbox.com` anywhere in the URL, leaking the token to look-alike hosts
+  (e.g. `api.mapbox.com.evil.tld`). Now parses the URL and matches the hostname
+  exactly.
+- **`to_html()` `</script>` breakout (XSS)** — Embedded layer/effect JSON now
+  escapes `<` as `\u003c`, so data containing `</script>` cannot break out of
+  the export's `<script>` block.
+- **Invalid JSON from non-finite floats** — `to_html()` / `to_json()` now
+  nullify `NaN`/`Infinity` via a shared `json_safe()` helper so the output is
+  strict-parseable JSON.
+- **`from_json()` double-namespaced widget IDs** — `to_json()` now stores the
+  bare (un-namespaced) id, so round-tripping inside a Shiny module no longer
+  mangles the id.
+- **`encode_binary_attribute()` raised `ImportError` instead of `TypeError`** —
+  Non-ndarray input is now rejected before numpy is imported.
+- **TripsLayer animation could resurrect after stop** — A generation token,
+  bumped on start/stop/pause, is checked before the async (SVG-atlas) kickoff.
+- **Cluster layer handler leak on re-add** — Old click/hover handlers are now
+  detached before the same cluster layer is re-added.
+- **Live custom-message handlers lacked try/catch** — A throw in one handler no
+  longer aborts the whole Shiny message callback.
+- **Messages deferred during CDN load were never replayed** — Replay is now
+  centralised into `safeInitMap`, covering the initial-connect path.
+- **No teardown when a map's DOM node is removed** — A `MutationObserver` now
+  disposes MapLibre/deck instances, RAF loops and animation globals when a
+  `.deckgl-map` node is removed.
+- **Demo Export tab crashed with `NameError`** — Export/JSON/round-trip handlers
+  called an undefined `_gl_layers()`; they now use `_gl_build_all_layers()`.
+- **Demo MapLibre / Layer-Gallery tabs re-sent full payloads on every toggle**
+  — `_ml_init` / `_gl_init` now isolate their input reads so they run once.
+- **Demo seal density grid inflated to ~69k points** — Grid weighting now uses
+  colony population instead of the marker's pixel radius.
+- **Cached demo factories used the global RNG** — `make_geohash_data`,
+  `make_quadkey_data`, and `make_s2_data` now use local seeded `random.Random`
+  instances.
+
+### Removed
+
+- **Dead `ts_cell_size` demo control** — Removed the Time & Space "Cell size"
+  slider that was never read by the server.
+
+---
+## [1.9.2] — 2026-03-28
+
+### Fixed
+
+- **`partial_update()` mutated caller's layer dicts** — Replaced in-place
+  `lyr["data"] = _serialise_data(...)` with shallow-copy pattern so callers
+  retain their original DataFrames across repeated calls.
+- **`to_html()` missed style-already-loaded case** — Standalone HTML export now
+  checks `map.isStyleLoaded()` before `setProps`, falling back to
+  `once('style.load')`. Prevents silent layer loss when the style is cached.
+- **TripsLayer resume restarted from time 0** — `startTripsAnimation` now
+  captures `pausedAt` before `stopTripsAnimation` nulls the animation object.
+- **`whenStyleReady` dropped concurrent callbacks** — Replaced `map.once()`
+  with a queue that drains all deferred callbacks when the style loads.
+  `_clearStyleQueue` helper properly removes orphaned listeners on
+  error/timeout.
+- **`deck_set_style` stale timeout on rapid calls** — Timeout and
+  `style.load` handler are now stored on the instance and cleared on re-entry.
+- **`once('error')` fired on unrelated tile errors** — Removed the
+  `once('error')` handler from `deck_set_style`; the 30-second timeout covers
+  the style-load failure case without false positives.
+- **`deck_partial_update` skipped SVG atlas preloading** — Now wraps
+  `buildDeckLayers` in `Promise.all(svgAtlasPreloads)`, matching `deck_update`.
+- **`decodeBinaryValue` slow loop** — Replaced manual `for` loop with
+  `Uint8Array.from(atob(val.value), c => c.charCodeAt(0))`.
+- **Mapbox API key leaked to non-Mapbox URLs** — `transformRequest` now only
+  matches `mapbox://` protocol and `api.mapbox.com` hostname.
+- **`parseFloat(...) || default` coerced valid zeroes** — All 7 view-state
+  data attributes plus `flyTo`/`easeTo`/`deck_update` now use
+  `isNaN(parseFloat(...))` guards.
+- **`color_bins()` off-by-one** — Changed scaling from `n_bins - 1` to
+  `n_bins` for correct equal-width binning; maximum value clamped to last bin.
+- **`in_bounds()` failed at antimeridian** — Added `sw[0] > ne[0]` OR-logic
+  for viewports straddling the 180°/-180° line.
+- **Viewport debounce wasted computation** — Added generation check before
+  (not just after) calling `fn()` so superseded calls are skipped.
+- **`.grd` parser crash on malformed lines** — Added `len(parts)` guards;
+  opened file with `encoding="utf-8", errors="replace"`.
+- **`_load_mpa_geojson` encoding** — Added explicit `encoding="utf-8"`.
+- **`random.seed()` global state mutation** — Demo data generators now use
+  local `random.Random()` instances inside `lru_cache`-decorated functions.
+- **Orphaned `TestUpdateLegend` tests** — Removed tests for the deleted
+  `update_legend()` method (missed in the v1.9.0 legacy legend refactor).
+
+---
 ## [1.9.1] — 2026-03-21
 
 ### Fixed

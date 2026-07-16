@@ -1,15 +1,30 @@
 """Tests for HexSim Fish demo tab data generators."""
+import os
 import sys
+from pathlib import Path
+
 import pytest
 import numpy as np
 
-sys.path.insert(0, r"C:\Users\DELL\OneDrive - ku.lt\HORIZON_EUROPE\HexSim")
+_hexsim_root = os.environ.get("SHINY_DECKGL_HEXSIM_ROOT")
+_hexsim_workspace = os.environ.get("SHINY_DECKGL_HEXSIM_WORKSPACE")
+
+HEXSIM_ROOT = Path(_hexsim_root).expanduser() if _hexsim_root else None
+HEXSIM_WORKSPACE = (
+    Path(_hexsim_workspace).expanduser()
+    if _hexsim_workspace
+    else HEXSIM_ROOT / "Columbia [small]" if HEXSIM_ROOT else None
+)
+
+if HEXSIM_ROOT is not None:
+    sys.path.insert(0, str(HEXSIM_ROOT))
 
 try:
     from heximpy.hxnparser import Workspace  # noqa: F401
-    HEXSIM_AVAILABLE = True
 except ImportError:
     HEXSIM_AVAILABLE = False
+else:
+    HEXSIM_AVAILABLE = HEXSIM_WORKSPACE is not None and HEXSIM_WORKSPACE.exists()
 
 
 @pytest.mark.skipif(not HEXSIM_AVAILABLE, reason="heximpy not available")

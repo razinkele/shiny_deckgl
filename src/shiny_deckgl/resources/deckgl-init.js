@@ -559,7 +559,11 @@
           var queue = map._deckStyleQueue || [];
           map._deckStyleQueue = null;
           map._deckStyleDrainFn = null;
-          for (var i = 0; i < queue.length; i++) queue[i]();
+          for (var i = 0; i < queue.length; i++) {
+            try { queue[i](); } catch (e) {
+              console.error('[shiny_deckgl] Queued style callback [' + i + '/' + queue.length + '] failed:', e);
+            }
+          }
         };
         map._deckStyleDrainFn = drainFn;
         map.once('style.load', drainFn);
@@ -638,7 +642,21 @@
     // Mapbox API key: inject into tile requests if a mapbox:// style is used
     if (mapboxApiKey) {
       mapOpts.transformRequest = function(url, resourceType) {
-        if ((url.startsWith('mapbox://') || url.indexOf('api.mapbox.com') !== -1) && url.indexOf('access_token') === -1) {
+        // Only attach the token to genuine Mapbox endpoints. Parse the URL and
+        // match the hostname exactly (or the mapbox:// scheme) so the token is
+        // never leaked to look-alike hosts such as "api.mapbox.com.evil.tld".
+        var isMapbox = false;
+        if (url.startsWith('mapbox://')) {
+          isMapbox = true;
+        } else {
+          try {
+            var host = new URL(url, window.location.href).hostname.toLowerCase();
+            isMapbox = (host === 'api.mapbox.com' || host.endsWith('.tiles.mapbox.com'));
+          } catch (e) {
+            isMapbox = false;
+          }
+        }
+        if (isMapbox && url.indexOf('access_token') === -1) {
           const sep = url.indexOf('?') === -1 ? '?' : '&';
           return { url: url + sep + 'access_token=' + mapboxApiKey };
         }
@@ -828,11 +846,49 @@
   // Safely initialise a single map element with error handling.
   function safeInitMap(el) {
     if (mapInstances[el.id]) return; // already initialised
-    try { initMap(el); } catch(e) {
+    try {
+      initMap(el);
+      // Replay any messages queued while this map was uninitialised (e.g.
+      // deferred during CDN load for a visible map). replayDeferredMessages
+      // consumes the queue, so redundant calls elsewhere are harmless no-ops.
+      if (mapInstances[el.id]) replayDeferredMessages(el.id);
+    } catch(e) {
       console.error('[shiny_deckgl] initMap failed for "' + el.id + '":', e);
       el.innerHTML = '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
         '[shiny_deckgl] Map failed to initialise. Check browser console.</div>';
     }
+  }
+
+  // Tear down a map instance and release its resources when its DOM node is
+  // removed (e.g. a Shiny tab/UI is re-rendered). Without this, MapLibre maps,
+  // deck.gl overlays, RAF loops and animation globals leak.
+  function disposeMap(id) {
+    var instance = mapInstances[id];
+    if (!instance) return;
+    // Stop animation loops and invalidate any pending async starts.
+    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
+    try {
+      if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
+        cancelAnimationFrame(instance.tripsAnimation.rafId);
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
+        cancelAnimationFrame(instance.propertyAnimation.rafId);
+      }
+    } catch (e) { /* ignore */ }
+    // Finalise the deck.gl overlay, then the MapLibre map.
+    try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
+    try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
+    // Drop per-map animation globals set by @@animate markers.
+    try {
+      var prefix = '_deckgl_anim_' + id + '_';
+      Object.keys(window).forEach(function (k) {
+        if (k.indexOf(prefix) === 0) { try { delete window[k]; } catch (e2) { window[k] = undefined; } }
+      });
+    } catch (e) { /* ignore */ }
+    delete mapInstances[id];
+    if (typeof _deferredMessages !== 'undefined') delete _deferredMessages[id];
   }
 
   // Initialize deckgl-map divs on page load inside shiny.
@@ -1602,14 +1658,22 @@
                         ? instance.tripsAnimation.pausedAt : 0;
     // Stop any running animation first
     stopTripsAnimation(instance);
+    // Claim a generation token AFTER the internal stop. Any later stop/pause
+    // (e.g. while the SVG atlas is still rasterising asynchronously) bumps the
+    // counter, so the deferred kickoff below can detect it was superseded and
+    // must not resurrect a stopped/stale RAF loop.
+    var myGen = (instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1);
 
-    const layersData = instance.lastLayers;
-    const tripsConfigs = [];     // {index, loopLength, speed, headIcons?}
-    for (let i = 0; i < layersData.length; i++) {
-      const lp = layersData[i];
+    // Scan current layers for TripsLayer configs. We store layer IDs
+    // (not indices) so the tick can find them even after lastLayers is
+    // replaced by deck_update / deck_partial_update / visibility toggle.
+    var initLayers = instance.lastLayers;
+    var tripsConfigs = [];  // {layerId, loopLength, speed, headIcons?}
+    for (var i = 0; i < initLayers.length; i++) {
+      var lp = initLayers[i];
       if (lp.type === 'TripsLayer' && lp._tripsAnimation) {
-        const cfg = {
-          index: i,
+        var cfg = {
+          layerId: lp.id,
           loopLength: lp._tripsAnimation.loopLength || 1800,
           speed: lp._tripsAnimation.speed || 1,
         };
@@ -1623,49 +1687,76 @@
 
     // Pre-rasterise any SVG icon atlases before starting the RAF loop.
     var atlasPromises = [];
-    for (let c = 0; c < tripsConfigs.length; c++) {
-      const cfg = tripsConfigs[c];
-      if (cfg.headIcons && cfg.headIcons.iconAtlas) {
+    for (var c = 0; c < tripsConfigs.length; c++) {
+      var atlCfg = tripsConfigs[c];
+      if (atlCfg.headIcons && atlCfg.headIcons.iconAtlas) {
         atlasPromises.push(
-          rasteriseIconAtlas(cfg.headIcons.iconAtlas).then(function (raster) {
-            cfg.headIcons._rasterAtlas = raster;
-          })
+          rasteriseIconAtlas(atlCfg.headIcons.iconAtlas).then((function (cfg) {
+            return function (raster) { cfg.headIcons._rasterAtlas = raster; };
+          })(atlCfg))
         );
       }
     }
 
+    /** Find a layer by ID in the current lastLayers array. */
+    function _findLayer(layers, id) {
+      for (var k = 0; k < layers.length; k++) {
+        if (layers[k].id === id) return layers[k];
+      }
+      return null;
+    }
+
     Promise.all(atlasPromises).then(function () {
+      // Bail if a newer start/stop/pause superseded this deferred kickoff.
+      if (instance._tripsAnimGen !== myGen) return;
       // Preserve accumulated time when resuming from a pause
-      const timeOffset = savedPausedAt;
-      const startedAt = performance.now();
+      var timeOffset = savedPausedAt;
+      var startedAt = performance.now();
+
       function tick() {
-        const elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
-        // Update currentTime on each TripsLayer
-        for (let c = 0; c < tripsConfigs.length; c++) {
-          const cfg = tripsConfigs[c];
-          const t = (elapsed * cfg.speed) % cfg.loopLength;
-          layersData[cfg.index].currentTime = t;
+        // If the animation was externally stopped, do not resurrect the loop.
+        if (!instance.tripsAnimation) return;
+
+        // Read the LIVE lastLayers on every frame so that updates from
+        // deck_update, deck_partial_update, and deck_layer_visibility
+        // are respected immediately instead of being overwritten.
+        var liveLayers = instance.lastLayers;
+        if (!liveLayers || liveLayers.length === 0) {
+          instance.tripsAnimation.rafId = requestAnimationFrame(tick);
+          return;
         }
 
-        // Re-build and push layers
-        const deckLayers = buildDeckLayers(
-          cloneLayersData(layersData),
-          targetId
-        );
+        var elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
+
+        // Clone first, then write currentTime onto clones — avoids
+        // permanently mutating the canonical server state in lastLayers.
+        var cloned = cloneLayersData(liveLayers);
+
+        // Update currentTime on each TripsLayer clone (looked up by ID)
+        for (var c = 0; c < tripsConfigs.length; c++) {
+          var cfg = tripsConfigs[c];
+          var lp = _findLayer(cloned, cfg.layerId);
+          if (lp) {
+            lp.currentTime = (elapsed * cfg.speed) % cfg.loopLength;
+          }
+        }
+
+        // Build deck.gl layers from the cloned (mutated) data
+        var deckLayers = buildDeckLayers(cloned, targetId);
 
         // Append head-icon layers for TripsLayers with _tripsHeadIcons
-        // Uses pre-rasterised canvas instead of raw SVG data-URI.
-        for (let c = 0; c < tripsConfigs.length; c++) {
-          const cfg = tripsConfigs[c];
-          if (!cfg.headIcons) continue;
-          const lp = layersData[cfg.index];
-          const hi = cfg.headIcons;
-          const heads = interpolateTripHeads(
-            lp.data, lp.currentTime, hi.iconField || 'species'
+        for (var c2 = 0; c2 < tripsConfigs.length; c2++) {
+          var hcfg = tripsConfigs[c2];
+          if (!hcfg.headIcons) continue;
+          var hlp = _findLayer(cloned, hcfg.layerId);
+          if (!hlp) continue;
+          var hi = hcfg.headIcons;
+          var heads = interpolateTripHeads(
+            hlp.data, hlp.currentTime, hi.iconField || 'species'
           );
           if (heads.length > 0) {
             var headIconProps = {
-              id: (lp.id || 'trips') + '_heads',
+              id: (hlp.id || 'trips') + '_heads',
               data: heads,
               iconAtlas: hi._rasterAtlas || hi.iconAtlas,
               iconMapping: hi.iconMapping,
@@ -1680,13 +1771,11 @@
               billboard: false,
               pickable: false,
             };
-            // Propagate coordinate system from parent TripsLayer so
-            // head icons render correctly in METER_OFFSETS mode.
-            if (lp.coordinateSystem != null) {
-              headIconProps.coordinateSystem = lp.coordinateSystem;
+            if (hlp.coordinateSystem != null) {
+              headIconProps.coordinateSystem = hlp.coordinateSystem;
             }
-            if (lp.coordinateOrigin != null) {
-              headIconProps.coordinateOrigin = lp.coordinateOrigin;
+            if (hlp.coordinateOrigin != null) {
+              headIconProps.coordinateOrigin = hlp.coordinateOrigin;
             }
             deckLayers.push(new deck.IconLayer(headIconProps));
           }
@@ -1710,6 +1799,9 @@
   }
 
   function pauseTripsAnimation(instance) {
+    // Invalidate any pending async (atlas-rasterisation) start so it cannot
+    // resurrect the loop after the user pauses.
+    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
     if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
       cancelAnimationFrame(instance.tripsAnimation.rafId);
       // Compute accumulated elapsed time so we can resume from the same point
@@ -1721,6 +1813,8 @@
   }
 
   function stopTripsAnimation(instance) {
+    // Invalidate any pending async start (see startTripsAnimation).
+    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
     if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
       cancelAnimationFrame(instance.tripsAnimation.rafId);
     }
@@ -1781,11 +1875,20 @@
   // Wrap a Shiny message handler to defer messages for maps in hidden tabs.
   // Messages are queued and replayed when the tab becomes visible.
   function addDeferrable(name, fn) {
+    // Guard live handler execution so a throw in one handler cannot abort the
+    // whole Shiny custom-message callback (mirrors replayDeferredMessages).
+    function runFn(payload) {
+      try {
+        fn(payload);
+      } catch (e) {
+        console.error('[shiny_deckgl] Handler "' + name + '" failed:', e);
+      }
+    }
     _handlerFns[name] = fn;
     Shiny.addCustomMessageHandler(name, function (payload) {
-      if (!payload || !payload.id) { fn(payload); return; }
+      if (!payload || !payload.id) { runFn(payload); return; }
       // If map is already initialised, run immediately
-      if (mapInstances[payload.id]) { fn(payload); return; }
+      if (mapInstances[payload.id]) { runFn(payload); return; }
       // Map not initialised — check if it's in a hidden tab
       var el = document.getElementById(payload.id);
       if (el && !isInVisibleTab(el)) {
@@ -1800,7 +1903,7 @@
           return;
         }
         safeInitMap(el);
-        if (mapInstances[payload.id]) { fn(payload); return; }
+        if (mapInstances[payload.id]) { runFn(payload); return; }
       }
       console.warn('[shiny_deckgl] Map "' + payload.id + '" not found — "' + name + '" ignored');
     });
@@ -1935,8 +2038,12 @@
       }
     });
 
+    // Update the canonical cache synchronously so rapid consecutive partial
+    // updates merge against the latest patch even while SVG atlases preload.
     instance.lastLayers = merged;
     if (instance._legendWidget) instance._legendWidget._refresh();
+    instance._partialUpdateGen = (instance._partialUpdateGen || 0) + 1;
+    var partialUpdateGen = instance._partialUpdateGen;
 
     // Pre-rasterise SVG atlases before building layers (same as deck_update)
     var svgAtlasPreloads = [];
@@ -1948,6 +2055,7 @@
     }
 
     Promise.all(svgAtlasPreloads).then(function () {
+      if (partialUpdateGen !== instance._partialUpdateGen) return;
       const deckLayers = buildDeckLayers(
         cloneLayersData(merged),
         targetId
@@ -2579,15 +2687,15 @@
     // Store handler references for cleanup
     if (!instance.popupHandlers) instance.popupHandlers = {};
 
-    // Remove existing handler for this layer
-    if (instance.popupHandlers[layerId]) {
-      map.off('click', layerId, instance.popupHandlers[layerId].click);
-      map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
-      map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
-      delete instance.popupHandlers[layerId];
-    }
-
     whenStyleReady(map, function() {
+      // Cleanup inside whenStyleReady so both removal and registration
+      // are serialized — prevents handler leaks during style swaps.
+      if (instance.popupHandlers[layerId]) {
+        map.off('click', layerId, instance.popupHandlers[layerId].click);
+        map.off('mouseenter', layerId, instance.popupHandlers[layerId].enter);
+        map.off('mouseleave', layerId, instance.popupHandlers[layerId].leave);
+        delete instance.popupHandlers[layerId];
+      }
       const clickHandler = function (e) {
         if (!e.features || !e.features.length) return;
         const props = e.features[0].properties || {};
@@ -3053,6 +3161,16 @@
       }
 
       // Clean up existing layers & source
+      // Detach previously-registered event handlers for this source first,
+      // otherwise re-adding the same cluster layer leaks the old handlers and
+      // causes duplicate click/hover behaviour.
+      if (instance.clusterHandlers && instance.clusterHandlers[srcId]) {
+        var oldHandlers = instance.clusterHandlers[srcId];
+        map.off("click", srcId + "-clusters", oldHandlers.click);
+        map.off("mouseenter", srcId + "-clusters", oldHandlers.mouseenter);
+        map.off("mouseleave", srcId + "-clusters", oldHandlers.mouseleave);
+        delete instance.clusterHandlers[srcId];
+      }
       const layerIds = [srcId + "-clusters", srcId + "-count", srcId + "-unclustered"];
       layerIds.forEach(function (lid) {
         if (map.getLayer(lid)) map.removeLayer(lid);
@@ -3281,6 +3399,66 @@
       startPropertyAnimations(instance, payload.id);
     }
   });
+
+  // -----------------------------------------------------------------------
+  // MutationObserver: detect new .deckgl-map elements added dynamically
+  // (e.g. by Shiny render.ui after a tab becomes visible) and initialise
+  // them if they are in a visible tab.  This closes the race where
+  // shown.bs.tab fires before Shiny has rendered the output.
+  // -----------------------------------------------------------------------
+  var _mutationObserver = new MutationObserver(function (mutations) {
+    for (var i = 0; i < mutations.length; i++) {
+      // Dispose maps whose DOM nodes were removed (tab/UI re-render) to avoid
+      // leaking MapLibre/deck instances, listeners and RAF loops.
+      var removed = mutations[i].removedNodes;
+      for (var r = 0; r < removed.length; r++) {
+        var rnode = removed[r];
+        if (rnode.nodeType !== 1) continue;
+        var rmaps = [];
+        if (rnode.classList && rnode.classList.contains('deckgl-map')) {
+          rmaps.push(rnode);
+        } else if (rnode.querySelectorAll) {
+          rmaps = rnode.querySelectorAll('.deckgl-map');
+        }
+        for (var m = 0; m < rmaps.length; m++) {
+          var rel = rmaps[m];
+          if (rel.id && mapInstances[rel.id] && !document.getElementById(rel.id)) {
+            console.debug('[shiny_deckgl] MutationObserver: disposing removed .deckgl-map "' + rel.id + '"');
+            disposeMap(rel.id);
+          }
+        }
+      }
+      if (typeof maplibregl === 'undefined' || typeof deck === 'undefined') continue;
+      var added = mutations[i].addedNodes;
+      for (var j = 0; j < added.length; j++) {
+        var node = added[j];
+        if (node.nodeType !== 1) continue;  // element nodes only
+        var maps = [];
+        if (node.classList && node.classList.contains('deckgl-map')) {
+          maps.push(node);
+        } else if (node.querySelectorAll) {
+          maps = node.querySelectorAll('.deckgl-map');
+        }
+        for (var k = 0; k < maps.length; k++) {
+          var el = maps[k];
+          console.debug('[shiny_deckgl] MutationObserver: new .deckgl-map "' + el.id + '"');
+          if (!mapInstances[el.id] && isInVisibleTab(el)) {
+            safeInitMap(el);
+            replayDeferredMessages(el.id);
+          }
+        }
+      }
+    }
+  });
+  function _startObserver() {
+    console.debug('[shiny_deckgl] MutationObserver active');
+    _mutationObserver.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) {
+    _startObserver();
+  } else {
+    document.addEventListener('DOMContentLoaded', _startObserver);
+  }
 
   // Expose helpers for standalone HTML exports
   window.__deckgl_initMap = initMap;

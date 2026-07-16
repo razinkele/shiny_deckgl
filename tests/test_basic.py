@@ -210,8 +210,8 @@ def test_app_returns_shiny_app():
 
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
-    assert "deck.gl@9.2.10" in html
-    assert "maplibre-gl@5.3.1" in html
+    assert "deck.gl@9.3.6" in html
+    assert "maplibre-gl@5.24.0" in html
 
 
 def test_head_includes_contains_local_assets():
@@ -610,8 +610,8 @@ class TestToHtml:
         html = w.to_html(layers)
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
-        assert "deck.gl@9.2.10" in html
-        assert "maplibre-gl@5.3.1" in html
+        assert "deck.gl@9.3.6" in html
+        assert "maplibre-gl@5.24.0" in html
 
     def test_contains_layer_data(self):
         w = MapWidget("t")
@@ -1009,7 +1009,7 @@ class TestCooperativeGestures:
 class TestMapLibreVersion:
     def test_head_includes_maplibre_v5(self):
         dep = head_includes()
-        assert "maplibre-gl@5.3" in str(dep)
+        assert "maplibre-gl@5.24.0" in str(dep)
 
     def test_head_includes_no_old_maplibre(self):
         dep = head_includes()
@@ -1018,7 +1018,7 @@ class TestMapLibreVersion:
     def test_to_html_maplibre_v5(self):
         w = MapWidget("v5test")
         html = w.to_html([])
-        assert "maplibre-gl@5.3" in html
+        assert "maplibre-gl@5.24.0" in html
         assert "maplibre-gl@3.6" not in html
 
 

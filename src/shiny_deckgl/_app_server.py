@@ -276,12 +276,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @reactive.Effect
     async def _ml_init():
-        """Push initial native layers + controls to the MapLibre tab."""
+        """Push initial native layers + controls to the MapLibre tab (once)."""
         # Send an empty deck.gl update so the overlay is initialised
         await maplibre_widget.update(session, [])
         # Add native MapLibre layers (globe-safe, legend/opacity visible)
         await _ml_add_native_layers()
-        controls = _build_ml_controls()
+        # Isolate the control-toggle reads so this init effect does NOT become
+        # reactive on every ml_* switch — otherwise it re-runs and re-adds the
+        # same sources/layers. Later toggles are handled by _ml_controls_rebuild.
+        with reactive.isolate():
+            controls = _build_ml_controls()
         await maplibre_widget.set_controls(session, controls)
 
     def _build_ml_controls() -> list[dict]:
@@ -1038,7 +1042,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.Effect
     @reactive.event(input.export_html)
     async def _do_export_html():
-        layers, _names = _gl_layers()
+        layers = _gl_build_all_layers()
         path = os.path.join(
             tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
         )
@@ -1055,7 +1059,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.Effect
     @reactive.event(input.export_json)
     async def _do_export_json():
-        layers, _names = _gl_layers()
+        layers = _gl_build_all_layers()
         spec = gallery_widget.to_json(layers)
         ellip = "\u2026" if len(spec) > 2000 else ""
         _export_log.set(
@@ -1065,7 +1069,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.Effect
     @reactive.event(input.roundtrip_json)
     async def _do_roundtrip():
-        layers, _names = _gl_layers()
+        layers = _gl_build_all_layers()
         spec_json = gallery_widget.to_json(layers)
         w2, layers2 = MapWidget.from_json(spec_json)
         checks = [
@@ -1571,7 +1575,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                         "seal_haulouts",
                         filtered_haulouts,
                         getPosition="@@=d.position",
-                        getRadius="@@=d.radius * 800",
+                        getRadius="@@=d.radius",
                         getFillColor="@@d.color",
                         getLineColor=[255, 255, 255, 200],
                         lineWidthMinPixels=2,
@@ -1608,7 +1612,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 h["position"]
                 for h in _seal_haulout_data
                 if h["species"] in selected
-                for _ in range(int(h.get("radius", 5)))
+                for _ in range(max(1, int(h.get("population", 1))))
             ]
             if grid_pts:
                 layers.append(
@@ -2452,7 +2456,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.Effect
     async def _gl_init():
         """Send all 33 layers once (heavy payload, one-time cost)."""
-        all_layers = _gl_build_all_layers()
+        # Isolate all input reads so this init effect runs exactly once and is
+        # not re-triggered by gl_* toggles (which re-send the ~30 MB payload).
+        # Subsequent toggles are handled cheaply by _gl_toggle (visibility only).
+        with reactive.isolate():
+            all_layers = _gl_build_all_layers()
+
+            active_names: set[str] = set()
+            for sw, pairs in _GL_TOGGLE_MAP.items():
+                if getattr(input, sw)():
+                    active_names.update(name for _, name in pairs)
+
+            vs = _gl_view_state(active_names)
 
         widgets = [
             zoom_widget(), compass_widget(),
@@ -2465,13 +2480,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 auto_introspect=True,
             ),
         ]
-
-        active_names: set[str] = set()
-        for sw, pairs in _GL_TOGGLE_MAP.items():
-            if getattr(input, sw)():
-                active_names.update(name for _, name in pairs)
-
-        vs = _gl_view_state(active_names)
 
         await gallery_widget.update(
             session, all_layers, widgets=widgets,
@@ -2678,6 +2686,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 )
 
             @reactive.Effect
+            @reactive.event(
+                input.hexfish_n_fish,
+                hexfish_anim.speed,
+                hexfish_anim.trail,
+            )
             async def _hexfish_layers():
                 trips = _hexfish_trips()
                 trips_lyr = trips_layer(

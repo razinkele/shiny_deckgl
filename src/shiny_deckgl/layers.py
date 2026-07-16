@@ -13,9 +13,14 @@ converter resolves at runtime:
   of the data item (e.g., ``getPosition: "@@d.position"`` when data items
   are dicts like ``{"position": [lon, lat], ...}``).
 
-- ``"@@=property"`` — Binary accessor, used for binary-encoded attributes
-  passed via ``encode_binary_attribute()``. The ``=`` signals that the
-  attribute is a typed array, not JSON data.
+- ``"@@=expr"`` — Expression accessor.  ``expr`` is a **safe** JavaScript
+  property/index expression that **must start with ``d``** (the datum),
+  e.g. ``"@@=d.position"``, ``"@@=d.color"``, ``"@@=d.depth_m * 5"``.
+  The client validates it against a whitelist before evaluating.
+
+  (Binary-encoded attributes use a different mechanism: the dict produced
+  by ``encode_binary_attribute()`` carries an ``@@binary`` marker — it is
+  *not* a ``@@=`` string.)
 
 - ``"@@ClassName"`` — Class reference, instantiates a deck.gl/luma.gl class
   (e.g., ``"@@BitmapLayer"`` for sub-layers, ``"@@CubeGeometry"`` for mesh
@@ -734,7 +739,7 @@ def point_cloud_layer(id: str, data: Any | None = None, **kwargs) -> dict:
         "coordinateSystem": CoordinateSystem.LNGLAT,
         "pointSize": 2,
         "sizeUnits": "pixels",
-        "getPosition": "@@=position",
+        "getPosition": "@@d.position",
         "getColor": [255, 140, 0],
         "getNormal": [0, 0, 1],
     }
@@ -778,7 +783,7 @@ def simple_mesh_layer(id: str, data: Any | None = None, **kwargs) -> dict:
     defaults: dict[str, Any] = {
         "pickable": True,
         "coordinateSystem": CoordinateSystem.LNGLAT,
-        "getPosition": "@@=position",
+        "getPosition": "@@d.position",
         "getColor": [140, 170, 200],
         "sizeScale": 1,
     }

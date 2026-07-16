@@ -9,6 +9,7 @@ import base64 as _b64
 import functools
 import json
 import math
+import os
 import random
 import zlib as _zlib
 from pathlib import Path
@@ -954,7 +955,7 @@ def make_seal_haulout_data() -> list[dict]:
             "name": s["name"],
             "species": s["species"],
             "population": s["population"],
-            "radius": max(4, s["population"] / 20),
+            "radius": max(4, s["population"] / 20) * 800,
             "color": SPECIES_COLORS[s["species"]],
         }
         for s in _SEAL_HAULOUT_SITES
@@ -1938,10 +1939,13 @@ def make_geohash_data() -> list[dict]:
         "u3be", "u3bk", "u3bs", "u3bt",  # Central Baltic
         "u6ps", "u6pt", "u6pv", "u6pw",  # Stockholm area
     ]
+    # Local RNG instance (repo convention: never mutate the global random state
+    # inside an lru_cache-d factory). Seeded for stable demo output.
+    _rng = random.Random(1001)
     return [
         {
             "geohash": gh,
-            "value": random.randint(5, 50),
+            "value": _rng.randint(5, 50),
             "color": [60, 180, 75, 180],
             "name": f"Geohash {gh}",
             "layerType": "GeohashLayer",
@@ -1983,10 +1987,11 @@ def make_quadkey_data() -> list[dict]:
         "120201", "120203", "120210", "120212",
         "120221", "120223", "120230", "120232",
     ]
+    _rng = random.Random(1002)
     return [
         {
             "quadkey": qk,
-            "value": random.randint(10, 80),
+            "value": _rng.randint(10, 80),
             "color": [255, 200, 0, 180],
             "name": f"Quadkey {qk}",
             "layerType": "QuadkeyLayer",
@@ -2003,10 +2008,11 @@ def make_s2_data() -> list[dict]:
         "47a4", "47a5", "47ac", "47ad",
         "47b4", "47b5", "47bc", "47bd",
     ]
+    _rng = random.Random(1003)
     return [
         {
             "token": t,
-            "value": random.randint(15, 90),
+            "value": _rng.randint(15, 90),
             "color": [180, 0, 200, 180],
             "name": f"S2 Cell {t}",
             "layerType": "S2Layer",
@@ -2176,19 +2182,36 @@ def make_sea_temperature_grid(
 
 
 # ---------------------------------------------------------------------------
-# HexSim hex-grid mesh (v1.9.3 — HexSim Fish demo tab)
+# HexSim hex-grid mesh (HexSim Fish demo tab)
 # ---------------------------------------------------------------------------
 
-try:
-    import sys as _sys
-    _sys.path.insert(0, r"C:\Users\DELL\OneDrive - ku.lt\HORIZON_EUROPE\HexSim")
-    from heximpy.hxnparser import Workspace as _HexSimWorkspace
-    _HEXSIM_AVAILABLE = True
-except ImportError:
-    _HEXSIM_AVAILABLE = False
+_HEXSIM_WORKSPACE_ENV = "SHINY_DECKGL_HEXSIM_WORKSPACE"
+_HEXSIM_ROOT_ENV = "SHINY_DECKGL_HEXSIM_ROOT"
 
-_COLUMBIA_WS = Path(
-    r"C:\Users\DELL\OneDrive - ku.lt\HORIZON_EUROPE\HexSim\Columbia [small]"
+
+def _resolve_hexsim_workspace() -> Path | None:
+    """Resolve the optional HexSim Columbia workspace from environment config."""
+    workspace = os.environ.get(_HEXSIM_WORKSPACE_ENV)
+    if workspace:
+        return Path(workspace).expanduser()
+
+    root = os.environ.get(_HEXSIM_ROOT_ENV)
+    if root:
+        return Path(root).expanduser() / "Columbia [small]"
+
+    return None
+
+
+try:
+    from heximpy.hxnparser import Workspace as _HexSimWorkspace
+except ImportError:
+    _HexSimWorkspace = None  # type: ignore[assignment]
+
+_COLUMBIA_WS = _resolve_hexsim_workspace()
+_HEXSIM_AVAILABLE = (
+    _HexSimWorkspace is not None
+    and _COLUMBIA_WS is not None
+    and _COLUMBIA_WS.exists()
 )
 _HEXFISH_ORIGIN = [-121.0, 46.3]
 
@@ -2230,7 +2253,7 @@ def make_hexsim_mesh():
     Returns (mesh_data, centroids, neighbors, origin_lonlat) or
     (None, None, None, None) if heximpy is unavailable.
     """
-    if not _HEXSIM_AVAILABLE or not _COLUMBIA_WS.exists():
+    if not _HEXSIM_AVAILABLE or _COLUMBIA_WS is None:
         return (None, None, None, None)
 
     import numpy as np
@@ -2291,7 +2314,7 @@ def make_hexsim_mesh():
     depths = depth_hm.values[cell_indices]
     mask = depths != 0.0
     lo = float(np.nanmin(depths[mask])) if np.any(mask) else 0.0
-    hi = float(np.nanmax(depths))
+    hi = float(np.nanmax(depths[mask])) if np.any(mask) else 1.0
     rng = hi - lo if hi > lo else 1.0
     t = np.clip((depths - lo) / rng, 0.0, 1.0)
     colors = np.empty((n_water, 4), dtype=np.float32)
@@ -2366,14 +2389,18 @@ def make_hexsim_trips(
     props: list[dict] = []
 
     for i in range(n_fish):
-        cell = rng.randrange(n_water)
-        waypoints: list[list[float]] = [centroids[cell].tolist()]
-        for _ in range(n_steps):
-            nbrs = [int(n) for n in neighbors[cell] if n >= 0]
-            if not nbrs:
+        # Retry up to 5 times to find a non-isolated start cell
+        for _attempt in range(5):
+            cell = rng.randrange(n_water)
+            waypoints: list[list[float]] = [centroids[cell].tolist()]
+            for _ in range(n_steps):
+                nbrs = [int(n) for n in neighbors[cell] if n >= 0]
+                if not nbrs:
+                    break
+                cell = rng.choice(nbrs)
+                waypoints.append(centroids[cell].tolist())
+            if len(waypoints) >= 3:
                 break
-            cell = rng.choice(nbrs)
-            waypoints.append(centroids[cell].tolist())
         paths.append(waypoints)
         props.append({
             "species": "Atlantic salmon",

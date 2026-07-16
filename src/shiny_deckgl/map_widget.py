@@ -28,7 +28,7 @@ from ._cdn import (
 )
 from .colors import CARTO_POSITRON
 from .controls import CONTROL_TYPES, CONTROL_POSITIONS
-from ._data_utils import _serialise_data
+from ._data_utils import _serialise_data, json_safe
 
 __all__ = ["MapWidget"]
 
@@ -1997,7 +1997,7 @@ class MapWidget:
             ``tooltip``, ``layers``, and optionally ``effects``.
         """
         spec: dict = {
-            "id": self.id,
+            "id": self._bare_id,
             "viewState": self.view_state,
             "style": self.style,
             "layers": layers,
@@ -2008,7 +2008,7 @@ class MapWidget:
             spec["mapboxApiKey"] = self.mapbox_api_key
         if effects:
             spec["effects"] = effects
-        return json.dumps(spec, indent=2)
+        return json.dumps(json_safe(spec), indent=2)
 
     @classmethod
     def from_json(cls, spec_json: str) -> tuple["MapWidget", list[dict]]:
@@ -2078,8 +2078,10 @@ class MapWidget:
             escaped_key = _html_mod.escape(self.mapbox_api_key, quote=True)
             mapbox_attr = f' data-mapbox-api-key="{escaped_key}"'
 
-        layers_json = json.dumps(layers, indent=2)
-        effects_json = json.dumps(effects or [], indent=2)
+        # NaN/inf → null for valid JSON, and escape "<" so a value containing
+        # "</script>" cannot break out of the embedding <script> block (XSS).
+        layers_json = json.dumps(json_safe(layers), indent=2).replace("<", "\\u003c")
+        effects_json = json.dumps(json_safe(effects or []), indent=2).replace("<", "\\u003c")
 
         html = f"""<!DOCTYPE html>
 <html lang="en">

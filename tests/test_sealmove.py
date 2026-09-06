@@ -52,12 +52,16 @@ class TestNormalizeRows:
         np.testing.assert_allclose(result, expected)
 
     def test_zero_row_handled(self):
-        """Zero row should not cause division by zero."""
-        M = np.array([[0, 0, 0], [1, 1, 1]])
+        """Zero row is an absorbing state, so it normalises to a self-loop.
+
+        It must still sum to 1: simulate_IHTR passes each row straight to
+        rng.choice(p=...), which rejects a row of zeros.
+        """
+        M = np.array([[0, 0, 0], [1, 1, 1], [2, 0, 2]])
         result = normalize_rows(M)
-        # Zero row stays zero (divided by 1.0)
-        np.testing.assert_allclose(result[0], [0, 0, 0])
+        np.testing.assert_allclose(result[0], [1, 0, 0])
         np.testing.assert_allclose(result[1], [1/3, 1/3, 1/3])
+        np.testing.assert_allclose(result.sum(axis=1), [1, 1, 1])
 
     def test_preserves_shape(self):
         """Output should have same shape as input."""

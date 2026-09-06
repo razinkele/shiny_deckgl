@@ -135,7 +135,12 @@ def timeline_server(
             if not _playing():
                 return
             reactive.invalidate_later(interval_ms / 1000.0)
-            current = input.step()
+            # Isolate the read: this effect writes "step" via update_slider
+            # below, so taking a reactive dependency on it would invalidate the
+            # effect immediately, re-run it, and supersede the timer just armed
+            # -- interval_ms would never govern the cadence.
+            with reactive.isolate():
+                current = input.step()
             next_val = (current + 1) % len(labels)
             from shiny import ui as _ui
             _ui.update_slider("step", value=next_val, session=inner_session)

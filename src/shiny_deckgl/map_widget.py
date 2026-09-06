@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from shiny import Session
 
 from ._cdn import (
+    MAPLIBRE_EXPORT_JS,
+    MAPLIBRE_EXPORT_CSS,
     DECKGL_JS,
     DECKGL_WIDGETS_JS,
     DECKGL_WIDGETS_CSS,
@@ -28,6 +30,8 @@ from ._cdn import (
 )
 from .colors import CARTO_POSITRON
 from .controls import CONTROL_TYPES, CONTROL_POSITIONS
+from weakref import WeakKeyDictionary
+
 from ._data_utils import _serialise_data, json_safe
 
 __all__ = ["MapWidget"]
@@ -198,6 +202,10 @@ class MapWidget:
             "zoom": 8,
         }
         self.style = style
+        # Demo widgets are module-level singletons shared by every
+        # session, so a style change must be recorded against the
+        # session that made it rather than on the shared object.
+        self._session_styles: "WeakKeyDictionary[Any, str]" = WeakKeyDictionary()
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -387,7 +395,7 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
-        await session.send_custom_message("deck_update", payload)
+        await session.send_custom_message("deck_update", json_safe(payload))
 
     async def partial_update(
         self,
@@ -427,10 +435,10 @@ class MapWidget:
             if "data" in lyr:
                 lyr = {**lyr, "data": _serialise_data(lyr["data"])}
             serialised.append(lyr)
-        await session.send_custom_message("deck_partial_update", {
+        await session.send_custom_message("deck_partial_update", json_safe({
             "id": self.id,
             "layers": serialised,
-        })
+        }))
 
     async def patch_layer(
         self,
@@ -708,12 +716,30 @@ class MapWidget:
             existing sources and layers that are unchanged.  Default
             ``False`` (full style replacement).
         """
-        self.style = style
+        try:
+            self._session_styles[session] = style
+        except TypeError:
+            # Session object is not weak-referenceable; fall back to the
+            # shared default rather than losing the change entirely.
+            self.style = style
         await session.send_custom_message("deck_set_style", {
             "id": self.id,
             "style": style,
             "diff": diff,
         })
+
+    def current_style(self, session: "Session | None" = None) -> str:
+        """The basemap style in force for *session*.
+
+        Falls back to the style the widget was constructed with when the
+        session has not changed it (or when no session is given).
+        """
+        if session is not None:
+            try:
+                return self._session_styles.get(session, self.style)
+            except TypeError:
+                pass
+        return self.style
 
     async def update_tooltip(
         self,
@@ -2041,6 +2067,7 @@ class MapWidget:
         path: str | pathlib.Path | None = None,
         effects: list[dict] | None = None,
         title: str = "shiny_deckgl Map",
+        session: "Session | None" = None,
     ) -> str:
         """Export the map as a standalone HTML file.
 
@@ -2067,6 +2094,13 @@ class MapWidget:
         js_src, css_src = _read_bundled_resources()
 
         vs = self.view_state
+
+        _style = self.current_style(session)
+
+        def _attr(key, default):
+            """HTML-escape a view_state value for attribute interpolation."""
+            return _html_mod.escape(str(vs.get(key, default)), quote=True)
+
         tooltip_attr = ""
         if self.tooltip is not None:
             tooltip_json = json.dumps(self.tooltip)
@@ -2092,8 +2126,8 @@ class MapWidget:
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
-<script src="{MAPLIBRE_JS}"></script>
-<link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
+<script src="{MAPLIBRE_EXPORT_JS}"></script>
+<link rel="stylesheet" href="{MAPLIBRE_EXPORT_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
 <link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>
 <script src="{MAPLIBRE_LEGEND_JS}"></script>
@@ -2105,14 +2139,14 @@ class MapWidget:
 <body>
 <div id="{_html_mod.escape(self.id)}" class="deckgl-map"
      style="width:100%;height:100vh;"
-     data-initial-longitude="{vs.get('longitude', 0)}"
-     data-initial-latitude="{vs.get('latitude', 0)}"
-     data-initial-zoom="{vs.get('zoom', 1)}"
-     data-initial-pitch="{vs.get('pitch', 0)}"
-     data-initial-bearing="{vs.get('bearing', 0)}"
-     data-initial-min-zoom="{vs.get('minZoom', 0)}"
-     data-initial-max-zoom="{vs.get('maxZoom', 24)}"
-     data-style="{_html_mod.escape(self.style)}"
+     data-initial-longitude="{_attr('longitude', 0)}"
+     data-initial-latitude="{_attr('latitude', 0)}"
+     data-initial-zoom="{_attr('zoom', 1)}"
+     data-initial-pitch="{_attr('pitch', 0)}"
+     data-initial-bearing="{_attr('bearing', 0)}"
+     data-initial-min-zoom="{_attr('minZoom', 0)}"
+     data-initial-max-zoom="{_attr('maxZoom', 24)}"
+     data-style="{_html_mod.escape(_style)}"
      {tooltip_attr}{mapbox_attr}></div>
 <script>
 // Shim: standalone pages have no Shiny runtime
@@ -2126,6 +2160,9 @@ if (typeof Shiny === 'undefined') {{
 <script>{js_src}</script>
 <script>
 (function() {{
+  // MapLibre v6 is an ES module, so it resolves asynchronously. Standalone
+  // pages init synchronously (no shiny:connected poll), so wait for it here.
+  window.__deckgl_loadMapLibre().then(function () {{
   var initMap = window.__deckgl_initMap;
   var instances = window.__deckgl_instances;
   var buildDeckLayers = window.__deckgl_buildDeckLayers;
@@ -2154,6 +2191,12 @@ if (typeof Shiny === 'undefined') {{
         inst.overlay.setProps(overlayProps);
       }});
     }}
+  }});
+  }}).catch(function (err) {{
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div style="padding:20px;color:#c00;font:14px sans-serif">' +
+      '[shiny_deckgl] MapLibre GL JS failed to load. Check network connection.</div>');
+    console.error('[shiny_deckgl] standalone init aborted:', err);
   }});
 }})();
 </script>

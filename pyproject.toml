@@ -7,7 +7,7 @@ name = "shiny_deckgl"
 dynamic = ["version"]
 description = "Shiny for Python -> deck.gl bridge (no Java), with packaged assets and conda recipe"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
 keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
@@ -29,7 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 binary = ["numpy"]
 geopandas = ["geopandas"]
-dev = ["pytest", "numpy", "geopandas"]
+dev = ["pytest", "pytest-asyncio", "numpy", "geopandas", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/razinka/shiny_deckgl"
@@ -42,6 +42,11 @@ shiny_deckgl-demo = "shiny_deckgl.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "browser: end-to-end tests that drive a real Chromium via Playwright",
+]
+# Test the working tree in src/, never a stale copy installed in site-packages.
+pythonpath = ["src"]
 
 [tool.setuptools.dynamic]
 version = {attr = "shiny_deckgl._version.__version__"}
@@ -53,7 +58,7 @@ where = ["src"]
 shiny_deckgl = ["resources/*.js", "resources/*.css", "data/*.geojson", "py.typed"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -62,4 +67,4 @@ disallow_untyped_defs = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"

@@ -1,8 +1,8 @@
 # Copilot instructions for `shiny_deckgl`
 
 A pure-Python bridge from [Shiny for Python](https://shiny.posit.co/py/) to
-[deck.gl](https://deck.gl/) (v9.3.6) + [MapLibre GL JS](https://maplibre.org/)
-(v5.24.0), with **no Java dependency**. The Python side builds layer/config
+[deck.gl](https://deck.gl/) (v9.4.0) + [MapLibre GL JS](https://maplibre.org/)
+(v6.7.0), with **no Java dependency**. The Python side builds layer/config
 dicts and pushes them to a browser-side JS runtime over Shiny custom messages.
 Targeted at marine science / GIS (Baltic Sea, WMS/EMODnet/HELCOM, food-web and
 individual-based models).
@@ -19,8 +19,8 @@ with `PYTHONPATH=src`.
 - Single file / test: `pytest tests/test_views.py -q` or
   `pytest tests/test_basic.py::test_name -q`.
 - Type check: `python src/shiny_deckgl/run_mypy.py` (or `mypy src`); config in
-  `[tool.mypy]`, `python_version = 3.9`.
-- Lint/format: `ruff check .` / `ruff format .` (`line-length = 100`, `py39`).
+  `[tool.mypy]`, `python_version = 3.10`.
+- Lint/format: `ruff check .` / `ruff format .` (`line-length = 100`, `py310`).
 - Run the demo app: `shiny_deckgl-demo` (entry point → `shiny_deckgl.cli:main`).
 
 On this Windows machine the source-tree tests run via the `shiny` micromamba env:
@@ -28,7 +28,7 @@ On this Windows machine the source-tree tests run via the `shiny` micromamba env
 
 CI (`.github/workflows/python-package.yml`) runs `pytest -q` + `python -m build`
 on Python 3.11–3.13; keep public behavior working across those versions (code
-still targets 3.9 syntax).
+still targets 3.10 syntax).
 
 ## Architecture — the big picture
 

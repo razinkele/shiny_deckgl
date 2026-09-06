@@ -5,6 +5,151 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.10.0] — 2026-09-06
+
+### Breaking changes
+
+- **`CoordinateSystem` is now a string enum** — deck.gl 9 identifies coordinate
+  systems by name (`"lnglat"`, `"meter-offsets"`, …); the enum still carried
+  deck.gl 8's integers, and deck.gl 9 rejects those at draw time with
+  `Invalid coordinateSystem`. Because `scatterplot_layer()` defaults to
+  `LNGLAT`, **the default layer silently failed to render**. Members are now
+  `str` rather than `int`, so Python-side comparisons such as
+  `cs == 1` no longer hold. The JS client still accepts the legacy integers and
+  maps them across, so existing app *behaviour* is unchanged.
+- **Python ≥ 3.10 required** — every Shiny release since 1.6.2 requires 3.10,
+  so the previous `>=3.9` floor made `shiny>=1.6.3` unsatisfiable on 3.9.
+  `requires-python`, the conda recipe, and the ruff/mypy targets now agree.
+- **`set_style()` no longer mutates the shared widget** — the demo's
+  `MapWidget`s are module-level singletons, so writing `self.style` leaked one
+  visitor's basemap into every other session. The style is recorded per
+  session; read it with the new `current_style(session)`, and pass
+  `to_html(..., session=...)` to export the style a given session is seeing.
+
+### Changed
+
+- **MapLibre GL JS 5.24.0 → 6.7.0 for served apps.** v6 is ESM-only — it ships
+  no UMD/IIFE or CSP build — so it is loaded with a dynamic `import()` instead
+  of a `<script src>` tag. The module URL is published in an inert
+  `<script type="application/json" id="shiny-deckgl-cdn">` block, which a strict
+  `script-src` Content-Security-Policy admits without `'unsafe-inline'`.
+- **Standalone `to_html()` exports stay on MapLibre 5.24.0.** MapLibre 6 starts
+  its tile worker as a *module* worker created from a blob URL; on a `file://`
+  page the origin is opaque, so that worker cannot resolve its own imports and
+  dies without raising a map error — deck.gl layers still draw but the basemap
+  never loads. The pin lives in `_cdn.MAPLIBRE_EXPORT_VERSION`.
+- **deck.gl 9.3.6 → 9.4.0** (and `@deck.gl/widgets`) — the first release
+  declaring `maplibre-gl ^6.0.0` support.
+- **`to_html()` accepts `session=`** to resolve the per-session basemap style.
+
+### Fixed
+
+- **Maps never initialised on the first tab** — the client listened for
+  `shiny:connected` with `document.addEventListener`, but Shiny dispatches it
+  through jQuery (`$(document).trigger(...)`), and a jQuery-triggered event
+  never reaches a native listener. Only maps whose tab was switched to came up,
+  because `shown.bs.tab` is a real DOM event. The handler is now registered
+  through jQuery when present, with the native listener kept for standalone
+  hosts and guarded against double-firing.
+- **Six of eighteen widget helpers rendered nothing** — `buildWidgets` resolved
+  a class as `deck[name] || deck['_' + name]`: it could *add* a leading
+  underscore but never *strip* one. deck.gl has since promoted several widgets
+  from experimental to stable (`_InfoWidget` → `InfoWidget`), so the helpers
+  still emitting the underscored name silently resolved to nothing. This
+  restores `context_menu_widget`, `info_widget`, `loading_widget` and
+  `theme_widget`. (`fps_widget` and `view_selector_widget` have no counterpart
+  in any deck.gl 9 release; their docstrings now say so.) Verified against
+  deck.gl 9.3.6, 9.3.11 and 9.4.0, which export an identical widget set — this
+  was never a version regression.
+- **The demo raised an unhandled error on every page load** — it always built
+  a `Tile3DLayer` pointing at Google's 3D Tiles endpoint, which answers 403
+  without an API key. deck.gl fetches a layer's `data` even when
+  `visible=False`, so the toggle being off did not help. The layer is now built
+  only while its toggle is on, and the call site documents the key requirement.
+- **Text labels could not render non-ASCII characters** — `TextLayer` built
+  deck.gl's default ASCII font atlas, so "Klaipėda" logged
+  `Missing character: ė` and rendered a gap. `characterSet="auto"` now builds
+  the atlas from the labels actually supplied.
+- **`grid_cell_layer()` used a deprecated accessor** — `getColor` is deprecated
+  on `GridCellLayer` in deck.gl 9 and slated for removal; the default is now
+  `getFillColor`. An explicit `getColor` is still passed through.
+- **`ui` and `MapWidget` were never imported in `_app_server.py`** — used 22
+  times and once respectively. Both sites sit inside `reactive.Effect`
+  callbacks, so the `NameError` reached `Session._unhandled_error`, which
+  closes the whole browser session. Every Widgets Gallery preset button, the
+  HTML export and the JSON round-trip killed the demo.
+- **`javascript:` URI filter was bypassable** — the guard was a substring regex,
+  but browsers strip TAB/LF/CR and leading control bytes before parsing a
+  scheme, so `java<TAB>script:` survived and executed from a MapLibre popup.
+  Schemes are now normalised and compared exactly (`vbscript:` also blocked).
+- **`update()` / `partial_update()` skipped `json_safe()`** — NaN/inf from a
+  DataFrame reached the websocket as invalid JSON.
+- **`to_html()` interpolated `view_state` into HTML attributes unescaped**,
+  while neighbouring attributes on the same element were escaped.
+- **`@@=` accessors were silently dropped** — the whitelist rejected every
+  expression that was not a bare property chain, including the documented
+  `"@@=d.depth_m * 5"`, and left the raw string in the layer props, which
+  deck.gl coerces to a constant `NaN`. Three of the package's own accessors
+  were dead. The permitted language is now arithmetic, comparison and ternary
+  over `d`; rejected accessors are removed rather than passed through.
+- **`deck_export_image` captured only the basemap** — outside interleaved mode
+  deck.gl draws into its own canvas, so every layer was missing from the
+  screenshot. Both canvases are now composited.
+- **9 of 13 published easing functions did nothing** — `EasingFunction` listed
+  13 names, the JS table implemented 4, and the rest fell back to linear.
+- **`GlobeView` never resolved** — deck.gl 9 exports it as `deck._GlobeView`.
+- **Partial `view_state` updates reset the camera** — omitted keys were filled
+  with defaults (zoom 1, pitch/bearing 0) instead of being left alone.
+- **`PostProcessEffect` threw and took the whole effects array down with it** —
+  deck.gl expects `(module, props)`, not the spec dict. Unresolvable modules are
+  now dropped with a warning. (Rendering post-processing still needs
+  `@luma.gl/effects`, which is not shipped.)
+- **`color_quantiles()` never emitted the top colour** — boundary values were
+  binned one position low.
+- **`normalize_rows()` produced unusable probability rows** — an all-zero row
+  stayed all zeros, and `rng.choice(p=...)` rejects it. A zero row is an
+  absorbing state and now normalises to a self-loop.
+- **`custom_geometry()` required numpy** despite lists being documented input.
+- **Bundled `bathy.asc` was never found** — four `.parent` hops resolved above
+  the repository root.
+- **Temperature grid depended on the viewport** — noise came from a sequential
+  RNG placed after the bounds filter, so a cell's value changed with the
+  visible area. It is now seeded by position, as its comment always claimed.
+- **Seal IBM moved ~1.8× further north–south than east–west** — an isotropic
+  step in degrees ignores that a degree of longitude is `111 km × cos(lat)`.
+- **Timeline animation ignored `interval_ms`** — the effect read the input it
+  also wrote, invalidating itself and cancelling its own timer.
+- **Idle maps re-pushed every layer once a second for the whole session** — the
+  viewport fallback re-armed `invalidate_later` unconditionally.
+- **Two effect groups wiped each other's layers** on the Advanced tab, and the
+  Widgets Gallery sent every update twice.
+- **Stale trips animation and layer races** — paused animations resumed on any
+  layer update, and an update awaiting its SVG atlas could paint over a newer one.
+
+### Testing
+
+- **`tests/test_maplibre_v6.py`** drives a real Chromium via Playwright, and
+  asserts that basemap tiles actually load from `file://` — the regression the
+  MapLibre version split exists to prevent, which otherwise fails silently.
+- **`tests/_js_harness.py`** extracts named functions from `deckgl-init.js` and
+  runs them under Node, giving the JavaScript its first unit coverage.
+- **`tests/test_e2e_playwright.py`** launches the real demo again. It had four
+  independent faults, none of which could ever have passed: it ran
+  `examples/demo.py` (removed in v1.4.0), queried `#demo_map` (superseded by
+  the per-tab widgets), waited on `networkidle` (which never fires while Shiny
+  holds its websocket open), and passed no `PYTHONPATH`, so it would have
+  tested whatever copy was installed in site-packages. Teardown now kills the
+  whole process tree — terminating `shiny run` alone left uvicorn holding the
+  port, and a stale listener would make the next run silently test old code —
+  and the fixture refuses to start if the port is already in use.
+- **`tests/test_widgets_resolve.py`** checks that every widget helper resolves
+  to a real deck.gl class, and pins the two that do not so a future deck.gl
+  release adding them is noticed.
+- Packaging metadata (`requires-python`, conda recipe, ruff/mypy targets) and
+  the exactness of every CDN pin are now asserted, and the test suite runs
+  against `src/` rather than whatever copy is installed in site-packages.
+
+---
 ## [1.9.4] — 2026-07-16
 
 ### Changed

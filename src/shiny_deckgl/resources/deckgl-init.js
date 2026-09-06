@@ -79,7 +79,21 @@
   // Fail-closed: returns '' on any error rather than passing input through.
   var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript)$/i;
   var SANITIZE_STRIP_ATTRS = /^on/i;
-  var SANITIZE_DANGEROUS_URI = /^\s*javascript\s*:/i;
+  // Browsers strip TAB/LF/CR from anywhere in a URL and leading C0 controls
+  // before parsing the scheme, so a TAB inside the scheme word, or a leading
+  // control byte, both slip past a plain /javascript:/ regex yet still
+  // execute. Normalise the same way the URL parser does, then compare the
+  // scheme exactly -- a substring regex over the raw value is bypassable.
+  var SANITIZE_URI_SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
+  var SANITIZE_DANGEROUS_SCHEMES = new Set(['javascript', 'vbscript']);
+
+  function isDangerousUri(value) {
+    if (value == null) return false;
+    var normalized = String(value).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, '');
+    var m = SANITIZE_URI_SCHEME.exec(normalized);
+    if (!m) return false;  // relative or scheme-less: cannot be javascript:
+    return SANITIZE_DANGEROUS_SCHEMES.has(m[1].toLowerCase());
+  }
   var SANITIZE_URI_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'srcdoc', 'data', 'xlink:href']);
 
   function sanitizeHtml(html) {
@@ -101,7 +115,7 @@
           if (SANITIZE_STRIP_ATTRS.test(attr.name)) {
             el.removeAttribute(attr.name);
           } else if (SANITIZE_URI_ATTRS.has(attr.name.toLowerCase()) &&
-                     SANITIZE_DANGEROUS_URI.test(attr.value)) {
+                     isDangerousUri(attr.value)) {
             el.removeAttribute(attr.name);
           }
         }
@@ -891,12 +905,74 @@
     if (typeof _deferredMessages !== 'undefined') delete _deferredMessages[id];
   }
 
+  // -----------------------------------------------------------------------
+  // MapLibre GL JS v6 loader
+  //
+  // v6 is ESM-only -- it ships no UMD/IIFE build, so there is no <script src>
+  // tag that can publish the `maplibregl` global this file depends on. The
+  // module URL arrives in an inert JSON data block (so a strict script-src CSP
+  // needs no 'unsafe-inline'), and we import() it once, publishing the module
+  // namespace as window.maplibregl. The namespace is frozen, but every use
+  // here is a read, so binding it directly is safe.
+  // -----------------------------------------------------------------------
+  var _maplibrePromise = null;
+
+  function maplibreModuleUrl() {
+    var el = document.getElementById('shiny-deckgl-cdn');
+    if (!el) return null;
+    try {
+      return JSON.parse(el.textContent).maplibre || null;
+    } catch (e) {
+      console.error('[shiny_deckgl] Malformed CDN config block:', e);
+      return null;
+    }
+  }
+
+  function loadMapLibre() {
+    if (typeof window.maplibregl !== 'undefined' && window.maplibregl) {
+      return Promise.resolve(window.maplibregl);
+    }
+    if (_maplibrePromise) return _maplibrePromise;
+
+    var url = maplibreModuleUrl();
+    if (!url) {
+      return Promise.reject(new Error(
+        'MapLibre module URL not found: missing <script id="shiny-deckgl-cdn">'));
+    }
+    _maplibrePromise = import(url).then(function (ns) {
+      // v6 exposes named exports only; older builds had a default export.
+      window.maplibregl = (ns && ns.Map) ? ns : (ns && ns.default) || ns;
+      return window.maplibregl;
+    }).catch(function (err) {
+      _maplibrePromise = null;   // allow a retry
+      console.error('[shiny_deckgl] Failed to load MapLibre GL JS from ' + url, err);
+      throw err;
+    });
+    return _maplibrePromise;
+  }
+
+  window.__deckgl_loadMapLibre = loadMapLibre;
+
   // Initialize deckgl-map divs on page load inside shiny.
   // Only init maps in the currently visible tab to avoid exhausting
   // WebGL contexts.  Maps in hidden tabs are lazy-initialised when
   // their tab is first shown (see shown.bs.tab handler below).
-  document.addEventListener('shiny:connected', function() {
+  // Shiny signals readiness with `$(document).trigger({type:
+  // "shiny:connected"})`. A jQuery-triggered event does NOT reach a native
+  // addEventListener handler, so registering only natively meant this gate
+  // never ran under Shiny: the map on the first tab stayed blank, and only
+  // maps whose tab was switched to came up (shown.bs.tab is a real DOM event).
+  // Register both ways -- jQuery for Shiny, native for standalone hosts -- and
+  // guard against running twice if both fire.
+  var _shinyConnectedHandled = false;
+
+  function onShinyConnected() {
+    if (_shinyConnectedHandled) return;
+    _shinyConnectedHandled = true;
     var attempts = 0;
+    // Start the MapLibre module fetch immediately; the poll below waits for
+    // the global it publishes, alongside the classic deck.gl bundle.
+    loadMapLibre().catch(function () { /* reported by the poll's timeout */ });
     function tryInit() {
       attempts++;
       // Wait for CDN libraries to finish loading
@@ -926,12 +1002,88 @@
       });
     }
     tryInit();
-  });
+  }
+
+  if (window.jQuery) {
+    window.jQuery(document).on('shiny:connected', onShinyConnected);
+  }
+  document.addEventListener('shiny:connected', onShinyConnected);
 
   // -----------------------------------------------------------------------
   // Helper: resolve @@ accessors
   // -----------------------------------------------------------------------
+  // Validate an @@= accessor expression before handing it to new Function().
+  //
+  // The permitted language is: property access over the datum `d`, numeric and
+  // string literals, and the arithmetic / comparison / logical / ternary
+  // operators. Everything else -- calls, assignment, arrow functions, template
+  // literals, and any identifier other than `d` -- is rejected, so the compiled
+  // function has no way to reach a global.
+  var ACCESSOR_DANGEROUS_PROPS_RE = /(?:__proto__|constructor|prototype)/i;
+  var ACCESSOR_ALLOWED_IDENTS = { d: true, true: true, false: true, null: true, undefined: true };
+
+  function isSafeAccessorExpr(expr) {
+    if (typeof expr !== 'string') return false;
+    expr = expr.trim();
+    if (!expr || expr.length > 200) return false;
+    if (ACCESSOR_DANGEROUS_PROPS_RE.test(expr)) return false;
+
+    // Blank out string literals so their contents cannot trip the token rules.
+    // Backslashes are disallowed outright, so no escape handling is needed.
+    if (expr.indexOf('\\') !== -1) return false;
+    var s = expr.replace(/"[^"]*"|'[^']*'/g, '0');
+
+    // No statements, blocks, template literals or comments.
+    if (/[;{}`]/.test(s)) return false;
+    if (s.indexOf('//') !== -1 || s.indexOf('/*') !== -1) return false;
+    // No increment/decrement, no arrow functions.
+    if (/\+\+|--|=>/.test(s)) return false;
+    // A '(' directly after an identifier, ')' or ']' is a call.
+    if (/[A-Za-z0-9_$)\]]\s*\(/.test(s)) return false;
+    // Assignment: strip the multi-character comparison operators first, then
+    // any '=' that remains is an assignment (or an arrow already excluded).
+    if (/=/.test(s.replace(/===|!==|==|!=|<=|>=/g, ' '))) return false;
+
+    // Every bare identifier must be `d` or a literal keyword; identifiers that
+    // follow a '.' are property names and are unrestricted.
+    var bare = s.replace(/\.\s*[A-Za-z_$][A-Za-z0-9_$]*/g, '.');
+    var idents = bare.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) || [];
+    for (var i = 0; i < idents.length; i++) {
+      if (!Object.prototype.hasOwnProperty.call(ACCESSOR_ALLOWED_IDENTS, idents[i])) return false;
+    }
+    if (idents.indexOf('d') === -1) return false;
+
+    // Finally, only whitelisted characters may appear at all.
+    return /^[\sA-Za-z0-9_$.\[\]()+\-*\/%?:<>!&|=]*$/.test(s);
+  }
+
+  // deck.gl 8 identified coordinate systems by integer; deck.gl 9 uses
+  // strings and rejects the integers with "Invalid coordinateSystem: 1" at
+  // draw time. Accept either so apps written against the old constants keep
+  // rendering.
+  var LEGACY_COORDINATE_SYSTEMS = {
+    '-1': 'default',
+    '0': 'cartesian',
+    '1': 'lnglat',
+    '2': 'meter-offsets',
+    '3': 'lnglat-offsets'
+  };
+
+  function normaliseCoordinateSystem(value) {
+    if (value == null) return value;
+    if (typeof value === 'number') {
+      var mapped = LEGACY_COORDINATE_SYSTEMS[String(value)];
+      if (mapped) return mapped;
+      console.warn('[shiny_deckgl] Unknown numeric coordinateSystem: ' + value);
+      return 'default';
+    }
+    return value;
+  }
+
   function resolveAccessors(layerProps) {
+    if ('coordinateSystem' in layerProps) {
+      layerProps.coordinateSystem = normaliseCoordinateSystem(layerProps.coordinateSystem);
+    }
     for (const key of Object.keys(layerProps)) {
       const val = layerProps[key];
       if (typeof val !== 'string' || !val.startsWith('@@')) continue;
@@ -944,29 +1096,23 @@
       }
 
       // @@=expr — expression accessor (safe subset)
-      // Supports:  d.prop, d.a.b, d[0], d[2], d["key"]
-      // Security: validate expression matches safe pattern before new Function()
       if (raw.startsWith('=')) {
         const expr = raw.slice(1).trim();
-        // Whitelist: only allow safe accessor patterns (property access, array indexing)
-        // Matches: d, d.prop, d.a.b.c, d[0], d["key"], d['key'], or combinations
-        const SAFE_ACCESSOR_RE = /^d(?:\.[a-zA-Z_$][a-zA-Z0-9_$]*|\[\d+\]|\["[^"]*"\]|\['[^']*'\])*$/;
-        if (!SAFE_ACCESSOR_RE.test(expr)) {
-          console.warn('[shiny_deckgl] Invalid accessor expression "' + val + '": ' +
-            'must match pattern d.prop, d[0], d["key"], etc.');
-          continue;
-        }
-        // Blocklist: prevent prototype pollution via dangerous property names
-        const DANGEROUS_PROPS_RE = /(?:__proto__|constructor|prototype)/i;
-        if (DANGEROUS_PROPS_RE.test(expr)) {
-          console.warn('[shiny_deckgl] Blocked dangerous property access in "' + val + '"');
+        if (!isSafeAccessorExpr(expr)) {
+          console.warn('[shiny_deckgl] Rejected unsafe accessor expression "' + val +
+            '": only arithmetic, comparison and property access over `d` are allowed.');
+          // Delete rather than leave the raw "@@=..." string behind: deck.gl
+          // treats a non-function accessor as a constant and coerces the
+          // string to NaN, silently rendering nothing.
+          delete layerProps[key];
           continue;
         }
         try {
           // eslint-disable-next-line no-new-func
-          layerProps[key] = new Function('d', 'return ' + expr);
+          layerProps[key] = new Function('d', 'return (' + expr + ');');
         } catch (e) {
           console.warn('[shiny_deckgl] Bad accessor "' + val + '":', e.message);
+          delete layerProps[key];
         }
         continue;
       }
@@ -1067,6 +1213,21 @@
   // -----------------------------------------------------------------------
   // Helper: resolve effects specs → deck.gl Effect instances
   // -----------------------------------------------------------------------
+  // Resolve a named luma.gl shader module. These live in @luma.gl/effects,
+  // which is NOT part of the deck.gl standalone bundle, so the lookup can
+  // legitimately come up empty -- callers must handle null rather than hand
+  // deck.gl a name string where it expects a module object.
+  function resolvePostProcessModule(name, scope) {
+    if (!name) return null;
+    var root = scope || (typeof globalThis !== 'undefined' ? globalThis : window);
+    var namespaces = [root.lumaEffects, root.luma, root.deck];
+    for (var i = 0; i < namespaces.length; i++) {
+      var ns = namespaces[i];
+      if (ns && ns[name] && typeof ns[name] === 'object') return ns[name];
+    }
+    return null;
+  }
+
   function buildEffects(effectsData) {
     if (!effectsData || !effectsData.length) return undefined;
     return effectsData.map(spec => {
@@ -1090,9 +1251,20 @@
         }
         return new deck.LightingEffect(lights);
       }
-      // PostProcessEffect
+      // PostProcessEffect: deck.gl's signature is (module, props), where
+      // module is a luma.gl shader module object. Passing the spec dict as the
+      // module threw, and the throw took the whole effects array down with it.
       if (spec.type === 'PostProcessEffect' && deck.PostProcessEffect) {
-        return new deck.PostProcessEffect(spec);
+        var ppModule = resolvePostProcessModule(spec.shaderModule);
+        if (!ppModule) {
+          console.warn('[shiny_deckgl] PostProcessEffect shader module not available: ' +
+                       spec.shaderModule + ' (requires @luma.gl/effects)');
+          return null;
+        }
+        var ppProps = Object.assign({}, spec);
+        delete ppProps.type;
+        delete ppProps.shaderModule;
+        return new deck.PostProcessEffect(ppModule, ppProps);
       }
       console.warn('[shiny_deckgl] Unknown effect type: ' + spec.type);
       return null;
@@ -1102,13 +1274,67 @@
   // -----------------------------------------------------------------------
   // Helper: resolve view specs → deck.gl View instances
   // -----------------------------------------------------------------------
+  // Translate a (possibly partial) view_state into MapLibre camera options.
+  //
+  // Only the axes the caller actually supplied are emitted: substituting
+  // defaults for omitted keys -- zoom 1, pitch/bearing 0 -- made
+  // update(view_state={'longitude': x}) reset the whole camera instead of
+  // nudging one axis.
+  // Update generation tokens. deck_update awaits an async SVG-atlas preload
+  // before rendering; without a token an earlier, slower update resolves last
+  // and paints layers that no longer match instance.lastLayers.
+  function claimUpdateGeneration(instance) {
+    instance._updateGen = (instance._updateGen || 0) + 1;
+    return instance._updateGen;
+  }
+
+  function isStaleUpdate(instance, gen) {
+    return instance._updateGen !== gen;
+  }
+
+  // Whether a layer update may (re)start the trips RAF loop. An update must
+  // not resurrect an animation the user explicitly paused; an explicit
+  // resume/reset may.
+  function shouldStartTripsAnimation(instance, fromUpdate) {
+    if (!fromUpdate) return true;
+    return !instance._tripsPaused;
+  }
+
+  // Flatten the MapLibre canvas and deck.gl's own canvas into one image.
+  // Outside interleaved mode deck.gl draws into a separate canvas stacked
+  // above the basemap, so capturing map.getCanvas() alone loses every layer.
+  function compositeMapCanvases(baseCanvas, overlayCanvas) {
+    if (!overlayCanvas || overlayCanvas === baseCanvas) return baseCanvas;
+    var out = document.createElement('canvas');
+    out.width = baseCanvas.width;
+    out.height = baseCanvas.height;
+    var ctx = out.getContext('2d');
+    ctx.drawImage(baseCanvas, 0, 0);
+    ctx.drawImage(overlayCanvas, 0, 0, out.width, out.height);
+    return out;
+  }
+
+  function buildCameraOptions(vs) {
+    const opts = {};
+    if (vs.longitude != null && vs.latitude != null) {
+      opts.center = [vs.longitude, vs.latitude];
+    }
+    if (vs.zoom != null) opts.zoom = vs.zoom;
+    if (vs.pitch != null) opts.pitch = vs.pitch;
+    if (vs.bearing != null) opts.bearing = vs.bearing;
+    return opts;
+  }
+
   function buildViews(viewsData) {
     if (!viewsData || !viewsData.length) return undefined;
     return viewsData.map(spec => {
       const typeName = spec['@@type'] || 'MapView';
       const props = Object.assign({}, spec);
       delete props['@@type'];
-      const ViewClass = deck[typeName];
+      // deck.gl 9.x exports experimental views with a leading underscore
+      // (deck._GlobeView), so fall back to that before giving up -- the
+      // LightingEffect branch does the same for deck._SunLight.
+      const ViewClass = deck[typeName] || deck['_' + typeName];
       if (!ViewClass) {
         console.warn('[shiny_deckgl] Unknown view type: ' + typeName);
         return null;
@@ -1120,6 +1346,25 @@
   // -----------------------------------------------------------------------
   // Helper: resolve widget specs → deck.gl Widget instances (v0.8.0)
   // -----------------------------------------------------------------------
+  // Resolve a widget class by name, tolerating either naming.
+  //
+  // deck.gl marks experimental widgets with a leading underscore and drops it
+  // when they stabilise (`_InfoWidget` -> `InfoWidget`). Looking up only the
+  // requested name, or only that name with an underscore *added*, meant a
+  // helper written against the experimental name stopped resolving the moment
+  // the widget was promoted -- the widget was silently dropped with a console
+  // warning. Try the name as given, then with the underscore added, then with
+  // it stripped.
+  function resolveWidgetClass(deckNs, className) {
+    if (!deckNs || !className) return undefined;
+    if (deckNs[className]) return deckNs[className];
+    if (deckNs['_' + className]) return deckNs['_' + className];
+    if (className.charAt(0) === '_' && deckNs[className.slice(1)]) {
+      return deckNs[className.slice(1)];
+    }
+    return undefined;
+  }
+
   function buildWidgets(widgetSpecs, targetId) {
     if (!widgetSpecs || !widgetSpecs.length) return undefined;
     // Resolve the map container element so FullscreenWidget can target it
@@ -1137,9 +1382,10 @@
       if (className === '_DeckLayerLegendWidget') {
         return createDeckLayerLegendWidget(props);
       }
-      const Cls = deck[className] || deck['_' + className];
+      const Cls = resolveWidgetClass(deck, className);
       if (!Cls) {
-        console.warn('[shiny_deckgl] Unknown widget: ' + className);
+        console.warn('[shiny_deckgl] Unknown widget: ' + className +
+          ' (no such class in this deck.gl build)');
         return null;
       }
       return new Cls(props);
@@ -1149,11 +1395,27 @@
   // -----------------------------------------------------------------------
   // Built-in easing functions for layer transitions (v0.8.0)
   // -----------------------------------------------------------------------
+  // Must stay in sync with the EasingFunction enum in enums.py -- a name the
+  // enum publishes but this table omits falls through to the identity function
+  // and animates linearly with no warning.
   const EASINGS = {
+    'linear': function(t) { return t; },
     'ease-in-cubic': function(t) { return t * t * t; },
     'ease-out-cubic': function(t) { return 1 - Math.pow(1 - t, 3); },
     'ease-in-out-cubic': function(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2; },
-    'ease-in-out-sine': function(t) { return -(Math.cos(Math.PI * t) - 1) / 2; }
+    'ease-in-sine': function(t) { return 1 - Math.cos((t * Math.PI) / 2); },
+    'ease-out-sine': function(t) { return Math.sin((t * Math.PI) / 2); },
+    'ease-in-out-sine': function(t) { return -(Math.cos(Math.PI * t) - 1) / 2; },
+    'ease-in-quad': function(t) { return t * t; },
+    'ease-out-quad': function(t) { return 1 - (1 - t) * (1 - t); },
+    'ease-in-out-quad': function(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; },
+    'ease-in-expo': function(t) { return t === 0 ? 0 : Math.pow(2, 10*t - 10); },
+    'ease-out-expo': function(t) { return t === 1 ? 1 : 1 - Math.pow(2, -10*t); },
+    'ease-in-out-expo': function(t) {
+      if (t === 0) return 0;
+      if (t === 1) return 1;
+      return t < 0.5 ? Math.pow(2, 20*t - 10)/2 : (2 - Math.pow(2, -20*t + 10))/2;
+    }
   };
 
   // -----------------------------------------------------------------------
@@ -1652,7 +1914,9 @@
     }
   }
 
-  function startTripsAnimation(instance, targetId) {
+  function startTripsAnimation(instance, targetId, fromUpdate) {
+    if (!shouldStartTripsAnimation(instance, fromUpdate === true)) return;
+    if (fromUpdate !== true) instance._tripsPaused = false;
     // Capture pausedAt BEFORE stopTripsAnimation nulls the object
     var savedPausedAt = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
                         ? instance.tripsAnimation.pausedAt : 0;
@@ -1772,7 +2036,8 @@
               pickable: false,
             };
             if (hlp.coordinateSystem != null) {
-              headIconProps.coordinateSystem = hlp.coordinateSystem;
+              headIconProps.coordinateSystem =
+                normaliseCoordinateSystem(hlp.coordinateSystem);
             }
             if (hlp.coordinateOrigin != null) {
               headIconProps.coordinateOrigin = hlp.coordinateOrigin;
@@ -1802,6 +2067,9 @@
     // Invalidate any pending async (atlas-rasterisation) start so it cannot
     // resurrect the loop after the user pauses.
     instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
+    // Remember that the pause was deliberate, so a later layer update does
+    // not quietly start the animation playing again.
+    instance._tripsPaused = true;
     if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
       cancelAnimationFrame(instance.tripsAnimation.rafId);
       // Compute accumulated elapsed time so we can resume from the same point
@@ -1925,13 +2193,7 @@
 
     // Handle view state updates (flyTo if duration > 0, else jumpTo)
     if (payload.viewState) {
-      const vs = payload.viewState;
-      const opts = {
-        center: [vs.longitude != null ? vs.longitude : 0, vs.latitude != null ? vs.latitude : 0],
-        zoom: vs.zoom != null ? vs.zoom : 1,
-        pitch: vs.pitch != null ? vs.pitch : 0,
-        bearing: vs.bearing != null ? vs.bearing : 0
-      };
+      const opts = buildCameraOptions(payload.viewState);
       if (payload.transitionDuration && payload.transitionDuration > 0) {
         opts.duration = payload.transitionDuration;
         map.flyTo(opts);
@@ -1956,7 +2218,11 @@
     }
 
     // Wait for all SVG atlases to rasterise (instant if cache hit or none).
+    var updateGen = claimUpdateGeneration(instance);
     Promise.all(svgAtlasPreloads).then(function () {
+    // A newer update started while we were rasterising: its layers are the
+    // ones in instance.lastLayers, so drop this stale render.
+    if (isStaleUpdate(instance, updateGen)) return;
     const deckLayers = buildDeckLayers(
       cloneLayersData(layersData),
       targetId
@@ -1983,8 +2249,9 @@
     overlay.setProps(overlayProps);
     map.triggerRepaint();
 
-    // Start/stop TripsLayer animation if needed (v0.9.0)
-    startTripsAnimation(instance, targetId);
+    // Start/stop TripsLayer animation if needed (v0.9.0).
+    // fromUpdate=true: a layer update must not resurrect a paused animation.
+    startTripsAnimation(instance, targetId, true);
 
     // Start property animations if any layers have @@animate markers (v1.7.0)
     startPropertyAnimations(instance, targetId);
@@ -2063,8 +2330,9 @@
       instance.overlay.setProps({ layers: deckLayers });
       instance.map.triggerRepaint();
 
-      // Restart TripsLayer animation if patched layers include one (v0.9.0)
-      startTripsAnimation(instance, targetId);
+      // Restart TripsLayer animation if patched layers include one (v0.9.0).
+      // fromUpdate=true: see deck_update.
+      startTripsAnimation(instance, targetId, true);
 
       // Property animations: start for new animated layers, clean up removed ones
       startPropertyAnimations(instance, targetId);
@@ -3096,12 +3364,23 @@
 
     // Wait for tiles to finish loading before capturing
     function capture() {
-      const dataUrl = canvas.toDataURL(format, quality);
+      // deck.gl renders into its own canvas unless interleaved, so flatten
+      // both before encoding -- otherwise the export is basemap-only.
+      var deckCanvas = null;
+      try {
+        var dk = instance.overlay && (instance.overlay._deck || instance.overlay.deck);
+        if (dk && typeof dk.getCanvas === 'function') deckCanvas = dk.getCanvas();
+        else if (dk && dk.canvas) deckCanvas = dk.canvas;
+      } catch (e) {
+        deckCanvas = null;
+      }
+      const shot = compositeMapCanvases(canvas, deckCanvas);
+      const dataUrl = shot.toDataURL(format, quality);
       Shiny.setInputValue(payload.id + '_export_result', {
         requestId: payload.requestId || 'default',
         dataUrl: dataUrl,
-        width: canvas.width,
-        height: canvas.height
+        width: shot.width,
+        height: shot.height
       }, { priority: "event" });
     }
 
@@ -3464,5 +3743,6 @@
   window.__deckgl_initMap = initMap;
   window.__deckgl_buildDeckLayers = buildDeckLayers;
   window.__deckgl_buildEffects = buildEffects;
+  window.__deckgl_resolveWidgetClass = resolveWidgetClass;
   window.__deckgl_cloneLayersData = cloneLayersData;
 })();

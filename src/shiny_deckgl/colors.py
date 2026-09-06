@@ -207,8 +207,11 @@ def color_quantiles(
     ]
 
     def _bin(v: float) -> int:
+        # Each break is the FIRST value of the upper group, so a value equal to
+        # a break belongs to that upper bin. Using ``<=`` here shifted every
+        # boundary value one bin down and left the top colour unreachable.
         for i, br in enumerate(breaks):
-            if v <= br:
+            if v < br:
                 return i
         return n_bins - 1
 

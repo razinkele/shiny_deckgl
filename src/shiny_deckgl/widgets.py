@@ -64,7 +64,13 @@ def screenshot_widget(placement: str = "top-right", **kwargs) -> dict:
 
 
 def fps_widget(placement: str = "top-left", **kwargs) -> dict:
-    """Create an ``FpsWidget`` spec (frames-per-second counter)."""
+    """Create an ``FpsWidget`` spec (frames-per-second counter).
+
+    .. warning::
+       **Not available in deck.gl 9.** No ``FpsWidget`` class is exported by
+       deck.gl 9.3.x or 9.4.x, so this widget is dropped at build time with a
+       console warning and nothing is rendered. Kept for forward compatibility.
+    """
     return {"@@widgetClass": "_FpsWidget", "placement": placement, **kwargs}
 
 
@@ -155,7 +161,11 @@ def stats_widget(placement: str = "top-left", **kwargs) -> dict:
 def view_selector_widget(placement: str = "top-left", **kwargs) -> dict:
     """Create a ``ViewSelectorWidget`` spec (switch between view modes).
 
-    Experimental — requires deck.gl >= 9.2.
+    .. warning::
+       **Not available in deck.gl 9.** No ``ViewSelectorWidget`` class is
+       exported by deck.gl 9.3.x or 9.4.x, so this widget is dropped at build
+       time with a console warning and nothing is rendered. Kept for forward
+       compatibility.
 
     Parameters
     ----------

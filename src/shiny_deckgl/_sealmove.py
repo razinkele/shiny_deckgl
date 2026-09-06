@@ -34,10 +34,29 @@ except ImportError as _exc:
 # -----------------------------
 
 def normalize_rows(M: np.ndarray) -> np.ndarray:
-    """Normalize rows to sum to 1 (handling zero rows)."""
+    """Normalize the rows of a transition matrix to sum to 1.
+
+    An all-zero row declares no outgoing transitions, i.e. an absorbing state,
+    so it normalises to a self-loop (``P[k, k] = 1``). Leaving it as zeros --
+    which is what dividing by a substituted 1.0 did -- yields a vector that
+    does not sum to 1, and ``rng.choice(p=row)`` rejects it with a ValueError.
+    A uniform row would be wrong here: it would teleport agents to arbitrary
+    clusters instead of holding them in place.
+
+    Non-square matrices have no diagonal to fall back on, so their zero rows
+    normalise to uniform.
+    """
     M = np.array(M, dtype=float)
     rowsums = M.sum(axis=1, keepdims=True)
-    rowsums[rowsums == 0] = 1.0
+    zero_rows = (rowsums == 0).ravel()
+    if zero_rows.any():
+        n_rows, n_cols = M.shape
+        if n_rows == n_cols:
+            idx = np.flatnonzero(zero_rows)
+            M[idx, idx] = 1.0
+        else:
+            M[zero_rows] = 1.0 / n_cols
+        rowsums[zero_rows] = 1.0
     return np.asarray(M / rowsums)  # type: ignore[no-any-return]
 
 def softmax(x: np.ndarray, tau: float = 1.0) -> np.ndarray:

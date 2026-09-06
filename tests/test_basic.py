@@ -210,8 +210,8 @@ def test_app_returns_shiny_app():
 
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
-    assert "deck.gl@9.3.6" in html
-    assert "maplibre-gl@5.24.0" in html
+    assert "deck.gl@9.4.0" in html
+    assert "maplibre-gl@6.7.0" in html
 
 
 def test_head_includes_contains_local_assets():
@@ -610,8 +610,8 @@ class TestToHtml:
         html = w.to_html(layers)
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
-        assert "deck.gl@9.3.6" in html
-        assert "maplibre-gl@5.24.0" in html
+        assert "deck.gl@9.4.0" in html
+        assert "maplibre-gl@5.24.0" in html  # exports use the UMD build
 
     def test_contains_layer_data(self):
         w = MapWidget("t")
@@ -915,15 +915,21 @@ class TestSetStyle:
         assert callable(w.set_style)
 
     def test_set_style_updates_attribute_and_message(self):
-        """set_style should update the Python-side style attribute
-        and send a deck_set_style custom message."""
+        """set_style should record the style for the calling session
+        and send a deck_set_style custom message.
+
+        The style is per-session, not on the shared widget: demo widgets are
+        module-level singletons, so mutating self.style leaked one visitor's
+        basemap into every other session.
+        """
 
         w = MapWidget("ss2", style=CARTO_POSITRON)
         assert w.style == CARTO_POSITRON
 
         fake = _FakeSession()
         asyncio.run(w.set_style(fake, CARTO_DARK))
-        assert w.style == CARTO_DARK
+        assert w.current_style(fake) == CARTO_DARK
+        assert w.style == CARTO_POSITRON
         assert len(fake.messages) == 1
         assert fake.messages[0][0] == "deck_set_style"
         assert fake.messages[0][1]["id"] == "ss2"
@@ -936,7 +942,7 @@ class TestSetStyle:
 
         fake = _FakeSession()
         asyncio.run(w.set_style(fake, custom))
-        assert w.style == custom
+        assert w.current_style(fake) == custom
         assert fake.messages[0][1]["style"] == custom
 
 
@@ -1007,17 +1013,19 @@ class TestCooperativeGestures:
 # ---------------------------------------------------------------------------
 
 class TestMapLibreVersion:
-    def test_head_includes_maplibre_v5(self):
+    def test_head_includes_maplibre_v6(self):
         dep = head_includes()
-        assert "maplibre-gl@5.24.0" in str(dep)
+        assert "maplibre-gl@6.7.0" in str(dep)
 
     def test_head_includes_no_old_maplibre(self):
         dep = head_includes()
         assert "maplibre-gl@3.6" not in str(dep)
 
-    def test_to_html_maplibre_v5(self):
+    def test_to_html_pins_maplibre_v5_for_file_urls(self):
         w = MapWidget("v5test")
         html = w.to_html([])
+        # Exports stay on the UMD v5 build: MapLibre 6's module worker cannot
+        # start from a file:// page. See tests/test_maplibre_v6.py.
         assert "maplibre-gl@5.24.0" in html
         assert "maplibre-gl@3.6" not in html
 
@@ -7127,10 +7135,10 @@ class TestSealmoveUtilities:
     def test_normalize_rows_zero_row(self):
         import numpy as np
         from shiny_deckgl._sealmove import normalize_rows
-        M = np.array([[0, 0, 0], [1, 1, 1]], dtype=float)
+        M = np.array([[0, 0, 0], [1, 1, 1], [0, 2, 2]], dtype=float)
         result = normalize_rows(M)
-        # zero row stays zero (divided by 1.0 sentinel)
-        np.testing.assert_allclose(result[0], [0.0, 0.0, 0.0])
+        # zero row is an absorbing state: self-loop, sums to 1
+        np.testing.assert_allclose(result[0], [1.0, 0.0, 0.0])
         np.testing.assert_allclose(result[1].sum(), 1.0)
 
     def test_softmax_sums_to_one(self):

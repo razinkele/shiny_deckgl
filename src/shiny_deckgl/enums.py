@@ -112,10 +112,15 @@ class Projection(str, Enum):
     GLOBE = "globe"
 
 
-class CoordinateSystem(int, Enum):
+class CoordinateSystem(str, Enum):
     """Deck.gl coordinate system constants.
 
-    These correspond to deck.gl's COORDINATE_SYSTEM values.
+    These are the string values used by deck.gl 9's ``COORDINATE_SYSTEM``.
+    deck.gl 8 used integers (``LNGLAT`` was ``1``); deck.gl 9 rejects those
+    with ``Invalid coordinateSystem`` at draw time, so a layer carrying the
+    old constant silently fails to render. The JS client still accepts the
+    legacy integers and maps them across for backwards compatibility.
+
     Use with the ``coordinateSystem`` property on any layer.
 
     Example::
@@ -123,15 +128,15 @@ class CoordinateSystem(int, Enum):
         simple_mesh_layer("mesh", data,
                           coordinateSystem=CoordinateSystem.METER_OFFSETS)
     """
-    CARTESIAN = 0
+    CARTESIAN = "cartesian"
     """Non-geographic pixel/unit coordinates."""
-    LNGLAT = 1
+    LNGLAT = "lnglat"
     """Positions as ``[longitude, latitude]`` (default for most layers)."""
-    METER_OFFSETS = 2
+    METER_OFFSETS = "meter-offsets"
     """Positions in **metres** relative to a ``coordinateOrigin``."""
-    LNGLAT_OFFSETS = 3
+    LNGLAT_OFFSETS = "lnglat-offsets"
     """Positions as ``[longitude_offset, latitude_offset]``."""
-    IDENTITY = -1
+    IDENTITY = "default"
     """Auto-detect based on data."""
     DEFAULT = -1
     """Alias for IDENTITY (auto-detect based on data)."""

@@ -388,11 +388,12 @@ class TestSealmoveErrors:
         import numpy as np
         from shiny_deckgl._sealmove import normalize_rows
 
-        M = np.array([[0, 0, 0], [1, 2, 3]])
+        M = np.array([[0, 0, 0], [1, 2, 3], [1, 0, 1]])
         result = normalize_rows(M)
 
-        # Zero row stays zero
-        np.testing.assert_allclose(result[0], [0, 0, 0])
+        # Zero row is an absorbing state: a self-loop, still summing to 1 so
+        # that rng.choice(p=...) accepts it.
+        np.testing.assert_allclose(result[0], [1, 0, 0])
         # Non-zero row normalized
         np.testing.assert_allclose(result[1].sum(), 1.0)
 

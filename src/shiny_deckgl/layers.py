@@ -363,6 +363,11 @@ def text_layer(id: str, data: list | dict, **kwargs) -> dict:
         "getColor": [0, 0, 0, 255],
         "getTextAnchor": "middle",
         "getAlignmentBaseline": "center",
+        # Build the font atlas from the labels actually supplied. deck.gl's
+        # default character set is ASCII, so anything else -- the Lithuanian
+        # "Klaipėda", any accented or non-Latin label -- warns
+        # "Missing character" and renders a blank.
+        "characterSet": "auto",
     }
     defaults.update(kwargs)
     return layer("TextLayer", id, data, **defaults)
@@ -856,7 +861,9 @@ def grid_cell_layer(id: str, data: list | dict, **kwargs) -> dict:
         "extruded": True,
         "elevationScale": 1,
         "getPosition": "@@d.position",
-        "getColor": [255, 140, 0, 180],
+        # getColor is deprecated on GridCellLayer in deck.gl 9 and slated for
+        # removal; getFillColor is the current accessor.
+        "getFillColor": [255, 140, 0, 180],
         "getElevation": "@@d.elevation",
     }
     defaults.update(kwargs)
@@ -1123,8 +1130,16 @@ COORDINATE_SYSTEM = CoordinateSystem
 # ---------------------------------------------------------------------------
 
 def _maybe_encode(arr: Any, dtype: str) -> Any:
-    """Encode numpy arrays as binary; pass lists through unchanged."""
-    import numpy as np  # noqa: local import — numpy is optional
+    """Encode numpy arrays as binary; pass lists through unchanged.
+
+    numpy is an optional extra and plain Python lists are a documented input,
+    so a missing numpy must not raise here -- without it there is simply
+    nothing to encode.
+    """
+    try:
+        import numpy as np  # noqa: local import — numpy is optional
+    except ImportError:
+        return arr
 
     if isinstance(arr, np.ndarray):
         from ._data_utils import encode_binary_attribute

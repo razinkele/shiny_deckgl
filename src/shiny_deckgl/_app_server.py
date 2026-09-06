@@ -10,7 +10,10 @@ import json
 import os
 import random
 import tempfile
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from shiny import Session
 
 # Module-level imports needed by server function
 from ._data_utils import encode_binary_attribute
@@ -138,7 +141,8 @@ from ._app_widgets import (
 
 def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-defined]
     # local imports deferred until app startup
-    from shiny import reactive, render  # imported here to keep top-level light
+    from shiny import reactive, render, ui  # imported here to keep top-level light
+    from .map_widget import MapWidget
     from .layers import (
         layer,
         scatterplot_layer,
@@ -1046,7 +1050,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         path = os.path.join(
             tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
         )
-        gallery_widget.to_html(layers, path=path, title="shiny_deckgl Export")
+        gallery_widget.to_html(
+            layers, path=path, title="shiny_deckgl Export", session=session
+        )
         fsize = os.path.getsize(path)
         _export_log.set(
             f"HTML exported successfully!\n"
@@ -1282,6 +1288,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 **extra,
             ),
         ]
+        # Record the pushed layers in the shared reactive value: every other
+        # effect that drives adv_widget reads or writes _adv_layers, and an
+        # unrecorded push is silently discarded by the next one of them.
+        _adv_layers.set(layers)
         await adv_widget.update(session, layers)
 
     # =================================================================
@@ -1808,9 +1818,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @reactive.Effect
     async def _wg_init():
-        """Send initial widget + layer state on session start."""
-        widgets = _wg_active_widgets()
-        layers = _wg_layers()
+        """Send initial widget + layer state on session start.
+
+        The reads are isolated: _wg_active_widgets() and _wg_layers() touch
+        every wg_* toggle, so a reactive read here would make this "init"
+        effect re-run on each toggle and duplicate the update that
+        _wg_update_map already sends.
+        """
+        with reactive.isolate():
+            widgets = _wg_active_widgets()
+            layers = _wg_layers()
         await widgets_gallery_widget.update(
             session, layers, widgets=widgets,
         )
@@ -2341,13 +2358,19 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             transparent=True,
             opacity=0.6,
         ))
-        _add("gl_tile_3d", tile_3d_layer(
-            "gl-tile-3d",
-            # Sample 3D Tiles dataset (NYC buildings)
-            "https://tile.googleapis.com/v1/3dtiles/root.json",
-            pickable=True,
-            opacity=0.8,
-        ))
+        # Google's 3D Tiles endpoint needs an API key appended as
+        # "?key=YOUR_KEY"; without one it answers 403. deck.gl fetches a
+        # layer's data even when visible=False, so adding this unconditionally
+        # made every page load raise an unhandled error. Build it only while
+        # the toggle is on -- it will still 403 until a key is supplied, but
+        # nothing is requested unless the user asks for it.
+        if input.gl_tile_3d():
+            _add("gl_tile_3d", tile_3d_layer(
+                "gl-tile-3d",
+                "https://tile.googleapis.com/v1/3dtiles/root.json",
+                pickable=True,
+                opacity=0.8,
+            ))
 
         # -- 3-D / mesh layers ---
         _add("gl_point_cloud", point_cloud_layer(

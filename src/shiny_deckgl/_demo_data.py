@@ -13,7 +13,10 @@ import os
 import random
 import zlib as _zlib
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import numpy as np
 
 from .colors import (
     CARTO_POSITRON,
@@ -1105,6 +1108,20 @@ def _build_baltic_habitat(
 
 
 @functools.lru_cache(maxsize=32)
+def _isotropic_degree_step(
+    dlon: float, dlat: float, lat_deg: float
+) -> tuple[float, float]:
+    """Scale a degree-space step so both axes cover the same ground distance.
+
+    One degree of latitude is ~111 km everywhere; one degree of longitude is
+    111 km * cos(lat) -- about 62 km in the Baltic. A step that is isotropic in
+    degrees is therefore ~1.8x longer north-south than east-west. The longitude
+    component is left alone (it carries the speed calibration) and the latitude
+    component is multiplied by cos(lat).
+    """
+    return dlon, dlat * math.cos(math.radians(lat_deg))
+
+
 def make_seal_trips_ibm(
     n_seals: int = 25,
     sim_hours: int = 168,
@@ -1294,6 +1311,15 @@ def make_seal_trips_ibm(
                 L = float(np.linalg.norm(step))
                 if L > speed_lim:
                     step = step / L * speed_lim
+
+                # `step` is isotropic in degrees, but a degree of longitude
+                # is only 111 km * cos(lat) wide. Shrink the latitude
+                # component so the animal covers the same distance in metres
+                # on both axes -- make_seal_trips() applies the same
+                # correction with a hardcoded 0.6.
+                step[0], step[1] = _isotropic_degree_step(
+                    float(step[0]), float(step[1]), float(a.xy[1])
+                )
 
                 new_xy = a.xy + step
                 new_xy[0] = np.clip(new_xy[0], xmin + 0.1, xmax - 0.1)
@@ -1888,8 +1914,9 @@ def make_lithuanian_bathymetry_data(sample_step: int = 2) -> list[dict]:
     Returns:
         GridCellLayer-compatible data with position, depth, and color
     """
-    # Look for bathy.asc in project root
-    asc_path = Path(__file__).parent.parent.parent.parent / "bathy.asc"
+    # Look for bathy.asc in the project root:
+    # src/shiny_deckgl/_demo_data.py -> shiny_deckgl -> src -> repo root.
+    asc_path = Path(__file__).resolve().parents[2] / "bathy.asc"
     if not asc_path.exists():
         # Try current working directory
         asc_path = Path("bathy.asc")
@@ -2136,7 +2163,6 @@ def make_sea_temperature_grid(
     seasonal = 10.0 + 8.0 * math.sin((month - 1) * math.pi / 6.0 - math.pi / 2.0)
 
     month_label = MONTH_LABELS[month % 12]
-    rng = random.Random(42 + month)  # Deterministic per month
 
     result: list[dict] = []
     for lon, lat in positions:
@@ -2148,8 +2174,11 @@ def make_sea_temperature_grid(
 
         # Latitude gradient: colder further north
         lat_offset = -0.5 * (lat - 57.0)
-        # Random noise (seeded by position for consistency)
-        noise = rng.gauss(0, 1.5)
+        # Random noise seeded by position, so a cell reports the same
+        # temperature whether or not the viewport filter skipped its
+        # neighbours. A single sequential RNG made the value depend on how
+        # many cells `continue` had discarded before this one.
+        noise = random.Random(f"{lon:.5f},{lat:.5f},{month}").gauss(0, 1.5)
         temp = round(seasonal + lat_offset + noise, 1)
 
         # Elevation for 3D extrusion (proportional to temperature)

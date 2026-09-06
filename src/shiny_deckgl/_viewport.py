@@ -47,6 +47,22 @@ def in_bounds(point: dict[str, Any], bounds: dict[str, list[float]] | None) -> b
     return lon_ok and sw[1] <= lat <= ne[1]
 
 
+MAX_FALLBACK_POLLS = 10
+"""How many times the viewport fallback re-arms before giving up."""
+
+
+def _should_repoll(viewport_available: bool, attempts: int) -> bool:
+    """Whether the viewport fallback should schedule another poll.
+
+    Once the real view state has arrived the ordinary reactive dependency takes
+    over, and an unbounded poll would keep re-pushing layers forever on a map
+    the user never interacts with.
+    """
+    if viewport_available:
+        return False
+    return attempts < MAX_FALLBACK_POLLS
+
+
 def on_viewport_change(
     widget: Any,
     input: Any,
@@ -101,6 +117,7 @@ def on_viewport_change(
         from shiny import reactive
 
         _generation = [0]
+        _fallback_attempts = [0]
 
         @reactive.Effect
         async def _viewport_watcher():
@@ -116,6 +133,7 @@ def on_viewport_change(
             if vs is not None and "bounds" in vs:
                 bounds = vs["bounds"]
                 zoom = vs.get("zoom", 0)
+                _fallback_attempts[0] = 0
             else:
                 # Initial load — use widget's configured view_state
                 vs0 = widget.view_state
@@ -129,8 +147,13 @@ def on_viewport_change(
                     "ne": [lon + span, lat + span / 2],
                 }
                 zoom = z
-                # Re-run when the input becomes available
-                reactive.invalidate_later(1.0)
+                # Poll for the real view state, but only for a bounded number
+                # of attempts. Re-arming unconditionally meant a map the user
+                # never touched re-ran the loader and re-pushed every layer
+                # once a second for the whole session.
+                _fallback_attempts[0] += 1
+                if _should_repoll(False, _fallback_attempts[0]):
+                    reactive.invalidate_later(1.0)
 
             _generation[0] += 1
             my_gen = _generation[0]

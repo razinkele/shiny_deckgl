@@ -26,11 +26,24 @@ requirements:
     - shiny >=1.6.3
     - htmltools
 
+# Build-time verification of the *packaged* result, not the source tree.
+#
+# The package installs cleanly even if the client assets are missing -- there is
+# no import error, every map simply fails to load in the browser -- so the asset
+# checks below use importlib.resources to look inside the installed package.
+# The version check catches a recipe built from a stale source tree.
 test:
   imports:
     - shiny_deckgl
+  requires:
+    - pip
   commands:
-    - python -c "from shiny_deckgl._version import __version__; assert __version__, 'Version is empty or missing'"
+    - python -c "from shiny_deckgl._version import __version__ as v; assert v == '{{ version }}', v"
+    - python -c "from importlib.resources import files; r = files('shiny_deckgl.resources'); assert (r / 'deckgl-init.js').is_file(), 'deckgl-init.js missing'; assert (r / 'styles.css').is_file(), 'styles.css missing'"
+    - python -c "from importlib.resources import files; assert (files('shiny_deckgl.data') / 'helcom_mpa.geojson').is_file(), 'geojson missing'"
+    - python -c "from shiny_deckgl import head_includes; assert 'deckgl-init.js' in str(head_includes())"
+    - python -c "from shiny_deckgl.cli import main; assert callable(main)"
+    - pip check
 
 about:
   home: "https://github.com/razinka/shiny_deckgl"

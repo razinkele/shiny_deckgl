@@ -142,6 +142,14 @@ and version numbers use [Semantic Versioning](https://semver.org/).
   whole process tree — terminating `shiny run` alone left uvicorn holding the
   port, and a stale listener would make the next run silently test old code —
   and the fixture refuses to start if the port is already in use.
+- **The conda recipe now verifies the built package**, not just that it has a
+  version string. It asserts the built version matches the recipe's, that the
+  packaged client assets (`deckgl-init.js`, `styles.css`, the HELCOM GeoJSON)
+  are present in the installed package rather than merely on disk in the source
+  tree, that `head_includes()` resolves them, that the CLI entry point imports,
+  and `pip check`. A package that installs without its JS bundle raises no
+  import error -- every map simply fails at load -- so nothing previously would
+  have caught it.
 - **`tests/test_widgets_resolve.py`** checks that every widget helper resolves
   to a real deck.gl class, and pins the two that do not so a future deck.gl
   release adding them is noticed.

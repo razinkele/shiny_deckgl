@@ -112,13 +112,25 @@ def browser() -> Generator[Browser, None, None]:
         browser.close()
 
 
+#: Console errors seen on the shared demo page, collected from first load.
+CONSOLE_ERRORS: list[str] = []
+
+
 def _open_demo(browser: Browser) -> Page:
     """Open the demo and wait until the first map has actually initialised.
 
     `wait_until="networkidle"` is wrong here -- a Shiny app holds a websocket
     open, so the network never goes idle. Wait on the app's own state instead.
+
+    Console errors are captured from before navigation so that tests can assert
+    on them without opening a second page: two heavyweight WebGL pages at once
+    exhausts memory on smaller machines and makes the second load time out.
     """
     page = browser.new_page()
+    CONSOLE_ERRORS.clear()
+    page.on("console",
+            lambda m: CONSOLE_ERRORS.append(m.text) if m.type == "error" else None)
+    page.on("pageerror", lambda e: CONSOLE_ERRORS.append(f"pageerror: {e}"))
     page.goto(URL, wait_until="domcontentloaded", timeout=60000)
     page.wait_for_function(
         "window.__deckgl_instances && window.__deckgl_instances['gallery_map']"
@@ -229,12 +241,20 @@ class TestJavaScriptGlobals:
 class TestShinyConnection:
     """Tests that verify Shiny is properly connected."""
 
-    def test_shiny_html_class(self, page: Page):
-        """HTML element should have Shiny state class."""
-        html_classes = page.evaluate("document.documentElement.className")
-        # Shiny adds shiny-busy or shiny-idle class
-        is_shiny = "shiny-busy" in html_classes or "shiny-idle" in html_classes
-        assert is_shiny, f"Expected Shiny class, got: {html_classes}"
+    def test_shiny_client_is_connected(self, page: Page):
+        """The Shiny client reports a live server connection.
+
+        This replaces a check for `shiny-busy`/`shiny-idle` on <html>, which is
+        an R-Shiny convention: Shiny for Python renders through bslib and leaves
+        documentElement.className empty, so that assertion could never pass.
+        """
+        state = page.evaluate(
+            "({socket: !!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.$socket),"
+            " connected: !!(window.Shiny && Shiny.shinyapp"
+            "               && Shiny.shinyapp.isConnected && Shiny.shinyapp.isConnected())})"
+        )
+        assert state["socket"], "Shiny websocket is not open"
+        assert state["connected"], "Shiny client reports it is not connected"
 
     def test_shiny_app_exists(self, page: Page):
         """Shiny.shinyapp should exist."""
@@ -310,20 +330,14 @@ class TestServedPathRendersRealLayers:
         """)
         assert layers, "no deck.gl layers reached the gallery map"
 
-    def test_no_invalid_coordinate_system_errors(self, browser: Browser,
-                                                 demo_server: subprocess.Popen):
-        """deck.gl must accept every coordinateSystem the package emits."""
-        page = browser.new_page()
-        errors: list[str] = []
-        page.on("console",
-                lambda m: errors.append(m.text) if m.type == "error" else None)
-        page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_function(
-            "window.__deckgl_instances && window.__deckgl_instances['gallery_map']",
-            timeout=90000)
-        page.wait_for_timeout(5000)
-        page.close()
-        bad = [e for e in errors if "coordinateSystem" in e]
+    def test_no_invalid_coordinate_system_errors(self, page: Page):
+        """deck.gl must accept every coordinateSystem the package emits.
+
+        Reads the errors the shared page collected during load rather than
+        opening its own: deck.gl 9 rejects deck.gl 8's integer constants with
+        "Invalid coordinateSystem" at draw time.
+        """
+        bad = [e for e in CONSOLE_ERRORS if "coordinateSystem" in e]
         assert not bad, "deck.gl rejected a coordinateSystem value:\n" + "\n".join(bad[:5])
 
     def test_layer_coordinate_systems_are_deckgl_9_strings(self, page: Page):

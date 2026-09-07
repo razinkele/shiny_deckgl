@@ -3,8 +3,10 @@
 Resolution of the 25 findings in [`2026-09-06-codebase-review.md`](2026-09-06-codebase-review.md).
 All fixed test-first: a failing test written and observed RED before each change.
 
-**Suite: 1737 → 1858 passing, 12 skipped, 0 failures.** New tests in
-`tests/test_review_2026_09.py` (121), JS harness in `tests/_js_harness.py`.
+**Suite: 1737 → 1900 passing, 12 skipped, 0 failures.** New tests in
+`tests/test_review_2026_09.py`, `tests/test_maplibre_v6.py` and
+`tests/test_widgets_resolve.py`; JS harness in `tests/_js_harness.py`.
+Released as **1.10.0**.
 
 ## Prerequisite: the suite was testing the wrong code
 
@@ -12,8 +14,9 @@ All fixed test-first: a failing test written and observed RED before each change
 11 tests "failed" that were really passing against stale code. Fixed with
 `pythonpath = ["src"]` in `[tool.pytest.ini_options]`.
 
-> The `shiny_deckgl-demo` CLI and the conda package are still 1.9.2. **None of
-> these fixes reach the demo until you rebuild/reinstall it.**
+> The `shiny_deckgl-demo` CLI and the conda package are still **1.9.2**.
+> **None of these fixes reach the demo until you rebuild and reinstall the
+> conda package** — see the release notes in `CHANGELOG.md` for 1.10.0.
 
 ## Fixed
 
@@ -83,16 +86,48 @@ standalone hosts, guarded against firing twice.
 This is long-standing, not a recent regression: the oldest Shiny available
 locally (1.4.0) already dispatched through jQuery, as does 1.7.0.
 
-### Still open, seen in the demo console
+### Six of eighteen widget helpers rendered nothing
 
-- `deck: Missing character: ė (279)` — the TextLayer font atlas has no
-  Lithuanian diacritics, so "Klaipėda" renders with a gap. Fixable with
-  `characterSet` on the layer.
-- `[shiny_deckgl] Unknown widget: _LoadingWidget` — a widget name the JS
-  resolver does not know; possibly the same underscore-export issue fixed for
-  `GlobeView`, on the widget path.
-- `deck: GridCellLayer: getColor is deprecated` — use `getFillColor` /
-  `getLineColor`.
+`buildWidgets` resolved a class as `deck[name] || deck['_' + name]`: it could
+*add* a leading underscore but never *strip* one. deck.gl has since promoted
+several widgets from experimental to stable (`_InfoWidget` → `InfoWidget`), so
+every helper still emitting the underscored name silently resolved to nothing
+and was dropped with a console warning.
+
+Restored: `context_menu_widget`, `info_widget`, `loading_widget`,
+`theme_widget`. Still unavailable, because deck.gl ships no such class in any
+9.x release: `fps_widget` and `view_selector_widget` — their docstrings now say
+so, and `tests/test_widgets_resolve.py` pins that list so a future deck.gl
+release adding them is noticed.
+
+Checked against deck.gl 9.3.6, 9.3.11 and 9.4.0, which export an identical
+widget set: long-standing, not a version regression.
+
+### Text labels could not render non-ASCII characters
+
+`TextLayer` used deck.gl's default ASCII font atlas, so "Klaipėda" logged
+`Missing character: ė` and rendered a gap — a visible defect on a Lithuanian
+project. `characterSet="auto"` now builds the atlas from the labels actually
+supplied, so any language works. The standalone-export test renders that label,
+and the existing no-console-errors assertion catches a regression.
+
+### The demo raised an unhandled error on every page load
+
+It always built a `Tile3DLayer` pointing at Google's 3D Tiles endpoint, which
+answers 403 without an API key. deck.gl fetches a layer's `data` even when
+`visible=False`, so the toggle defaulting to off did not help. The layer is now
+built only while its toggle is on, and the call site documents the key
+requirement.
+
+Also fixed: `grid_cell_layer()` defaulted to `getColor`, deprecated on
+`GridCellLayer` in deck.gl 9 and slated for removal; the default is now
+`getFillColor`, with an explicit `getColor` still passed through.
+
+### What the demo console looks like now
+
+One benign warning remains — `luma.gl: Binding weightsTexture not set` — which
+is luma.gl complaining about deck.gl's own `HeatmapLayer` shader module, not
+about anything this package emits. No errors, no unhandled page errors.
 
 ## Decisions you should confirm
 
@@ -123,5 +158,11 @@ locally (1.4.0) already dispatched through jQuery, as does 1.7.0.
   shipped. The fix stops one bad effect destroying the whole effects array;
   actually rendering them is a feature, not a bug fix.
 - **`deck_export_image` compositing is tested with fake canvases**, not a real
-  browser (the Playwright MCP server was down). The deck canvas is located via
-  `overlay._deck || overlay.deck`, an internal property.
+  browser: exercising it needs a `deck_export_image` round trip, which the
+  browser tests do not drive. Everything else here *is* browser-verified — the
+  Playwright MCP server was unavailable, but the Playwright Python library and
+  Chromium are installed locally and were used throughout. The deck canvas is
+  located via `overlay._deck || overlay.deck`, an internal property.
+- **The end-to-end suite is memory-bound on a 16 GB machine.** Running the whole
+  file at once gets killed; per-class runs pass. 18 of 20 passed on the one
+  complete run, and both failures were test bugs, since fixed.

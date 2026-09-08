@@ -127,6 +127,31 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.10.1 — `data:` URI Hardening & CI Repair
+
+| Capability | Details |
+| --- | --- |
+| **`data:` URIs restricted** | Sanitised tooltip/popup HTML now allows `data:` only for inert raster images (`png`, `jpe?g`, `gif`, `webp`, `bmp`, `avif`, `x-icon`). `data:text/html` executes its markup when navigated to, and `data:image/svg+xml` runs its own `<script>` and event handlers — both are rejected. Layer config such as `ICON_ATLAS` never passes through the sanitiser and is unaffected. |
+| **CI restored** | `hypothesis`, `pytest-benchmark` and `pillow` were used by the suite but declared nowhere, so `pytest` aborted during collection on every push. All three are now declared. |
+| **`test` extra** | Runs the suite without the geospatial stack. `pandas` is listed explicitly — it previously arrived only as a `geopandas` dependency, so dropping `geopandas` alone silently skipped every pandas-guarded test. |
+| **Branch coverage in CI** | `python-package` also runs on `release/**` and `fix/**`, so a branch is tested before it can reach `main`. |
+| **Benchmarks execute** | `tests/test_benchmarks.py` had never run on any machine — `pytest-benchmark` was absent everywhere. Its 36 tests now run and pass. |
+
+### v1.10.0 — Review Fixes, MapLibre 6 & deck.gl 9.4
+
+| Capability | Details |
+| --- | --- |
+| **MapLibre GL JS 6.7.0** | Served apps load v6 (ESM, dynamic `import()`). Standalone `to_html()` exports deliberately stay on 5.24.0 — v6's module worker dies on `file://`, leaving the basemap silently unloaded. |
+| **deck.gl 9.4.0** | Upgraded from 9.3.6, together with `@deck.gl/widgets`. |
+| **`CoordinateSystem` is a string enum** *(breaking)* | deck.gl 9 identifies coordinate systems by name; the enum still carried deck.gl 8's integers, so the default `scatterplot_layer()` silently failed to render. Python-side comparisons such as `cs == 1` no longer hold. |
+| **Python ≥ 3.10** *(breaking)* | Shiny has required 3.10 since 1.6.2. |
+| **Maps initialised on the first tab** | The client waited on a `shiny:connected` event that never fired. |
+| **Widget helpers restored** | deck.gl promoted several widgets out of experimental; six of eighteen helpers resolved to nothing. `fps_widget` and `view_selector_widget` remain unavailable — deck.gl ships no such class in any 9.x release. |
+| **Non-ASCII text labels** | `TextLayer` used the default ASCII atlas, so "Klaipėda" rendered a gap. `characterSet="auto"` builds the atlas from the supplied labels. |
+| **`javascript:` filter hardened** | The guard was a substring regex, so `java<TAB>script:` survived it — browsers strip TAB/LF/CR before parsing the scheme. |
+| **`normalize_rows()`** | An all-zero row is an absorbing state and normalises to a self-loop (`P[k, k] = 1`); it previously produced a row that `rng.choice` rejects. Non-square matrices still fall back to uniform. |
+| **Demo console is clean** | The always-built Google 3D Tiles layer answered 403 without an API key on every page load; it is now built only while its toggle is on. |
+
 ### v1.9.2 — Robustness & Correctness Fixes
 
 | Capability | Details |
@@ -307,7 +332,22 @@ For GeoPandas integration:
 pip install -e ".[geopandas]"
 ```
 
-Or build the conda package:
+For the test suite (no geospatial stack) or the full contributor environment:
+
+```bash
+pip install -e ".[test]"   # pytest, hypothesis, pytest-benchmark, numpy, pandas, pillow
+pip install -e ".[dev]"    # the above plus geopandas and ruff
+```
+
+Or install the published conda package:
+
+```bash
+micromamba install -c razinka -c conda-forge shiny-deckgl
+# or: conda install -c razinka -c conda-forge shiny-deckgl
+```
+
+Note the conda package is named `shiny-deckgl` (hyphen); the import name is
+`shiny_deckgl` (underscore). To build it yourself:
 
 ```bash
 conda build conda.recipe/   # or: micromamba build conda.recipe/
@@ -470,8 +510,15 @@ See [docs/performance-patterns.md](docs/performance-patterns.md) for guidance on
 ## Running Tests
 
 ```bash
+pip install -e ".[dev]"   # or ".[test]" to skip the geospatial tests
 pytest tests/ -v
 ```
+
+A few suites skip themselves when an optional tool is missing rather than
+failing: the JS helper tests (`tests/_js_harness.py`) need `node` on PATH, and
+the end-to-end tests (`tests/test_e2e_playwright.py`) need Playwright with
+Chromium installed. The end-to-end file is memory-hungry — on a 16 GB machine
+run it per class rather than all at once.
 
 ## License
 

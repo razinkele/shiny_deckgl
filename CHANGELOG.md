@@ -30,6 +30,19 @@ and version numbers use [Semantic Versioning](https://semver.org/).
   `tests/test_benchmarks.py` had never executed on any machine; its 36 tests
   pass.
 
+### Documentation
+
+- **README records 1.10.0 and 1.10.1.** The version history stopped at 1.9.2,
+  so the MapLibre 6 / deck.gl 9.4 upgrade and the breaking `CoordinateSystem`
+  and Python-floor changes were undocumented there.
+- **Installation covers the published conda package** (`micromamba install -c
+  razinka -c conda-forge shiny-deckgl`) and the `test` / `dev` extras. Note the
+  conda package is `shiny-deckgl` with a hyphen while the import name is
+  `shiny_deckgl` with an underscore.
+- **Running Tests names the optional tools** — `node` for the JS helper tests,
+  Playwright plus Chromium for the end-to-end suite — and the per-class advice
+  for running the memory-hungry end-to-end file on a 16 GB machine.
+
 ---
 ## [1.10.0] — 2026-09-06
 

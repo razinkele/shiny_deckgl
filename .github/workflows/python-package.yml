@@ -1,7 +1,9 @@
 name: python-package
 on:
   push:
-    branches: [ main ]
+    # Release and fix branches are tested before they reach main, so a merge
+    # never turns main red for something the branch could have caught.
+    branches: [ main, 'release/**', 'fix/**' ]
   pull_request:
     branches: [ main ]
 jobs:

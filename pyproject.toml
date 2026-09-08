@@ -29,7 +29,13 @@ dependencies = [
 [project.optional-dependencies]
 binary = ["numpy"]
 geopandas = ["geopandas"]
-dev = ["pytest", "pytest-asyncio", "numpy", "geopandas", "ruff"]
+# Everything needed to run the suite without the geospatial stack. pandas is
+# listed explicitly because it otherwise arrives only as a geopandas dependency,
+# and the pandas-guarded tests would silently skip.
+test = ["pytest", "pytest-asyncio", "hypothesis", "numpy", "pandas"]
+# The full contributor environment: the test extra plus the geospatial tests and
+# the linter. CI installs this one, so no test is skipped for a missing import.
+dev = ["pytest", "pytest-asyncio", "hypothesis", "numpy", "pandas", "geopandas", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/razinka/shiny_deckgl"

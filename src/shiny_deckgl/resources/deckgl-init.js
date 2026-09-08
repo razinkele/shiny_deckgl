@@ -86,13 +86,19 @@
   // scheme exactly -- a substring regex over the raw value is bypassable.
   var SANITIZE_URI_SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
   var SANITIZE_DANGEROUS_SCHEMES = new Set(['javascript', 'vbscript']);
+  // `data:` is only inert for raster images. A data:text/html (or SVG, which
+  // runs its own script and event handlers) navigated to from href executes
+  // just like javascript:, so everything outside this allowlist is blocked.
+  var SANITIZE_DATA_URI_SAFE = /^data:image\/(png|jpe?g|gif|webp|bmp|avif|x-icon|vnd\.microsoft\.icon)\s*[;,]/i;
 
   function isDangerousUri(value) {
     if (value == null) return false;
     var normalized = String(value).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, '');
     var m = SANITIZE_URI_SCHEME.exec(normalized);
     if (!m) return false;  // relative or scheme-less: cannot be javascript:
-    return SANITIZE_DANGEROUS_SCHEMES.has(m[1].toLowerCase());
+    var scheme = m[1].toLowerCase();
+    if (scheme === 'data') return !SANITIZE_DATA_URI_SAFE.test(normalized);
+    return SANITIZE_DANGEROUS_SCHEMES.has(scheme);
   }
   var SANITIZE_URI_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'srcdoc', 'data', 'xlink:href']);
 

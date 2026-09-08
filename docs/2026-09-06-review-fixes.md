@@ -1,4 +1,4 @@
-# Review fixes — 2026-09-06
+﻿# Review fixes — 2026-09-06
 
 Resolution of the 25 findings in [`2026-09-06-codebase-review.md`](2026-09-06-codebase-review.md).
 All fixed test-first: a failing test written and observed RED before each change.
@@ -131,10 +131,12 @@ about anything this package emits. No errors, no unhandled page errors.
 
 ## Decisions you should confirm
 
-- **`normalize_rows`: zero row → absorbing self-loop, not uniform.** The only
-  caller is `simulate_IHTR`'s Markov transition matrix, where uniform would
-  teleport agents to arbitrary haulout clusters. Non-square matrices still fall
-  back to uniform. **Confirm the absorbing-state reading is what you want.**
+- **`normalize_rows`: zero row → absorbing self-loop, not uniform.**
+  **Confirmed 2026-09-08.** The only caller is `simulate_IHTR`'s Markov
+  transition matrix, where uniform would teleport agents to arbitrary haulout
+  clusters. A square matrix's all-zero row therefore becomes `P[k, k] = 1`: an
+  agent at a cluster with no observed departures stays there. Non-square
+  matrices have no diagonal and still fall back to uniform.
 - **`color_quantiles` binning changed for every caller** — demo colours shift
   slightly. Correct, but visible.
 - **The `@@=` language widened** from property chains to arithmetic /
@@ -152,8 +154,10 @@ about anything this package emits. No errors, no unhandled page errors.
 - **`sanitizeHtml` itself is not run under Node** (it needs `DOMParser`).
   `isDangerousUri` is behaviour-tested; its wiring into `sanitizeHtml` is
   asserted by source inspection only.
-- **`data:` URIs are still allowed** in `href`. `data:text/html` is a real
-  vector; left in scope-check territory rather than changed silently.
+- ~~**`data:` URIs are still allowed** in `href`.~~ **Fixed 2026-09-08:**
+  `isDangerousUri` now allows `data:` only for inert raster image types.
+  `data:text/html` and `data:image/svg+xml` are rejected. See the Unreleased
+  section of `CHANGELOG.md`.
 - **Post-processing effects still do not render** — `@luma.gl/effects` is not
   shipped. The fix stops one bad effect destroying the whole effects array;
   actually rendering them is a feature, not a bug fix.

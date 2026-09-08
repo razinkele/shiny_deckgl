@@ -46,6 +46,7 @@ def _uri_prelude() -> str:
     return "\n".join([
         extract_var("SANITIZE_URI_SCHEME"),
         extract_var("SANITIZE_DANGEROUS_SCHEMES"),
+        extract_var("SANITIZE_DATA_URI_SAFE"),
         extract_function("isDangerousUri"),
     ])
 
@@ -88,6 +89,41 @@ class TestDangerousUriDetection:
         src = js_source()
         assert "SANITIZE_DANGEROUS_URI" not in src
         assert "isDangerousUri(attr.value)" in src
+
+
+@requires_node
+class TestDataUriDetection:
+    """`data:` was allowed wholesale, so `data:text/html` reached href.
+
+    Navigating to a `data:text/html` URI executes its markup, which makes it a
+    script-execution vector every bit as usable as `javascript:`. Only inert
+    raster image types stay allowed: `image/svg+xml` is excluded because an SVG
+    document runs its own `<script>` and event handlers when navigated to.
+    """
+
+    @pytest.mark.parametrize("value", [
+        "data:text/html,<script>alert(1)</script>",
+        "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+        "DaTa:TeXt/HtMl,<script>alert(1)</script>",
+        "data:application/xhtml+xml,<html/>",
+        "data:image/svg+xml,<svg onload=alert(1)/>",
+        "data:image/svg+xml;base64,PHN2Zy8+",
+        "da	ta:text/html,<script>alert(1)</script>",
+        "data:,plain",
+        "data:text/plain,hello",
+    ])
+    def test_scriptable_and_unknown_data_uris_are_rejected(self, value):
+        assert run_js(_uri_prelude(), f"isDangerousUri({json.dumps(value)})") is True
+
+    @pytest.mark.parametrize("value", [
+        "data:image/png;base64,AAAA",
+        "data:image/jpeg;base64,AAAA",
+        "data:image/gif;base64,AAAA",
+        "data:image/webp;base64,AAAA",
+        "DATA:IMAGE/PNG;base64,AAAA",
+    ])
+    def test_raster_image_data_uris_are_allowed(self, value):
+        assert run_js(_uri_prelude(), f"isDangerousUri({json.dumps(value)})") is False
 
 
 class TestUpdateSanitisesPayload:

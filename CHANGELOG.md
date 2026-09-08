@@ -5,6 +5,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+### Security
+
+- **`data:` URIs are now restricted to raster images in sanitised HTML.**
+  `isDangerousUri` only rejected `javascript:` and `vbscript:`, so a tooltip or
+  popup template could emit `href="data:text/html;base64,..."`. Navigating to a
+  `data:text/html` URI executes its markup, making it as usable as
+  `javascript:`. Only `image/png`, `jpeg`, `gif`, `webp`, `bmp`, `avif` and
+  `x-icon` remain allowed; `image/svg+xml` is deliberately excluded, because an
+  SVG document runs its own `<script>` and event handlers when navigated to.
+  This affects `href`, `src`, `action`, `formaction`, `srcdoc`, `data` and
+  `xlink:href` in tooltip and popup HTML only — layer configuration such as
+  `ICON_ATLAS` does not pass through the sanitiser and is unaffected.
+
+### Fixed
+
+- **The `python-package` CI workflow ran green for the first time since June.**
+  `hypothesis`, `pytest-benchmark` and `pillow` were used by the suite but
+  declared nowhere, so pytest aborted during collection. A `test` extra now
+  covers the suite without the geospatial stack, and the workflow also runs on
+  `release/**` and `fix/**` so a branch is tested before it reaches `main`.
+  `tests/test_benchmarks.py` had never executed on any machine; its 36 tests
+  pass.
+
+---
 ## [1.10.0] — 2026-09-06
 
 ### Breaking changes

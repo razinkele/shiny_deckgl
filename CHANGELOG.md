@@ -5,7 +5,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
-## [Unreleased]
+## [1.10.1] — 2026-09-08
 
 ### Security
 

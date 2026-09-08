@@ -32,10 +32,28 @@ geopandas = ["geopandas"]
 # Everything needed to run the suite without the geospatial stack. pandas is
 # listed explicitly because it otherwise arrives only as a geopandas dependency,
 # and the pandas-guarded tests would silently skip.
-test = ["pytest", "pytest-asyncio", "hypothesis", "numpy", "pandas"]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",  # the `benchmark` fixture in tests/test_benchmarks.py
+    "hypothesis",        # tests/test_property_based.py
+    "numpy",
+    "pandas",
+    "pillow",            # tests/test_basic.py checks the icon atlas dimensions
+]
 # The full contributor environment: the test extra plus the geospatial tests and
 # the linter. CI installs this one, so no test is skipped for a missing import.
-dev = ["pytest", "pytest-asyncio", "hypothesis", "numpy", "pandas", "geopandas", "ruff"]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-benchmark",
+    "hypothesis",
+    "numpy",
+    "pandas",
+    "pillow",
+    "geopandas",
+    "ruff",
+]
 
 [project.urls]
 Homepage = "https://github.com/razinka/shiny_deckgl"

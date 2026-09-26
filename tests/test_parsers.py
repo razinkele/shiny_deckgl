@@ -524,3 +524,62 @@ class TestParserEdgeCases:
             assert result[0]["depth"] == 15.0
         finally:
             path.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Explicit CRS (P10, 2026-09-26 review)
+# ---------------------------------------------------------------------------
+
+pyproj = pytest.importorskip("pyproj")
+
+KLAIPEDA = (21.13, 55.71)
+
+
+def _grd_in(epsg: int) -> str:
+    """A one-triangle grid around Klaipėda, in the given projected CRS."""
+    t = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
+    pts = [t.transform(KLAIPEDA[0] + dx, KLAIPEDA[1] + dy)
+           for dx, dy in [(0, 0), (0.01, 0), (0, 0.01)]]
+    lines = [f"1 {i + 1} 0 {x:.3f} {y:.3f} 5.0" for i, (x, y) in enumerate(pts)]
+    return "\n".join(lines + ["2 1 0 3 1 2 3", ""])
+
+
+class TestShyfemCrs:
+    """The parser assumed UTM zone 33N for any projected grid, so a Curonian
+    Lagoon grid in UTM 34N or LKS94 (EPSG:3346) landed about 6° off."""
+
+    def _write(self, tmp_path, text):
+        p = tmp_path / "g.grd"
+        p.write_text(text)
+        return p
+
+    @pytest.mark.parametrize("epsg", [32634, 3346])
+    def test_explicit_crs_is_used(self, tmp_path, epsg):
+        from shiny_deckgl import parse_shyfem_grd
+        poly = parse_shyfem_grd(self._write(tmp_path, _grd_in(epsg)), crs=epsg)[0]["polygon"]
+        assert poly[0] == pytest.approx(list(KLAIPEDA), abs=1e-5)
+
+    def test_crs_accepts_strings(self, tmp_path):
+        from shiny_deckgl import parse_shyfem_grd
+        poly = parse_shyfem_grd(self._write(tmp_path, _grd_in(3346)), crs="EPSG:3346")[0]["polygon"]
+        assert poly[0] == pytest.approx(list(KLAIPEDA), abs=1e-5)
+
+    def test_mesh_honours_crs(self, tmp_path):
+        from shiny_deckgl import parse_shyfem_mesh
+        mesh = parse_shyfem_mesh(self._write(tmp_path, _grd_in(32634)), crs=32634)
+        assert mesh["center"] == pytest.approx([KLAIPEDA[0] + 0.0033, KLAIPEDA[1] + 0.0033], abs=1e-3)
+
+    def test_projected_grid_without_crs_warns_and_keeps_33n(self, tmp_path):
+        from shiny_deckgl import parse_shyfem_grd
+        path = self._write(tmp_path, _grd_in(32633))
+        with pytest.warns(UserWarning, match="crs="):
+            poly = parse_shyfem_grd(path)[0]["polygon"]
+        assert poly[0] == pytest.approx(list(KLAIPEDA), abs=1e-5)
+
+    def test_lon_lat_grid_is_quiet(self, tmp_path):
+        import warnings
+        from shiny_deckgl import parse_shyfem_grd
+        text = "1 1 0 21.1 55.7 5\n1 2 0 21.2 55.7 5\n1 3 0 21.1 55.8 5\n2 1 0 3 1 2 3\n"
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            parse_shyfem_grd(self._write(tmp_path, text))

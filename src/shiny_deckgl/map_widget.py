@@ -163,10 +163,13 @@ class MapWidget:
     parameters
         WebGL parameters dict, e.g. ``{"depthTest": False}``.
     controller
-        Map controller configuration.  ``True`` (default) enables the
-        default controller; ``False`` disables all interaction.  A dict
-        can fine-tune behaviour, e.g.
-        ``{"touchRotate": True, "doubleClickZoom": False}``.
+        Map controller configuration.  ``True`` (default) enables all
+        interaction; ``False`` disables it.  A dict enables everything
+        except the options set to ``False``: ``dragPan``, ``dragRotate``,
+        ``scrollZoom``, ``doubleClickZoom``, ``keyboard``, ``boxZoom``,
+        ``touchZoom``, ``touchRotate`` -- e.g.
+        ``{"doubleClickZoom": False, "touchRotate": False}``.  They are
+        applied to MapLibre's handlers, which do the interaction.
     cooperative_gestures
         When ``True``, requires Ctrl+scroll to zoom and two-finger drag
         on touch devices.  Useful when the map is embedded in a scrollable
@@ -541,9 +544,9 @@ class MapWidget:
         session
             The active Shiny ``Session``.
         options
-            ``True`` enables the default controller.  ``False`` disables
-            all map interaction.  A dict fine-tunes behaviour, e.g.
-            ``{"touchRotate": True, "doubleClickZoom": False}``.
+            ``True`` enables all map interaction, ``False`` disables it,
+            and a dict disables only the options set to ``False`` (see the
+            ``controller`` constructor argument for the keys).
         """
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,

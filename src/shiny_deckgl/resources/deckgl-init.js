@@ -606,6 +606,37 @@
   }
 
   // -----------------------------------------------------------------------
+  // Map interaction ("controller").
+  //
+  // Under MapboxOverlay, MapLibre does the panning and zooming, so deck.gl's
+  // `controller` prop has no effect: map the value onto MapLibre's handlers.
+  // true = everything on, false = everything off, a dict (deck.gl controller
+  // option names) = everything on except the options set to false.
+  // -----------------------------------------------------------------------
+  var CONTROLLER_HANDLERS = {
+    dragPan: 'dragPan', scrollZoom: 'scrollZoom', dragRotate: 'dragRotate',
+    doubleClickZoom: 'doubleClickZoom', keyboard: 'keyboard', boxZoom: 'boxZoom',
+  };
+
+  function applyController(map, value) {
+    var opts = (value && typeof value === 'object') ? value : null;
+    var on = value !== false;
+    Object.keys(CONTROLLER_HANDLERS).forEach(function (key) {
+      var h = map[CONTROLLER_HANDLERS[key]];
+      if (!h) return;
+      var enable = on && !(opts && opts[key] === false);
+      if (enable) h.enable(); else h.disable();
+    });
+    var tzr = map.touchZoomRotate;
+    if (tzr) {
+      var touchZoom = on && !(opts && opts.touchZoom === false);
+      var touchRotate = on && !(opts && opts.touchRotate === false);
+      if (touchZoom || touchRotate) tzr.enable(); else tzr.disable();
+      if (touchRotate) tzr.enableRotation(); else tzr.disableRotation();
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Native-layer tracking and the MapLibre legend's default targets.
   //
   // A legend_control() given no targets lists the app's own native layers
@@ -895,16 +926,7 @@
     // Apply initial controller setting from data attribute
     if (el.dataset.controller !== undefined) {
       try {
-        const ctrlVal = JSON.parse(el.dataset.controller);
-        if (ctrlVal === false) {
-          map.dragPan.disable();
-          map.scrollZoom.disable();
-          map.boxZoom.disable();
-          map.dragRotate.disable();
-          map.keyboard.disable();
-          map.doubleClickZoom.disable();
-          map.touchZoomRotate.disable();
-        }
+        applyController(map, JSON.parse(el.dataset.controller));
       } catch (e) {
         console.warn('[shiny_deckgl] Failed to parse data-controller JSON:', e.message);
       }
@@ -2729,10 +2751,7 @@
     if (!payload || !payload.id) return;
     const instance = mapInstances[payload.id];
     if (!instance) return;
-    const ctrl = payload.controller;
-    // MapboxOverlay exposes controller via setProps
-    instance.overlay.setProps({ controller: ctrl });
-    instance.map.triggerRepaint();
+    applyController(instance.map, payload.controller);
   });
 
   // -----------------------------------------------------------------------

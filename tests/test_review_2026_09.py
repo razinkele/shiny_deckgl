@@ -1566,3 +1566,48 @@ class TestDeferredQueueCoalescing:
         """)
         assert len(got) == 1000
         assert got[-1][1]["n"] == 1199
+
+
+@requires_node
+class TestApplyController:
+    """P8: `controller` was only half honoured.
+
+    MapLibre does the interaction under MapboxOverlay, so deck.gl's
+    `controller` prop has no effect there. At start-up only `False` was acted
+    on (a dict was ignored), and set_controller(session, True) after False
+    never re-enabled MapLibre's handlers.
+    """
+
+    _PRELUDE = "\n".join([
+        "function handler() { return { on: true, rot: true,",
+        "  enable: function () { this.on = true; }, disable: function () { this.on = false; },",
+        "  enableRotation: function () { this.rot = true; }, disableRotation: function () { this.rot = false; } }; }",
+        "function fakeMap() { var m = {}; ['dragPan','scrollZoom','boxZoom','dragRotate','keyboard',",
+        "  'doubleClickZoom','touchZoomRotate'].forEach(function (k) { m[k] = handler(); }); return m; }",
+        "function state(m) { var o = {}; Object.keys(m).forEach(function (k) { o[k] = m[k].on; });",
+        "  o.touchRotate = m.touchZoomRotate.rot; return o; }",
+        extract_var("CONTROLLER_HANDLERS"),
+        extract_function("applyController"),
+    ])
+
+    def _state(self, calls: str):
+        return run_js(self._PRELUDE, "(function(){var m = fakeMap();" + calls + "return state(m);})()")
+
+    def test_false_then_true_restores_interaction(self):
+        s = self._state("applyController(m, false); applyController(m, true);")
+        assert all(s.values()), s
+
+    def test_false_disables_everything(self):
+        s = self._state("applyController(m, false);")
+        assert not any(v for k, v in s.items() if k != "touchRotate")
+
+    def test_dict_options_map_to_maplibre_handlers(self):
+        s = self._state("applyController(m, {doubleClickZoom: false, dragRotate: false,"
+                        " touchRotate: false, scrollZoom: {speed: 0.01}});")
+        assert s["doubleClickZoom"] is False and s["dragRotate"] is False
+        assert s["touchRotate"] is False and s["touchZoomRotate"] is True
+        assert s["scrollZoom"] is True and s["dragPan"] is True
+
+    def test_dict_starts_from_everything_enabled(self):
+        s = self._state("applyController(m, false); applyController(m, {keyboard: false});")
+        assert s["keyboard"] is False and s["dragPan"] is True

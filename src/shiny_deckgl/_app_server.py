@@ -1512,6 +1512,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @reactive.Effect
     def _seal_start_ibm():
+        # Drop a superseded run and any queued ones: ExtendedTask otherwise
+        # publishes each older result before starting the next, so the map
+        # briefly showed a stale simulation. (The worker thread still runs to
+        # completion; its result is discarded.)
+        _seal_ibm_task.cancel()
         if input.seal_model_type() == "mcconnell":
             _seal_ibm_task.invoke(input.seal_n_individuals(), input.seal_sim_hours())
 

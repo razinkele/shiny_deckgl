@@ -530,13 +530,16 @@ class TestParserEdgeCases:
 # Explicit CRS (P10, 2026-09-26 review)
 # ---------------------------------------------------------------------------
 
-pyproj = pytest.importorskip("pyproj")
-
 KLAIPEDA = (21.13, 55.71)
 
 
 def _grd_in(epsg: int) -> str:
-    """A one-triangle grid around Klaipėda, in the given projected CRS."""
+    """A one-triangle grid around Klaipėda, in the given projected CRS.
+
+    Skips the calling test without pyproj. (A module-level importorskip here
+    skipped every test in this file, not just the CRS ones.)
+    """
+    pyproj = pytest.importorskip("pyproj")
     t = pyproj.Transformer.from_crs("EPSG:4326", f"EPSG:{epsg}", always_xy=True)
     pts = [t.transform(KLAIPEDA[0] + dx, KLAIPEDA[1] + dy)
            for dx, dy in [(0, 0), (0.01, 0), (0, 0.01)]]

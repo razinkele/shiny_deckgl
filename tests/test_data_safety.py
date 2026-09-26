@@ -198,3 +198,14 @@ class TestColourHelpersOnRealData:
         vals = [1.0, 2.0, 3.0, 4.0]
         top = color_range(4)[-1]
         assert color_quantiles(vals + [float("nan")] * 4, n_bins=4)[3] == top
+
+
+class TestColourHelperOverflow:
+    """1.11.1: float(10**400) raised an uncaught OverflowError."""
+
+    @pytest.mark.parametrize("fn", [color_bins, color_quantiles])
+    def test_too_large_integer_is_treated_as_missing(self, fn):
+        clean = fn([1, 2, 3], n_bins=3)
+        got = fn([1, 10**400, 2, 3], n_bins=3)
+        assert got[1] == MISSING
+        assert [got[0], got[2], got[3]] == clean

@@ -1653,3 +1653,26 @@ class TestExportsKeepWidgetConfig:
         from shiny_deckgl import MapWidget
         spec = _json.loads(MapWidget("d").to_json([]))
         assert set(spec) == {"id", "viewState", "style", "layers", "controls"}
+
+
+class TestControllerIsPerSession:
+    """1.11.1: set_controller() was not recorded, so exports showed the
+    constructor's controller rather than what the session's map does."""
+
+    def test_export_reflects_the_sessions_controller(self):
+        import asyncio
+        import json as _json
+        from conftest import _FakeSession
+        from shiny_deckgl import MapWidget
+        w, s1, s2 = MapWidget("m"), _FakeSession(), _FakeSession()
+        asyncio.run(w.set_controller(s1, False))
+        assert w.controller is True
+        import re
+
+        def map_div(session):  # the page's inlined JS also mentions data-controller
+            return re.search(r'<div id="m"[^>]*>', w.to_html([], session=session)).group(0)
+
+        assert 'data-controller="false"' in map_div(s1)
+        assert "data-controller" not in map_div(s2)
+        assert _json.loads(w.to_json([], session=s1))["controller"] is False
+        assert "controller" not in _json.loads(w.to_json([], session=s2))

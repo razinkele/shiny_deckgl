@@ -343,8 +343,9 @@ class MapWidget:
             attrs["data_animate"] = "true"
         if self.parameters is not None:
             attrs["data_parameters"] = json.dumps(self.parameters)
-        if self.controller is not True:
-            attrs["data_controller"] = json.dumps(self.controller)
+        controller = self._recall(session, "controller")
+        if controller is not True:
+            attrs["data_controller"] = json.dumps(controller)
         if self.interleaved:
             attrs["data_interleaved"] = "true"
         if self._recall(session, "cooperative_gestures"):
@@ -573,6 +574,9 @@ class MapWidget:
             and a dict disables only the options set to ``False`` (see the
             ``controller`` constructor argument for the keys).
         """
+        # Per session, like the style and tooltip, so exports match what
+        # this session's map does.
+        self._remember(session, "controller", options)
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
             "controller": options,

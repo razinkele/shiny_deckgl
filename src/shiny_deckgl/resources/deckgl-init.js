@@ -2318,8 +2318,11 @@
     // A newer update started while we were rasterising: its layers are the
     // ones in instance.lastLayers, so drop this stale render.
     if (isStaleUpdate(instance, updateGen)) return;
+    // Render the cache as it is now, not the array captured above: a
+    // visibility change, legend toggle or partial update may have patched
+    // it (and rendered) while the atlases were loading.
     const deckLayers = buildDeckLayers(
-      cloneLayersData(layersData),
+      cloneLayersData(instance.lastLayers),
       targetId
     );
     const overlayProps = { layers: deckLayers };
@@ -2418,8 +2421,10 @@
 
     Promise.all(svgAtlasPreloads).then(function () {
       if (partialUpdateGen !== instance._partialUpdateGen) return;
+      // As in deck_update: render the current cache, which may have been
+      // patched again while the atlases were loading.
       const deckLayers = buildDeckLayers(
-        cloneLayersData(merged),
+        cloneLayersData(instance.lastLayers),
         targetId
       );
       instance.overlay.setProps({ layers: deckLayers });
@@ -2431,7 +2436,7 @@
 
       // Property animations: start for new animated layers, clean up removed ones
       startPropertyAnimations(instance, targetId);
-      const currentLayerIds = new Set(merged.map(function (lp) { return lp.id; }));
+      const currentLayerIds = new Set(instance.lastLayers.map(function (lp) { return lp.id; }));
       cleanupAnimations(instance, targetId, currentLayerIds);
     }).catch(function (err) {
       console.error('[shiny_deckgl] deck_partial_update rendering failed for "' + targetId + '":', err);

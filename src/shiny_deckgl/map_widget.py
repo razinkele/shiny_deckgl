@@ -1011,11 +1011,11 @@ class MapWidget:
             (``"geojson"``, ``"raster"``, ``"vector"``, ``"raster-dem"``,
             ``"image"``).
         """
-        await session.send_custom_message("deck_add_source", {
+        await session.send_custom_message("deck_add_source", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "spec": source_spec,
-        })
+        }))
 
     async def add_maplibre_layer(
         self,
@@ -1103,11 +1103,11 @@ class MapWidget:
             New GeoJSON dict or URL string.
         """
         serialised = _serialise_data(data)
-        await session.send_custom_message("deck_set_source_data", {
+        await session.send_custom_message("deck_set_source_data", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "data": serialised,
-        })
+        }))
 
     # -- Cluster Layers (v1.0.0) ----------------------------------------------
 
@@ -1211,12 +1211,12 @@ class MapWidget:
         if cluster_properties is not None:
             options["clusterProperties"] = cluster_properties
 
-        await session.send_custom_message("deck_add_cluster_layer", {
+        await session.send_custom_message("deck_add_cluster_layer", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "data": serialised,
             "options": options,
-        })
+        }))
 
     async def remove_cluster_layer(
         self,

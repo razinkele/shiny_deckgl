@@ -8,7 +8,11 @@
   // updateTriggers).  Handles non-cloneable values like Canvas elements
   // (from rasterised SVG icon atlases) that structuredClone cannot copy.
   function cloneLayersData(layersData) {
-    return layersData.map(function (lp) {
+    return layersData.map(cloneLayer);
+  }
+
+  function cloneLayer(lp) {
+    {
       var clone = Object.assign({}, lp);
       // Deep-clone nested objects that buildDeckLayers mutates in-place.
       // transitions needs two levels: the map of prop→spec AND each spec
@@ -43,7 +47,7 @@
         }
       }
       return clone;
-    });
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -596,12 +600,7 @@
         if (!inst._legendUserHidden) inst._legendUserHidden = {};
         if (visible) delete inst._legendUserHidden[layerId];
         else inst._legendUserHidden[layerId] = true;
-        var deckLayers = buildDeckLayers(
-          cloneLayersData(inst.lastLayers),
-          this._mapId
-        );
-        inst.overlay.setProps({ layers: deckLayers });
-        inst.map.triggerRepaint();
+        renderNow(inst, this._mapId);
         // Report the toggle so the server can keep its own state in step;
         // otherwise its next update() would silently undo the user's choice.
         Shiny.setInputValue(this._mapId + '_legend_visibility',
@@ -1065,7 +1064,7 @@
       nativeLayers: {},        // tracks native MapLibre layers added via add_maplibre_layer
       _legendAutoTargets: legendAutoTargets,  // live default targets for legend controls
       // TripsLayer animation state (v0.9.0)
-      tripsAnimation: null     // {rafId, loopLength, speed, startedAt}
+      tripsAnimation: null     // see startTripsAnimation()
     };
 
     // Dismiss tooltip when the cursor is over empty map space.
@@ -1136,18 +1135,11 @@
   function disposeMap(id) {
     var instance = mapInstances[id];
     if (!instance) return;
-    // Stop animation loops and invalidate any pending async starts.
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
+    // Stop the frame loop.
     try {
-      if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
-        cancelAnimationFrame(instance.tripsAnimation.rafId);
-      }
+      if (instance._frameRaf) cancelAnimationFrame(instance._frameRaf);
     } catch (e) { /* ignore */ }
-    try {
-      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
-        cancelAnimationFrame(instance.propertyAnimation.rafId);
-      }
-    } catch (e) { /* ignore */ }
+    instance._frameRaf = null;
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
@@ -1714,8 +1706,64 @@
   // -----------------------------------------------------------------------
   const RASTER_TYPES = new Set(["TileLayer", "BitmapLayer"]);
 
+  // -----------------------------------------------------------------------
+  // Layer construction: resolve once, instantiate per render.
+  //
+  // Resolving a layer's props (accessor strings -> functions, @@binary ->
+  // typed arrays, extensions, easing, pick handlers, meshes) is cached per
+  // source props object, the entries of instance.lastLayers. Re-rendering the
+  // same object -- every animation frame, a tab show, a visibility toggle of
+  // another layer -- then hands deck.gl the SAME functions and data, so it
+  // does not recompute attributes or re-upload buffers. A patched layer is a
+  // new object and is resolved afresh. Resolution works on a clone, so the
+  // cached source is never mutated.
+  // -----------------------------------------------------------------------
+  var _resolvedLayerCache = new WeakMap();
+
   function buildDeckLayers(layersData, targetId) {
-    return layersData.map(layerProps => {
+    var out = [];
+    for (var i = 0; i < layersData.length; i++) {
+      var layer = instantiateLayer(resolveLayerCached(layersData[i], targetId));
+      if (layer) out.push(layer);
+    }
+    return out;
+  }
+
+  function resolveLayerCached(lp, targetId) {
+    var hit = lp && typeof lp === 'object' ? _resolvedLayerCache.get(lp) : null;
+    if (hit && hit.targetId === targetId) return hit.resolved;
+    var resolved = resolveLayerProps(cloneLayer(lp), targetId);
+    if (lp && typeof lp === 'object') {
+      _resolvedLayerCache.set(lp, { targetId: targetId, resolved: resolved });
+    }
+    return resolved;
+  }
+
+  // Per-render values that must not be cached: the current value of each
+  // @@animate prop and the rasterised SVG icon atlas (it may finish loading
+  // after the layer was first resolved). `extra` overrides (e.g. currentTime).
+  function instantiateLayer(resolved, extra) {
+    if (!resolved) return null;
+    var props = Object.assign({}, resolved);
+    var anim = resolved._animConfigs;
+    if (anim) {
+      for (var key in anim) props[key] = window[anim[key].globalKey];
+    }
+    if (typeof props.iconAtlas === 'string'
+        && props.iconAtlas.indexOf('data:image/svg+xml') === 0
+        && _svgAtlasCache[props.iconAtlas]) {
+      props.iconAtlas = _svgAtlasCache[props.iconAtlas];
+    }
+    if (extra) Object.assign(props, extra);
+    var LayerClass = props._LayerClass;
+    delete props._LayerClass;
+    return new LayerClass(props);
+  }
+
+  // Everything about a layer that does not change from frame to frame.
+  // Returns the props object (with the class in _LayerClass), or null.
+  function resolveLayerProps(layerProps, targetId) {
+    {
       resolveAccessors(layerProps);
       resolveExtensions(layerProps);
       resolveBinaryAttributes(layerProps);
@@ -1725,15 +1773,16 @@
       for (const key of Object.keys(layerProps)) {
         const val = layerProps[key];
         if (val && typeof val === 'object' && val['@@animate'] === true) {
+          // Replace with accessor that reads the animated global
+          const globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           animConfigs[key] = {
             prop: val.prop,
             speed: val.speed || 1,
             loop: val.loop !== false,
             rangeMin: val.range_min != null ? val.range_min : 0,
             rangeMax: val.range_max != null ? val.range_max : 360,
+            globalKey: globalKey,
           };
-          // Replace with accessor that reads the animated global
-          const globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
@@ -1741,10 +1790,8 @@
           // globals (a prefix match on "map" also caught "map_2").
           var owner = mapInstances[targetId];
           if (owner) (owner._animGlobals = owner._animGlobals || {})[globalKey] = true;
-          // Assign current value as a plain number (not an accessor function).
-          // This works because buildDeckLayers() is called every frame by the
-          // animation RAF loop, so the value is refreshed each frame. deck.gl
-          // detects the change via numeric shallow comparison.
+          // The current value is filled in by instantiateLayer() on every
+          // render as a plain number; deck.gl sees it change by value.
           layerProps[key] = window[globalKey];
         }
       }
@@ -1959,16 +2006,10 @@
         }
       }
 
-      // Use pre-rasterised canvas for SVG icon atlases (cache populated
-      // by rasteriseIconAtlas during animation setup or prior render).
-      if (layerProps.iconAtlas && typeof layerProps.iconAtlas === 'string'
-          && layerProps.iconAtlas.indexOf('data:image/svg+xml') === 0
-          && _svgAtlasCache[layerProps.iconAtlas]) {
-        layerProps.iconAtlas = _svgAtlasCache[layerProps.iconAtlas];
-      }
-
-      return new LayerClass(layerProps);
-    }).filter(l => l !== null);
+      // The rasterised SVG icon atlas is swapped in by instantiateLayer().
+      layerProps._LayerClass = LayerClass;
+      return layerProps;
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -2086,11 +2127,136 @@
   // -----------------------------------------------------------------------
   // Property animation loop (v1.7.0)
   // -----------------------------------------------------------------------
+  // -----------------------------------------------------------------------
+  // Rendering and the per-map frame loop.
+  //
+  // renderLayers() is the one place deck.gl layers are built from
+  // instance.lastLayers. It applies the current animation state -- each
+  // TripsLayer's currentTime (running or paused) plus its head icons, and
+  // the @@animate values -- so every render path (updates, visibility,
+  // legend toggles, tab shows, animation frames) draws the same thing.
+  //
+  // One requestAnimationFrame loop per map advances both the trips clock and
+  // the property animations, then renders. It runs only while something is
+  // animating. There used to be one loop per animation kind, each setting
+  // the whole layer list, so a map with both flickered between them.
+  // -----------------------------------------------------------------------
+
+  function tripsTime(ta) {
+    if (!ta) return 0;
+    if (ta.running) return (performance.now() - ta.startedAt) / 1000 + (ta.timeOffset || 0);
+    return ta.pausedAt || 0;
+  }
+
+  // Rebuilt every frame on purpose: the head positions move each frame, so
+  // new accessors (and deck.gl recomputing their attributes) are correct.
+  function headIconLayer(lp, hi, currentTime) {
+    var atlas = hi._rasterAtlas || hi.iconAtlas;
+    // An SVG atlas is drawn once rasterised (see startTripsAnimation).
+    if (typeof atlas === 'string' && atlas.indexOf('data:image/svg+xml') === 0) return null;
+    var heads = interpolateTripHeads(lp.data, currentTime, hi.iconField || 'species');
+    if (heads.length === 0) return null;
+    var props = {
+      id: (lp.id || 'trips') + '_heads',
+      data: heads,
+      iconAtlas: atlas,
+      iconMapping: hi.iconMapping,
+      getPosition: function (d) { return d.position; },
+      getIcon: function (d) { return d.icon; },
+      getColor: function (d) { return d.color; },
+      getAngle: function (d) { return d.angle || 0; },
+      getSize: hi.getSize || 24,
+      sizeScale: hi.sizeScale || 1,
+      sizeMinPixels: hi.sizeMinPixels || 10,
+      sizeMaxPixels: hi.sizeMaxPixels || 64,
+      billboard: false,
+      pickable: false,
+      visible: lp.visible !== false,
+    };
+    if (lp.coordinateSystem != null) {
+      props.coordinateSystem = normaliseCoordinateSystem(lp.coordinateSystem);
+    }
+    if (lp.coordinateOrigin != null) props.coordinateOrigin = lp.coordinateOrigin;
+    return new deck.IconLayer(props);
+  }
+
+  function renderLayers(instance, targetId) {
+    var ta = instance.tripsAnimation;
+    var trips = {};
+    if (ta && ta.configs) {
+      var t = tripsTime(ta);
+      for (var c = 0; c < ta.configs.length; c++) {
+        var cfg = ta.configs[c];
+        trips[cfg.layerId] = { cfg: cfg, currentTime: (t * cfg.speed) % cfg.loopLength };
+      }
+    }
+    var out = [];
+    var layers = instance.lastLayers || [];
+    for (var i = 0; i < layers.length; i++) {
+      var lp = layers[i];
+      var tr = lp && trips[lp.id];
+      var layer = instantiateLayer(resolveLayerCached(lp, targetId),
+                                   tr ? { currentTime: tr.currentTime } : null);
+      if (!layer) continue;
+      out.push(layer);
+      if (tr && tr.cfg.headIcons) {
+        var heads = headIconLayer(lp, tr.cfg.headIcons, tr.currentTime);
+        if (heads) out.push(heads);
+      }
+    }
+    return out;
+  }
+
+  function renderNow(instance, targetId) {
+    instance.overlay.setProps({ layers: renderLayers(instance, targetId) });
+    instance.map.triggerRepaint();
+  }
+
+  function isAnimating(instance) {
+    return !!((instance.tripsAnimation && instance.tripsAnimation.running)
+      || (instance.animations && Object.keys(instance.animations).length));
+  }
+
+  function ensureFrameLoop(instance, targetId) {
+    if (instance._frameRaf || !isAnimating(instance)) return;
+    instance._lastFrameTime = performance.now();
+    function tick(now) {
+      instance._frameRaf = null;
+      if (mapInstances[targetId] !== instance || !isAnimating(instance)) return;
+      var dt = (now - instance._lastFrameTime) / 1000;
+      instance._lastFrameTime = now;
+      advancePropertyAnimations(instance, dt);
+      // setProps alone: deck.gl redraws itself. renderNow() would also make
+      // MapLibre repaint the whole basemap on every frame.
+      instance.overlay.setProps({ layers: renderLayers(instance, targetId) });
+      instance._frameRaf = requestAnimationFrame(tick);
+    }
+    instance._frameRaf = requestAnimationFrame(tick);
+  }
+
+  function advancePropertyAnimations(instance, dt) {
+    var anims = instance.animations || {};
+    for (var layerId in anims) {
+      var layerConfigs = anims[layerId];
+      for (var propKey in layerConfigs) {
+        var cfg = layerConfigs[propKey];
+        var current = window[cfg.globalKey];
+        var val = (current != null ? current : cfg.rangeMin) + cfg.speed * dt;
+        if (cfg.loop) {
+          var range = cfg.rangeMax - cfg.rangeMin;
+          val = cfg.rangeMin + ((val - cfg.rangeMin) % range);
+          if (val < cfg.rangeMin) val += range; // handle negative speed
+        } else {
+          val = Math.min(Math.max(val, cfg.rangeMin), cfg.rangeMax);
+        }
+        window[cfg.globalKey] = val;
+      }
+    }
+  }
+
   function startPropertyAnimations(instance, mapId) {
     // Collect animation configs from all layers by scanning for @@animate
-    // markers in the raw layer props (instance.lastLayers stores the original
-    // un-cloned data; _animConfigs is only set on the clone inside
-    // buildDeckLayers, so we must detect markers here directly).
+    // markers in the raw layer props (instance.lastLayers).
     const allConfigs = {};
     for (let i = 0; i < instance.lastLayers.length; i++) {
       const lp = instance.lastLayers[i];
@@ -2098,15 +2264,16 @@
       for (const key of Object.keys(lp)) {
         const val = lp[key];
         if (val && typeof val === 'object' && val['@@animate'] === true) {
+          const globalKey = '_deckgl_anim_' + mapId + '_' + val.prop;
           configs[key] = {
             prop: val.prop,
             speed: val.speed || 1,
             loop: val.loop !== false,
             rangeMin: val.range_min != null ? val.range_min : 0,
             rangeMax: val.range_max != null ? val.range_max : 360,
+            globalKey: globalKey,
           };
           // Ensure window global is initialised
-          const globalKey = '_deckgl_anim_' + mapId + '_' + val.prop;
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
@@ -2117,275 +2284,101 @@
         allConfigs[lp.id] = configs;
       }
     }
-
-    if (Object.keys(allConfigs).length === 0) {
-      // No animations — cancel any existing loop
-      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
-        cancelAnimationFrame(instance.propertyAnimation.rafId);
-        instance.propertyAnimation = null;
-      }
-      return;
-    }
-
+    if (Object.keys(allConfigs).length === 0) return;
     // Merge into existing animations (don't overwrite in-flight configs)
     instance.animations = Object.assign(instance.animations || {}, allConfigs);
-
-    // Don't restart RAF if already running (configs are merged above)
-    if (instance.propertyAnimation && instance.propertyAnimation.rafId) return;
-    let lastTime = performance.now();
-
-    function tick(now) {
-      const dt = (now - lastTime) / 1000; // seconds
-      lastTime = now;
-
-      // Update each animated value
-      for (const layerId of Object.keys(instance.animations)) {
-        const layerConfigs = instance.animations[layerId];
-        for (const propKey of Object.keys(layerConfigs)) {
-          const cfg = layerConfigs[propKey];
-          const globalKey = '_deckgl_anim_' + mapId + '_' + cfg.prop;
-          const current = window[globalKey];
-          let val = (current != null ? current : cfg.rangeMin) + cfg.speed * dt;
-          if (cfg.loop) {
-            const range = cfg.rangeMax - cfg.rangeMin;
-            val = cfg.rangeMin + ((val - cfg.rangeMin) % range);
-            if (val < cfg.rangeMin) val += range; // handle negative speed
-          } else {
-            val = Math.min(Math.max(val, cfg.rangeMin), cfg.rangeMax);
-          }
-          window[globalKey] = val;
-        }
-      }
-
-      // Rebuild layers with updated values
-      const deckLayers = buildDeckLayers(
-        cloneLayersData(instance.lastLayers),
-        mapId
-      );
-      instance.overlay.setProps({ layers: deckLayers });
-
-      instance.propertyAnimation.rafId = requestAnimationFrame(tick);
-    }
-
-    instance.propertyAnimation = {};
-    instance.propertyAnimation.rafId = requestAnimationFrame(tick);
+    ensureFrameLoop(instance, mapId);
   }
 
   function cleanupAnimations(instance, mapId, currentLayerIds) {
     if (!instance.animations) return;
-    // Remove configs for layers that no longer exist
+    // Remove configs for layers that no longer exist; the frame loop stops
+    // by itself once nothing is animating.
     for (const layerId of Object.keys(instance.animations)) {
       if (!currentLayerIds.has(layerId)) {
-        // Clean up window globals
         const configs = instance.animations[layerId];
         for (const propKey of Object.keys(configs)) {
-          delete window['_deckgl_anim_' + mapId + '_' + configs[propKey].prop];
+          delete window[configs[propKey].globalKey];
         }
         delete instance.animations[layerId];
       }
     }
-    // If no animations remain, cancel RAF
-    if (Object.keys(instance.animations).length === 0) {
-      if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
-        cancelAnimationFrame(instance.propertyAnimation.rafId);
-        instance.propertyAnimation = null;
-      }
-    }
   }
 
-  function startTripsAnimation(instance, targetId, fromUpdate) {
-    if (!shouldStartTripsAnimation(instance, fromUpdate === true)) return;
-    if (fromUpdate !== true) instance._tripsPaused = false;
-    // Carry the animation time over BEFORE stopTripsAnimation nulls the
-    // object: from a pause, or -- for a layer update -- from the running
-    // loop, which used to snap back to 0 on every update()/partial_update().
-    var prev = instance.tripsAnimation;
-    var savedPausedAt = 0;
-    if (prev && prev.pausedAt != null) {
-      savedPausedAt = prev.pausedAt;
-    } else if (fromUpdate === true && prev && prev.rafId && prev.startedAt != null) {
-      savedPausedAt = (performance.now() - prev.startedAt) / 1000 + (prev.timeOffset || 0);
-    }
-    var prevSpeed = prev ? prev.speed : null;
-    // Stop any running animation first
-    stopTripsAnimation(instance);
-    // Claim a generation token AFTER the internal stop. Any later stop/pause
-    // (e.g. while the SVG atlas is still rasterising asynchronously) bumps the
-    // counter, so the deferred kickoff below can detect it was superseded and
-    // must not resurrect a stopped/stale RAF loop.
-    var myGen = (instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1);
-
-    // Scan current layers for TripsLayer configs. We store layer IDs
-    // (not indices) so the tick can find them even after lastLayers is
-    // replaced by deck_update / deck_partial_update / visibility toggle.
-    var initLayers = instance.lastLayers;
-    var tripsConfigs = [];  // {layerId, loopLength, speed, headIcons?}
-    for (var i = 0; i < initLayers.length; i++) {
-      var lp = initLayers[i];
+  function scanTripsConfigs(layers) {
+    var configs = [];  // {layerId, loopLength, speed, headIcons?}
+    for (var i = 0; i < layers.length; i++) {
+      var lp = layers[i];
       if (lp.type === 'TripsLayer' && lp._tripsAnimation) {
         var cfg = {
           layerId: lp.id,
           loopLength: lp._tripsAnimation.loopLength || 1800,
           speed: lp._tripsAnimation.speed || 1,
         };
-        if (lp._tripsHeadIcons) {
-          cfg.headIcons = lp._tripsHeadIcons;
-        }
-        tripsConfigs.push(cfg);
+        if (lp._tripsHeadIcons) cfg.headIcons = lp._tripsHeadIcons;
+        configs.push(cfg);
       }
     }
-    if (tripsConfigs.length === 0) return;
+    return configs;
+  }
+
+  function startTripsAnimation(instance, targetId, fromUpdate) {
+    var prev = instance.tripsAnimation;
+    if (!shouldStartTripsAnimation(instance, fromUpdate === true)) {
+      // Paused: keep the frozen time, but follow the updated layers so the
+      // paused frame (and its head icons) still matches what is drawn.
+      if (prev && !prev.running) prev.configs = scanTripsConfigs(instance.lastLayers);
+      return;
+    }
+    if (fromUpdate !== true) instance._tripsPaused = false;
+    // Carry the animation time over: from a pause, or -- for a layer update
+    // -- from the running clock, which used to snap back to 0 on every
+    // update()/partial_update().
+    var carried = 0;
+    if (prev && !prev.running && prev.pausedAt != null) carried = prev.pausedAt;
+    else if (fromUpdate === true && prev && prev.running) carried = tripsTime(prev);
+    var prevSpeed = prev ? prev.speed : null;
+
+    var configs = scanTripsConfigs(instance.lastLayers);
+    if (configs.length === 0) { instance.tripsAnimation = null; return; }
 
     // Time is multiplied by speed, so after a speed change rescale the
     // carried-over time: the trails then continue from the same point.
-    var speed0 = tripsConfigs[0].speed;
-    if (prevSpeed && speed0 && prevSpeed !== speed0) {
-      savedPausedAt = savedPausedAt * prevSpeed / speed0;
-    }
+    var speed0 = configs[0].speed;
+    if (prevSpeed && speed0 && prevSpeed !== speed0) carried = carried * prevSpeed / speed0;
 
-    // Pre-rasterise any SVG icon atlases before starting the RAF loop.
-    var atlasPromises = [];
-    for (var c = 0; c < tripsConfigs.length; c++) {
-      var atlCfg = tripsConfigs[c];
-      if (atlCfg.headIcons && atlCfg.headIcons.iconAtlas) {
-        atlasPromises.push(
-          rasteriseIconAtlas(atlCfg.headIcons.iconAtlas).then((function (cfg) {
-            return function (raster) { cfg.headIcons._rasterAtlas = raster; };
-          })(atlCfg))
-        );
-      }
-    }
+    instance.tripsAnimation = {
+      configs: configs, running: true, speed: speed0,
+      startedAt: performance.now(), timeOffset: carried, pausedAt: null,
+    };
+    ensureFrameLoop(instance, targetId);
 
-    /** Find a layer by ID in the current lastLayers array. */
-    function _findLayer(layers, id) {
-      for (var k = 0; k < layers.length; k++) {
-        if (layers[k].id === id) return layers[k];
-      }
-      return null;
-    }
-
-    Promise.all(atlasPromises).then(function () {
-      // Bail if a newer start/stop/pause superseded this deferred kickoff.
-      if (instance._tripsAnimGen !== myGen) return;
-      // Preserve accumulated time when resuming from a pause
-      var timeOffset = savedPausedAt;
-      var startedAt = performance.now();
-
-      function tick() {
-        // If the animation was externally stopped, do not resurrect the loop.
-        if (!instance.tripsAnimation) return;
-
-        // Read the LIVE lastLayers on every frame so that updates from
-        // deck_update, deck_partial_update, and deck_layer_visibility
-        // are respected immediately instead of being overwritten.
-        var liveLayers = instance.lastLayers;
-        if (!liveLayers || liveLayers.length === 0) {
-          instance.tripsAnimation.rafId = requestAnimationFrame(tick);
-          return;
-        }
-
-        var elapsed = (performance.now() - startedAt) / 1000 + timeOffset;
-
-        // Clone first, then write currentTime onto clones — avoids
-        // permanently mutating the canonical server state in lastLayers.
-        var cloned = cloneLayersData(liveLayers);
-
-        // Update currentTime on each TripsLayer clone (looked up by ID)
-        for (var c = 0; c < tripsConfigs.length; c++) {
-          var cfg = tripsConfigs[c];
-          var lp = _findLayer(cloned, cfg.layerId);
-          if (lp) {
-            lp.currentTime = (elapsed * cfg.speed) % cfg.loopLength;
-          }
-        }
-
-        // Build deck.gl layers from the cloned (mutated) data
-        var deckLayers = buildDeckLayers(cloned, targetId);
-
-        // Append head-icon layers for TripsLayers with _tripsHeadIcons
-        for (var c2 = 0; c2 < tripsConfigs.length; c2++) {
-          var hcfg = tripsConfigs[c2];
-          if (!hcfg.headIcons) continue;
-          var hlp = _findLayer(cloned, hcfg.layerId);
-          if (!hlp) continue;
-          var hi = hcfg.headIcons;
-          var heads = interpolateTripHeads(
-            hlp.data, hlp.currentTime, hi.iconField || 'species'
-          );
-          if (heads.length > 0) {
-            var headIconProps = {
-              id: (hlp.id || 'trips') + '_heads',
-              data: heads,
-              iconAtlas: hi._rasterAtlas || hi.iconAtlas,
-              iconMapping: hi.iconMapping,
-              getPosition: function(d) { return d.position; },
-              getIcon: function(d) { return d.icon; },
-              getColor: function(d) { return d.color; },
-              getAngle: function(d) { return d.angle || 0; },
-              getSize: hi.getSize || 24,
-              sizeScale: hi.sizeScale || 1,
-              sizeMinPixels: hi.sizeMinPixels || 10,
-              sizeMaxPixels: hi.sizeMaxPixels || 64,
-              billboard: false,
-              pickable: false,
-            };
-            if (hlp.coordinateSystem != null) {
-              headIconProps.coordinateSystem =
-                normaliseCoordinateSystem(hlp.coordinateSystem);
-            }
-            if (hlp.coordinateOrigin != null) {
-              headIconProps.coordinateOrigin = hlp.coordinateOrigin;
-            }
-            deckLayers.push(new deck.IconLayer(headIconProps));
-          }
-        }
-
-        instance.overlay.setProps({ layers: deckLayers });
-
-        instance.tripsAnimation = instance.tripsAnimation || {};
-        instance.tripsAnimation.rafId = requestAnimationFrame(tick);
-        instance.tripsAnimation.startedAt = startedAt;
-        instance.tripsAnimation.timeOffset = timeOffset;
-        instance.tripsAnimation.speed = speed0;
-      }
-      // Initial kickoff (only runs once when animation starts)
-      instance.tripsAnimation = instance.tripsAnimation || {};
-      instance.tripsAnimation.rafId = requestAnimationFrame(tick);
-      instance.tripsAnimation.startedAt = startedAt;
-      instance.tripsAnimation.timeOffset = timeOffset;
-      instance.tripsAnimation.speed = speed0;
-    }).catch(function (err) {
-      console.error('[shiny_deckgl] TripsLayer animation setup failed for "' + targetId + '":', err);
+    // Rasterise SVG head-icon atlases; the heads are drawn once ready.
+    configs.forEach(function (cfg) {
+      var hi = cfg.headIcons;
+      if (!hi || !hi.iconAtlas || hi._rasterAtlas) return;
+      rasteriseIconAtlas(hi.iconAtlas).then(function (raster) {
+        hi._rasterAtlas = raster;
+      }).catch(function (err) {
+        console.error('[shiny_deckgl] TripsLayer head-icon atlas failed for "' + targetId + '":', err);
+      });
     });
   }
 
   function pauseTripsAnimation(instance) {
-    // Invalidate any pending async (atlas-rasterisation) start so it cannot
-    // resurrect the loop after the user pauses.
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
     // Remember that the pause was deliberate, so a later layer update does
     // not quietly start the animation playing again.
     instance._tripsPaused = true;
-    if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
-      cancelAnimationFrame(instance.tripsAnimation.rafId);
-      // Compute accumulated elapsed time so we can resume from the same point
-      const accumulated = (performance.now() - instance.tripsAnimation.startedAt) / 1000
-                      + (instance.tripsAnimation.timeOffset || 0);
-      instance.tripsAnimation.rafId = null;
-      instance.tripsAnimation.pausedAt = accumulated;
+    var ta = instance.tripsAnimation;
+    if (ta && ta.running) {
+      ta.pausedAt = tripsTime(ta);
+      ta.running = false;
     }
   }
 
   function stopTripsAnimation(instance) {
-    // Invalidate any pending async start (see startTripsAnimation).
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
-    if (instance.tripsAnimation && instance.tripsAnimation.rafId) {
-      cancelAnimationFrame(instance.tripsAnimation.rafId);
-    }
-    // Full stop — clear pausedAt so next start begins from 0
-    if (instance.tripsAnimation) {
-      instance.tripsAnimation = null;
-    }
+    // Full stop: the next start begins from 0.
+    instance.tripsAnimation = null;
   }
 
   // -----------------------------------------------------------------------
@@ -2552,11 +2545,7 @@
     // Render the cache as it is now, not the array captured above: a
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
-    const deckLayers = buildDeckLayers(
-      cloneLayersData(instance.lastLayers),
-      targetId
-    );
-    const overlayProps = { layers: deckLayers };
+    const overlayProps = { layers: renderLayers(instance, targetId) };
 
     // Effects (lighting, post-processing)
     const effects = buildEffects(payload.effects);
@@ -2655,12 +2644,7 @@
       if (mapInstances[targetId] !== instance) return;  // disposed meanwhile
       // As in deck_update: render the current cache, which may have been
       // patched again while the atlases were loading.
-      const deckLayers = buildDeckLayers(
-        cloneLayersData(instance.lastLayers),
-        targetId
-      );
-      instance.overlay.setProps({ layers: deckLayers });
-      instance.map.triggerRepaint();
+      renderNow(instance, targetId);
 
       // Restart TripsLayer animation if patched layers include one (v0.9.0).
       // fromUpdate=true: see deck_update.
@@ -2799,12 +2783,7 @@
     instance.lastLayers = patched;
     if (instance._legendWidget) instance._legendWidget._refresh();
 
-    const deckLayers = buildDeckLayers(
-      cloneLayersData(patched),
-      targetId
-    );
-    instance.overlay.setProps({ layers: deckLayers });
-    instance.map.triggerRepaint();
+    renderNow(instance, targetId);
   });
 
   // -----------------------------------------------------------------------
@@ -3932,12 +3911,7 @@
           inst.map.resize();
           // Re-apply current layers to force deck.gl re-render
           if (inst.overlay && inst.lastLayers && inst.lastLayers.length) {
-            const deckLayers = buildDeckLayers(
-              cloneLayersData(inst.lastLayers),
-              el.id
-            );
-            inst.overlay.setProps({ layers: deckLayers });
-            inst.map.triggerRepaint();
+            renderNow(inst, el.id);
           }
         }, 50);
       } else {
@@ -3983,12 +3957,6 @@
       // Freeze: cancel RAF if this was the last animated layer
       if (instance.animations && instance.animations[layerId]) {
         delete instance.animations[layerId];
-      }
-      if (!instance.animations || Object.keys(instance.animations).length === 0) {
-        if (instance.propertyAnimation && instance.propertyAnimation.rafId) {
-          cancelAnimationFrame(instance.propertyAnimation.rafId);
-          instance.propertyAnimation = null;
-        }
       }
     } else {
       // Resume: re-scan layers for animation configs and restart

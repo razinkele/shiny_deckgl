@@ -26,7 +26,6 @@ from shiny_deckgl import (
     transition,
     PALETTE_VIRIDIS,
 )
-from shiny_deckgl._mixins import NavigationMixin
 from shiny_deckgl._data_utils import _serialise_data
 
 
@@ -244,15 +243,15 @@ class TestBoundsComputationBenchmarks:
 
     def test_compute_bounds_small(self, benchmark, small_geojson):
         """Benchmark compute_bounds with 100 features."""
-        benchmark(NavigationMixin.compute_bounds, small_geojson)
+        benchmark(MapWidget.compute_bounds, small_geojson)
 
     def test_compute_bounds_medium(self, benchmark, medium_geojson):
         """Benchmark compute_bounds with 1,000 features."""
-        benchmark(NavigationMixin.compute_bounds, medium_geojson)
+        benchmark(MapWidget.compute_bounds, medium_geojson)
 
     def test_compute_bounds_large(self, benchmark, large_geojson):
         """Benchmark compute_bounds with 10,000 features."""
-        benchmark(NavigationMixin.compute_bounds, large_geojson)
+        benchmark(MapWidget.compute_bounds, large_geojson)
 
 
 # ---------------------------------------------------------------------------

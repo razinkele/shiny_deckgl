@@ -320,6 +320,14 @@ class TestServedPathRendersRealLayers:
     """
 
     def test_deck_layers_are_present_on_the_gallery_map(self, page: Page):
+        # The gallery's first update is ~30 MB and takes several seconds to
+        # arrive, longer than the fixed settle time of the shared page.
+        page.wait_for_function(
+            "(() => { const i = window.__deckgl_instances['gallery_map'];"
+            " const dk = i && (i.overlay._deck || i.overlay.deck);"
+            " return !!(dk && dk.props.layers && dk.props.layers.length); })",
+            timeout=60000,
+        )
         layers = page.evaluate("""
           (() => {
             const i = window.__deckgl_instances['gallery_map'];

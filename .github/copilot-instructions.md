@@ -64,9 +64,9 @@ one JS file. Understanding it requires reading both sides together:
   `controls`, `extensions`, `_data_utils`, `_transitions`, `map_widget`). Add new
   symbols to the focused module and re-export from `__init__.py`; keep old
   `from shiny_deckgl.components import X` imports working.
-- **`src/shiny_deckgl/_mixins/` is NOT wired into `MapWidget`.** It intentionally
-  duplicates code as a reference blueprint for a future split (see its docstring).
-  `MapWidget` is a single monolithic class — edit `map_widget.py`, not the mixins.
+- **`MapWidget` is a single monolithic class** — edit `map_widget.py`. (The old
+  `_mixins/` reference copy was removed in 1.11.0: it had drifted and still held
+  fixed security bugs.)
 - **Version is single-sourced** in `src/shiny_deckgl/_version.py` (read by
   `pyproject.toml` dynamic version and `conda.recipe/meta.yaml`).
 - **CDN URLs are single-sourced** in `_cdn.py`; `ui.py::head_includes()` injects

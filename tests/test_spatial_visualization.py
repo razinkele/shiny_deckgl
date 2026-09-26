@@ -925,7 +925,10 @@ class TestUTMAutoDetection:
 """
         path = _write_grd(content)
         try:
-            nodes, _, _ = _read_grd(path)
+            # No crs= given: projected coordinates are assumed UTM 33N,
+            # with a warning that names crs= (P10).
+            with pytest.warns(UserWarning, match="crs="):
+                nodes, _, _ = _read_grd(path)
             # After conversion, coordinates should be in WGS84 range
             lon, lat = nodes[1]
             assert 10 < lon < 30, f"Longitude {lon} out of expected range"
@@ -945,7 +948,10 @@ class TestUTMAutoDetection:
 """
         path = _write_grd(content)
         try:
-            nodes, _, _ = _read_grd(path)
+            # No crs= given: projected coordinates are assumed UTM 33N,
+            # with a warning that names crs= (P10).
+            with pytest.warns(UserWarning, match="crs="):
+                nodes, _, _ = _read_grd(path)
             # Should attempt UTM conversion (may produce weird coords,
             # but shouldn't crash)
             assert len(nodes) == 3

@@ -1487,3 +1487,27 @@ class TestTimelineServerInterval:
         from shiny_deckgl._timeline import timeline_server
         with pytest.raises(ValueError, match="interval_ms"):
             timeline_server("tl", ["a", "b"], interval_ms=bad)
+
+
+@requires_node
+class TestDisposeLeavesOtherMapsAnimations:
+    """J6: disposeMap('map') deleted globals by the prefix '_deckgl_anim_map_',
+    which also matched map 'map_2', snapping its animations back to start."""
+
+    def test_only_the_disposed_maps_globals_go(self):
+        prelude = "\n".join([
+            "var window = globalThis;",
+            "var _deferredMessages = {};",
+            "var mapInstances = {",
+            "  map: { _animGlobals: { _deckgl_anim_map_rot: true } },",
+            "  map_2: { _animGlobals: { _deckgl_anim_map_2_rot: true } },",
+            "};",
+            "window._deckgl_anim_map_rot = 10; window._deckgl_anim_map_2_rot = 20;",
+            extract_function("disposeMap"),
+        ])
+        got = run_js(prelude, (
+            "(function(){disposeMap('map');"
+            "return {mine: window._deckgl_anim_map_rot === undefined,"
+            " other: window._deckgl_anim_map_2_rot, left: Object.keys(mapInstances)};})()"
+        ))
+        assert got == {"mine": True, "other": 20, "left": ["map_2"]}

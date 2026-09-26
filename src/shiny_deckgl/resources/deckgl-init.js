@@ -1122,13 +1122,10 @@
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
-    // Drop per-map animation globals set by @@animate markers.
-    try {
-      var prefix = '_deckgl_anim_' + id + '_';
-      Object.keys(window).forEach(function (k) {
-        if (k.indexOf(prefix) === 0) { try { delete window[k]; } catch (e2) { window[k] = undefined; } }
-      });
-    } catch (e) { /* ignore */ }
+    // Drop the animation globals this map's @@animate markers created.
+    Object.keys(instance._animGlobals || {}).forEach(function (k) {
+      try { delete window[k]; } catch (e2) { window[k] = undefined; }
+    });
     delete mapInstances[id];
     if (typeof _deferredMessages !== 'undefined') delete _deferredMessages[id];
   }
@@ -1711,6 +1708,10 @@
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
+          // Record the key so disposeMap() removes exactly this map's
+          // globals (a prefix match on "map" also caught "map_2").
+          var owner = mapInstances[targetId];
+          if (owner) (owner._animGlobals = owner._animGlobals || {})[globalKey] = true;
           // Assign current value as a plain number (not an accessor function).
           // This works because buildDeckLayers() is called every frame by the
           // animation RAF loop, so the value is refreshed each frame. deck.gl
@@ -2080,6 +2081,7 @@
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
+          (instance._animGlobals = instance._animGlobals || {})[globalKey] = true;
         }
       }
       if (Object.keys(configs).length > 0) {
@@ -2165,9 +2167,17 @@
   function startTripsAnimation(instance, targetId, fromUpdate) {
     if (!shouldStartTripsAnimation(instance, fromUpdate === true)) return;
     if (fromUpdate !== true) instance._tripsPaused = false;
-    // Capture pausedAt BEFORE stopTripsAnimation nulls the object
-    var savedPausedAt = (instance.tripsAnimation && instance.tripsAnimation.pausedAt != null)
-                        ? instance.tripsAnimation.pausedAt : 0;
+    // Carry the animation time over BEFORE stopTripsAnimation nulls the
+    // object: from a pause, or -- for a layer update -- from the running
+    // loop, which used to snap back to 0 on every update()/partial_update().
+    var prev = instance.tripsAnimation;
+    var savedPausedAt = 0;
+    if (prev && prev.pausedAt != null) {
+      savedPausedAt = prev.pausedAt;
+    } else if (fromUpdate === true && prev && prev.rafId && prev.startedAt != null) {
+      savedPausedAt = (performance.now() - prev.startedAt) / 1000 + (prev.timeOffset || 0);
+    }
+    var prevSpeed = prev ? prev.speed : null;
     // Stop any running animation first
     stopTripsAnimation(instance);
     // Claim a generation token AFTER the internal stop. Any later stop/pause
@@ -2196,6 +2206,13 @@
       }
     }
     if (tripsConfigs.length === 0) return;
+
+    // Time is multiplied by speed, so after a speed change rescale the
+    // carried-over time: the trails then continue from the same point.
+    var speed0 = tripsConfigs[0].speed;
+    if (prevSpeed && speed0 && prevSpeed !== speed0) {
+      savedPausedAt = savedPausedAt * prevSpeed / speed0;
+    }
 
     // Pre-rasterise any SVG icon atlases before starting the RAF loop.
     var atlasPromises = [];
@@ -2300,12 +2317,14 @@
         instance.tripsAnimation.rafId = requestAnimationFrame(tick);
         instance.tripsAnimation.startedAt = startedAt;
         instance.tripsAnimation.timeOffset = timeOffset;
+        instance.tripsAnimation.speed = speed0;
       }
       // Initial kickoff (only runs once when animation starts)
       instance.tripsAnimation = instance.tripsAnimation || {};
       instance.tripsAnimation.rafId = requestAnimationFrame(tick);
       instance.tripsAnimation.startedAt = startedAt;
       instance.tripsAnimation.timeOffset = timeOffset;
+      instance.tripsAnimation.speed = speed0;
     }).catch(function (err) {
       console.error('[shiny_deckgl] TripsLayer animation setup failed for "' + targetId + '":', err);
     });
@@ -2471,6 +2490,9 @@
     // A newer update started while we were rasterising: its layers are the
     // ones in instance.lastLayers, so drop this stale render.
     if (isStaleUpdate(instance, updateGen)) return;
+    // The map was disposed (e.g. its output re-rendered) while the atlases
+    // loaded: don't touch the finalized overlay or start animation loops.
+    if (mapInstances[targetId] !== instance) return;
     // Render the cache as it is now, not the array captured above: a
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
@@ -2574,6 +2596,7 @@
 
     Promise.all(svgAtlasPreloads).then(function () {
       if (partialUpdateGen !== instance._partialUpdateGen) return;
+      if (mapInstances[targetId] !== instance) return;  // disposed meanwhile
       // As in deck_update: render the current cache, which may have been
       // patched again while the atlases were loading.
       const deckLayers = buildDeckLayers(

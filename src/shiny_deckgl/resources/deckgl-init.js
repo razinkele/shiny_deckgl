@@ -1027,6 +1027,7 @@
   // function has no way to reach a global.
   var ACCESSOR_DANGEROUS_PROPS_RE = /(?:__proto__|constructor|prototype)/i;
   var ACCESSOR_ALLOWED_IDENTS = { d: true, true: true, false: true, null: true, undefined: true };
+  var ACCESSOR_KEY_RE = /^\s*(?:\d+(?:\.\d+)?|d(?:\s*\??\.\s*[A-Za-z_$][A-Za-z0-9_$]*)*)\s*$/;
 
   function isSafeAccessorExpr(expr) {
     if (typeof expr !== 'string') return false;
@@ -1044,8 +1045,17 @@
     if (s.indexOf('//') !== -1 || s.indexOf('/*') !== -1) return false;
     // No increment/decrement, no arrow functions.
     if (/\+\+|--|=>/.test(s)) return false;
-    // A '(' directly after an identifier, ')' or ']' is a call.
-    if (/[A-Za-z0-9_$)\]]\s*\(/.test(s)) return false;
+    // A '(' directly after an identifier, ')', ']' or '.' is a call; the '.'
+    // case is the optional call `f?.(...)`.
+    if (/[A-Za-z0-9_$)\].]\s*\(/.test(s)) return false;
+    // A computed key must be a literal (strings are blanked to 0 above) or a
+    // plain `d.a.b` path. Anything else, e.g. "con"+"structor", could build a
+    // name at run time that ACCESSOR_DANGEROUS_PROPS_RE never saw.
+    var keys = s.split('[').slice(1);
+    for (var k = 0; k < keys.length; k++) {
+      var close = keys[k].indexOf(']');
+      if (close === -1 || !ACCESSOR_KEY_RE.test(keys[k].slice(0, close))) return false;
+    }
     // Assignment: strip the multi-character comparison operators first, then
     // any '=' that remains is an assignment (or an arrow already excluded).
     if (/=/.test(s.replace(/===|!==|==|!=|<=|>=/g, ' '))) return false;
@@ -1106,7 +1116,8 @@
         const expr = raw.slice(1).trim();
         if (!isSafeAccessorExpr(expr)) {
           console.warn('[shiny_deckgl] Rejected unsafe accessor expression "' + val +
-            '": only arithmetic, comparison and property access over `d` are allowed.');
+            '": only arithmetic, comparison and property access over `d` are allowed ' +
+            '(no function calls; a [...] index must be a number, a quoted string or a d.a.b path).');
           // Delete rather than leave the raw "@@=..." string behind: deck.gl
           // treats a non-function accessor as a constant and coerces the
           // string to NaN, silently rendering nothing.

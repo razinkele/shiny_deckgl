@@ -611,40 +611,55 @@
   }
 
   // -----------------------------------------------------------------------
-  // Style-readiness guard — defers callback until map style is loaded.
+  // Style-readiness guard — defers callback until the map style is parsed.
   // Also respects _deckStyleChanging flag set by deck_set_style to avoid
-  // a race where isStyleLoaded() briefly returns true during a style swap.
+  // a race where the old style still reports ready during a style swap.
   // -----------------------------------------------------------------------
+  var STYLE_DRAIN_EVENTS = ['style.load', 'styledata', 'idle'];
+
+  // Sources and layers can be added once the style JSON is parsed. Do not use
+  // map.isStyleLoaded() for this: it is also false while any source or tile
+  // is loading (e.g. straight after add_source, or during a pan), and a call
+  // queued then used to wait for a 'style.load' that never came.
+  function isStyleReady(map) {
+    if (map._deckStyleChanging) return false;
+    var style = map.style;
+    if (style && typeof style._loaded === 'boolean') return style._loaded;
+    return map.isStyleLoaded();
+  }
+
   function whenStyleReady(map, fn) {
-    if (map.isStyleLoaded() && !map._deckStyleChanging) {
+    // Keep FIFO order: while earlier calls are queued, later ones queue too.
+    if (!map._deckStyleQueue && isStyleReady(map)) {
       fn();
-    } else {
-      // Queue callbacks so that multiple callers during a style swap all run
-      // when the style finishes loading (map.once would only fire one).
-      if (!map._deckStyleQueue) {
-        map._deckStyleQueue = [];
-        var drainFn = function () {
-          var queue = map._deckStyleQueue || [];
-          map._deckStyleQueue = null;
-          map._deckStyleDrainFn = null;
-          for (var i = 0; i < queue.length; i++) {
-            try { queue[i](); } catch (e) {
-              console.error('[shiny_deckgl] Queued style callback [' + i + '/' + queue.length + '] failed:', e);
-            }
-          }
-        };
-        map._deckStyleDrainFn = drainFn;
-        map.once('style.load', drainFn);
-      }
-      map._deckStyleQueue.push(fn);
+      return;
     }
+    if (!map._deckStyleQueue) {
+      map._deckStyleQueue = [];
+      var drainFn = function () {
+        if (!isStyleReady(map)) return;  // keep waiting for a later event
+        var queue = map._deckStyleQueue || [];
+        STYLE_DRAIN_EVENTS.forEach(function (ev) { map.off(ev, drainFn); });
+        map._deckStyleQueue = null;
+        map._deckStyleDrainFn = null;
+        for (var i = 0; i < queue.length; i++) {
+          try { queue[i](); } catch (e) {
+            console.error('[shiny_deckgl] Queued style callback [' + i + '/' + queue.length + '] failed:', e);
+          }
+        }
+      };
+      map._deckStyleDrainFn = drainFn;
+      STYLE_DRAIN_EVENTS.forEach(function (ev) { map.on(ev, drainFn); });
+    }
+    map._deckStyleQueue.push(fn);
   }
 
   /** Clean up the style-ready queue and its listener (used on error/timeout). */
   function _clearStyleQueue(map) {
     var abandoned = map._deckStyleQueue || [];
     if (map._deckStyleDrainFn) {
-      map.off('style.load', map._deckStyleDrainFn);
+      var drainFn = map._deckStyleDrainFn;
+      STYLE_DRAIN_EVENTS.forEach(function (ev) { map.off(ev, drainFn); });
       map._deckStyleDrainFn = null;
     }
     map._deckStyleQueue = null;
@@ -2642,6 +2657,9 @@
       instance._styleChangeTimeout = null;
       instance._styleLoadHandler = null;
       instance.map._deckStyleChanging = false;
+      // Run calls queued during the swap now, rather than waiting for a later
+      // 'idle', which never comes while an animation keeps repainting.
+      if (instance.map._deckStyleDrainFn) instance.map._deckStyleDrainFn();
     };
     instance.map.once('style.load', instance._styleLoadHandler);
 

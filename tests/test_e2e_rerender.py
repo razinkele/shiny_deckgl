@@ -10,69 +10,24 @@ Needs chromium and network access for the CDN bundles, like the demo e2e.
 """
 from __future__ import annotations
 
-import os
-import socket
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("playwright")
-from playwright.sync_api import sync_playwright  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _e2e_app import browser_page, running_app  # noqa: E402
 
 PORT = 18767
-ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
-def server():
-    with socket.socket() as s:
-        s.settimeout(1.0)
-        if s.connect_ex(("127.0.0.1", PORT)) == 0:
-            pytest.fail(f"port {PORT} already in use (stale server?)")
-    env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [str(ROOT / "src"), str(ROOT / "tests" / "_apps"), env.get("PYTHONPATH", "")])
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "shiny", "run", "rerender_app:app", "--port", str(PORT)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env, cwd=str(ROOT),
-    )
-    deadline = time.time() + 60
-    while time.time() < deadline:
-        if proc.poll() is not None:
-            pytest.fail("rerender app exited early:\n" + (proc.stdout.read() if proc.stdout else ""))
-        with socket.socket() as s:
-            s.settimeout(1.0)
-            if s.connect_ex(("127.0.0.1", PORT)) == 0:
-                break
-        time.sleep(0.5)
-    else:
-        proc.terminate()
-        pytest.fail("rerender app did not start")
-    yield proc
-    if sys.platform == "win32":
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
-    else:
-        proc.terminate()
-    proc.wait(timeout=15)
-
-
-@pytest.fixture(scope="module")
-def page(server):
-    with sync_playwright() as p:
-        try:
-            browser = p.chromium.launch(headless=True)
-        except Exception as exc:
-            pytest.skip(f"chromium unavailable: {exc}")
-        pg = browser.new_page()
-        pg.console_log = []
-        pg.on("console", lambda msg: pg.console_log.append(msg.text))
-        pg.goto(f"http://127.0.0.1:{PORT}/")
-        pg.wait_for_selector("#rmap .maplibregl-canvas", timeout=30000)
-        yield pg
-        browser.close()
+def page():
+    with running_app("rerender_app", PORT):
+        with browser_page(f"http://127.0.0.1:{PORT}/", "#rmap .maplibregl-canvas") as pg:
+            yield pg
 
 
 _STATE = """() => {

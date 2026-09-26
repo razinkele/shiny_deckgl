@@ -1153,7 +1153,10 @@ class TestLegendControl:
         assert opts["showDefault"] is False
         assert opts["showCheckbox"] is True
         assert opts["onlyRendered"] is True
-        assert opts["reverseOrder"] is False
+        # Top-most layer first, matching the plugin's own default (M4).
+        assert opts["reverseOrder"] is True
+        # No targets key: the client defaults to the app's native layers.
+        assert "targets" not in opts
 
     def test_legend_control_with_targets(self):
         targets = {"water": "Water bodies", "roads": "Roads"}

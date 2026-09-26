@@ -339,13 +339,14 @@
         // Lines / paths
         PathLayer: 'line', LineLayer: 'line', TripsLayer: 'line',
         // Polygons / columns / cells
-        ColumnLayer: 'rect', GridLayer: 'rect', GridCellLayer: 'rect',
-        HexagonLayer: 'rect', H3HexagonLayer: 'rect', H3ClusterLayer: 'rect',
+        ColumnLayer: 'rect', GridCellLayer: 'rect',
+        H3HexagonLayer: 'rect', H3ClusterLayer: 'rect',
         PolygonLayer: 'rect', SolidPolygonLayer: 'rect', BitmapLayer: 'rect',
         // Geo-index layers
         A5Layer: 'rect', GeohashLayer: 'rect', QuadkeyLayer: 'rect', S2Layer: 'rect',
-        // Gradient / aggregation
+        // Aggregation layers colour by a ramp, not a single colour
         HeatmapLayer: 'gradient', ContourLayer: 'gradient', ScreenGridLayer: 'gradient',
+        HexagonLayer: 'gradient', GridLayer: 'gradient',
         // Tile / raster / 3D
         TileLayer: 'rect', MVTLayer: 'rect', Tile3DLayer: 'rect',
         WMSLayer: 'rect', TerrainLayer: 'rect',
@@ -353,12 +354,18 @@
         SimpleMeshLayer: 'rect', ScenegraphLayer: 'rect',
       };
 
+      // deck.gl's default colorRange (ColorBrewer YlOrRd, 6 classes): what the
+      // aggregation layers draw when they are given none.
+      var DECK_DEFAULT_COLOR_RANGE = [
+        [255, 255, 178], [254, 217, 118], [254, 178, 76],
+        [253, 141, 60], [240, 59, 32], [189, 0, 38],
+      ];
+
+      // "@@d.a.b" / "@@=d.a.b": a colour read straight from a field of the row.
+      var ACCESSOR_PATH_RE = /^@@=?\s*d((?:\s*\.\s*[A-Za-z_$][A-Za-z0-9_$]*)+)\s*$/;
+
       // Fallback colors for layer types where color props aren't statically extractable
       var LAYER_TYPE_DEFAULT_COLOR = {
-        HeatmapLayer: [255, 140, 0],     // warm orange
-        HexagonLayer: [65, 182, 196],     // teal
-        GridLayer: [65, 182, 196],        // teal
-        ContourLayer: [80, 120, 200],     // blue
         IconLayer: [60, 60, 60],          // dark grey (icons are image-based)
         TileLayer: [100, 140, 180],       // slate
         Tile3DLayer: [100, 140, 180],
@@ -402,39 +409,88 @@
         var entry = { layer_id: lp.id, label: label, shape: shape };
 
         // Color extraction priority chain
-        // 1. Gradient shapes use colorRange
+        // 1. Aggregation layers colour by a ramp: their contours' colours,
+        //    their colorRange, or deck.gl's default ramp.
         if (shape === 'gradient') {
-          var cr = this._resolveColorRange(lp.colorRange);
-          if (cr) { entry.colors = cr; return entry; }
+          entry.colors = (shortType === 'ContourLayer' && this._contourColors(lp.contours))
+            || this._resolveColorRange(lp.colorRange)
+            || DECK_DEFAULT_COLOR_RANGE;
+          return entry;
         }
         // 2. Arc shapes use source/target color pair
         if (shape === 'arc') {
-          var src = this._resolveColor(lp.getSourceColor);
-          var tgt = this._resolveColor(lp.getTargetColor);
+          var src = this._colorOf(lp, lp.getSourceColor);
+          var tgt = this._colorOf(lp, lp.getTargetColor);
           if (src && tgt) {
             entry.color = src;
             entry.color2 = tgt;
             return entry;
           }
         }
-        // 3. Standard color props: getFillColor → getColor → getLineColor
-        var color = this._resolveColor(lp.getFillColor)
-                 || this._resolveColor(lp.getColor)
-                 || this._resolveColor(lp.getLineColor);
-        // 4. For line shapes, also try getColor even when getPath present
-        if (!color && shape === 'line') {
-          color = this._resolveColor(lp.getPath ? lp.getColor : null);
-        }
-        // 5. Sample first data item when accessor string (@@=d.color)
-        if (!color) {
+        // 3. Standard color props: getFillColor → getColor → getLineColor,
+        //    each a constant or read through its own accessor path.
+        var color = this._colorOf(lp, lp.getFillColor)
+                 || this._colorOf(lp, lp.getColor)
+                 || this._colorOf(lp, lp.getLineColor);
+        // 4. No colour accessor at all: try the usual field names. Not when
+        //    an accessor exists but can't be read -- a `color` field it
+        //    doesn't use would give the wrong swatch.
+        if (!color && lp.getFillColor == null && lp.getColor == null && lp.getLineColor == null) {
           color = this._sampleDataColor(lp);
         }
-        // 6. Aggregation layers without explicit color: use a sensible default
+        // 5. Types whose colour comes from images or tiles
         if (!color) {
           color = LAYER_TYPE_DEFAULT_COLOR[shortType] || null;
         }
         entry.color = color || [150, 150, 150];
         return entry;
+      };
+
+      // A colour prop's swatch value: a constant, or the field its accessor
+      // path reads, taken from the first row.
+      proto._colorOf = function (lp, val) {
+        var c = this._resolveColor(val);
+        if (c) return c;
+        if (typeof val !== 'string') return null;
+        var m = ACCESSOR_PATH_RE.exec(val);
+        if (!m) return null;
+        var v = this._firstDatum(lp);
+        var keys = m[1].split('.');
+        for (var i = 0; i < keys.length && v != null; i++) {
+          var k = keys[i].trim();
+          if (k) v = v[k];
+        }
+        return this._toColor(v);
+      };
+
+      proto._firstDatum = function (lp) {
+        var data = lp.data;
+        if (!data) return null;
+        if (Array.isArray(data)) return data[0] || null;
+        // GeoJSON: accessors receive each feature
+        if (Array.isArray(data.features)) return data.features[0] || null;
+        return null;
+      };
+
+      proto._toColor = function (c) {
+        if (Array.isArray(c) && c.length >= 3 && typeof c[0] === 'number') return c;
+        if (typeof c === 'string' && c.charAt(0) === '[') {
+          try {
+            var p = JSON.parse(c);
+            if (Array.isArray(p) && p.length >= 3 && typeof p[0] === 'number') return p;
+          } catch (e) { console.debug('[shiny_deckgl] legend: data color parse failed:', e.message); }
+        }
+        return null;
+      };
+
+      proto._contourColors = function (contours) {
+        if (!Array.isArray(contours)) return null;
+        var out = [];
+        for (var i = 0; i < contours.length; i++) {
+          var c = contours[i] && this._toColor(contours[i].color);
+          if (c) out.push(c);
+        }
+        return out.length ? out : null;
       };
 
       proto._resolveColor = function (val) {
@@ -477,20 +533,11 @@
         return null;
       };
 
-      // Try to extract a color from the first data item when color is an accessor
+      // No colour accessor was given: try the usual field names on the first row.
       proto._sampleDataColor = function (lp) {
-        var data = lp.data;
-        if (!data || !data.length) return null;
-        var d = data[0];
+        var d = this._firstDatum(lp);
         if (!d) return null;
-        // Try common accessor targets: d.color, d.sourceColor, d.targetColor
-        var c = d.color || d.sourceColor || d.fillColor;
-        if (Array.isArray(c) && c.length >= 3 && typeof c[0] === 'number') return c;
-        // Try JSON-encoded
-        if (typeof c === 'string' && c.charAt(0) === '[') {
-          try { var p = JSON.parse(c); if (Array.isArray(p) && p.length >= 3) return p; } catch (e) { console.debug('[shiny_deckgl] legend: data color parse failed:', e.message); }
-        }
-        return null;
+        return this._toColor(d.color || d.sourceColor || d.fillColor);
       };
 
       proto._refresh = function () {
@@ -559,9 +606,104 @@
   }
 
   // -----------------------------------------------------------------------
-  // Helper: create MapLibre control by type name
+  // Native-layer tracking and the MapLibre legend's default targets.
+  //
+  // A legend_control() given no targets lists the app's own native layers
+  // rather than every layer of the basemap style (~100 on CARTO). The plugin
+  // re-reads its `targets` object on every update, so it gets one live object
+  // per map that is kept in step with the native layers. The plugin treats an
+  // empty object as "all layers", hence the sentinel key.
   // -----------------------------------------------------------------------
-  function createControl(type, opts) {
+  var LEGEND_NO_TARGET = '__shiny_deckgl_no_layer__';
+
+  function newLegendTargets() {
+    var t = {};
+    t[LEGEND_NO_TARGET] = '';
+    return t;
+  }
+
+  function trackNativeLayer(instance, id, present) {
+    if (present) instance.nativeLayers[id] = true;
+    else delete instance.nativeLayers[id];
+    var t = instance._legendAutoTargets;
+    if (t) {
+      if (present) t[id] = id;
+      else delete t[id];
+    }
+    refreshLegendWhenDrawn(instance);
+  }
+
+  // The legend plugin rebuilds on 'styledata', which fires when a layer is
+  // added but before it is drawn, so with onlyRendered (the default) a new
+  // layer stays out of the legend until the user pans. Redraw it once the
+  // map has drawn the change ('idle'), or after a second if an animation
+  // keeps the map from ever going idle.
+  function refreshLegendWhenDrawn(instance) {
+    var legend = instance.controls && instance.controls.legend;
+    if (!legend || !instance.map || instance._legendRefreshPending) return;
+    instance._legendRefreshPending = true;
+    var done = false;
+    var run = function () {
+      if (done) return;
+      done = true;
+      instance._legendRefreshPending = false;
+      instance.map.off('idle', run);
+      clearTimeout(timer);
+      var current = instance.controls && instance.controls.legend;
+      if (current && current.control && typeof current.control.redraw === 'function') {
+        try { current.control.redraw(); } catch (e) { console.debug('[shiny_deckgl] legend redraw failed:', e.message); }
+      }
+    };
+    var timer = setTimeout(run, 1000);
+    instance.map.once('idle', run);
+  }
+
+  function resetNativeLayers(instance) {
+    instance.nativeLayers = {};
+    var t = instance._legendAutoTargets;
+    if (t) {
+      Object.keys(t).forEach(function (k) { if (k !== LEGEND_NO_TARGET) delete t[k]; });
+    }
+  }
+
+  // Identity of a control spec: same key, same control.
+  function controlKey(spec) {
+    return JSON.stringify([spec.position || 'top-right', spec.options || {}]);
+  }
+
+  // Make the map's controls match `specs` (one per type). Controls whose
+  // spec is unchanged are kept: re-creating them loses their state (an open
+  // legend panel) and, for the legend plugin, leaks the map listeners its
+  // onRemove never detaches.
+  function applyControls(instance, specs) {
+    var wanted = {};
+    specs.forEach(function (spec) { if (spec && spec.type) wanted[spec.type] = spec; });
+    Object.keys(instance.controls).forEach(function (type) {
+      var have = instance.controls[type];
+      var spec = wanted[type];
+      if (spec && have.key === controlKey(spec)) return;  // unchanged: keep
+      try {
+        instance.map.removeControl(have.control);
+      } catch (e) {
+        console.debug('[shiny_deckgl] removeControl failed (may already be removed):', e.message);
+      }
+      delete instance.controls[type];
+    });
+    specs.forEach(function (spec) {
+      if (!spec || !spec.type || instance.controls[spec.type]) return;
+      var control = createControl(spec.type, spec.options || {}, instance._legendAutoTargets);
+      if (!control) return;
+      var position = spec.position || 'top-right';
+      instance.map.addControl(control, position);
+      instance.controls[spec.type] = { control: control, position: position, key: controlKey(spec) };
+    });
+  }
+
+  // -----------------------------------------------------------------------
+  // Helper: create MapLibre control by type name. `legendTargets` is the
+  // live default-targets object used when a legend spec has no targets.
+  // -----------------------------------------------------------------------
+  function createControl(type, opts, legendTargets) {
     opts = opts || {};
     switch (type) {
       case 'navigation':
@@ -592,9 +734,12 @@
       case 'legend':
         if (typeof MaplibreLegendControl !== 'undefined' &&
             MaplibreLegendControl.MaplibreLegendControl) {
-          const targets = opts.targets || {};
-          delete opts.targets;
-          return new MaplibreLegendControl.MaplibreLegendControl(targets, opts);
+          // Explicit targets win ({} means every style layer); none given
+          // means the app's own native layers.
+          const legendOpts = Object.assign({}, opts);
+          delete legendOpts.targets;
+          const targets = opts.targets != null ? opts.targets : legendTargets;
+          return new MaplibreLegendControl.MaplibreLegendControl(targets, legendOpts);
         }
         console.warn('[shiny_deckgl] MaplibreLegendControl not loaded. Include the @watergis/maplibre-gl-legend CDN script.');
         return null;
@@ -782,12 +927,13 @@
     }
 
     const initialControls = {};
+    const legendAutoTargets = newLegendTargets();
     controlsConfig.forEach(function (cfg) {
-      const ctrl = createControl(cfg.type, cfg.options || {});
+      const ctrl = createControl(cfg.type, cfg.options || {}, legendAutoTargets);
       if (ctrl) {
         const pos = cfg.position || 'top-right';
         map.addControl(ctrl, pos);
-        initialControls[cfg.type] = { control: ctrl, position: pos };
+        initialControls[cfg.type] = { control: ctrl, position: pos, key: controlKey(cfg) };
       }
     });
 
@@ -888,6 +1034,7 @@
       lastLayers: [],          // cache for visibility toggling
       controls: initialControls,
       nativeLayers: {},        // tracks native MapLibre layers added via add_maplibre_layer
+      _legendAutoTargets: legendAutoTargets,  // live default targets for legend controls
       // TripsLayer animation state (v0.9.0)
       tripsAnimation: null     // {rafId, loopLength, speed, startedAt}
     };
@@ -2688,7 +2835,7 @@
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)
     if (!payload.diff) {
-      instance.nativeLayers = {};
+      resetNativeLayers(instance);
     }
   });
 
@@ -2700,21 +2847,23 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
 
-    const type = payload.controlType;
-    const position = payload.position || 'top-right';
-    const opts = payload.options || {};
-
-    // Remove existing control of same type first
-    if (instance.controls[type]) {
-      instance.map.removeControl(instance.controls[type].control);
-      delete instance.controls[type];
-    }
-
-    const control = createControl(type, opts);
-    if (!control) return;
-
-    instance.map.addControl(control, position);
-    instance.controls[type] = { control: control, position: position };
+    const spec = {
+      type: payload.controlType,
+      position: payload.position || 'top-right',
+      options: payload.options || {},
+    };
+    // Same deferral as deck_set_controls, so a legend added right after
+    // add_maplibre_layer sees that layer. Controls of other types are kept.
+    whenStyleReady(instance.map, function () {
+      const others = Object.keys(instance.controls)
+        .filter(function (t) { return t !== spec.type; })
+        .map(function (t) {
+          const c = instance.controls[t];
+          return { type: t, position: c.position, options: JSON.parse(c.key)[1] };
+        });
+      // Re-adding an identical control is kept as is; a changed one replaces.
+      applyControls(instance, others.concat([spec]));
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -2745,32 +2894,7 @@
     // whenStyleReady) are present before legend/opacity controls inspect
     // the map style.
     whenStyleReady(instance.map, function() {
-      // Remove all existing controls
-      const existing = Object.keys(instance.controls);
-      for (let i = 0; i < existing.length; i++) {
-        const key = existing[i];
-        try {
-          instance.map.removeControl(instance.controls[key].control);
-        } catch (e) {
-          console.debug('[shiny_deckgl] removeControl failed (may already be removed):', e.message);
-        }
-        delete instance.controls[key];
-      }
-
-      // Add new controls
-      const newControls = payload.controls || [];
-      for (let j = 0; j < newControls.length; j++) {
-        const spec = newControls[j];
-        const type = spec.type;
-        const position = spec.position || 'top-right';
-        const opts = spec.options || {};
-
-        const control = createControl(type, opts);
-        if (!control) continue;
-
-        instance.map.addControl(control, position);
-        instance.controls[type] = { control: control, position: position };
-      }
+      applyControls(instance, payload.controls || []);
     });
   });
 
@@ -2849,7 +2973,7 @@
       }
 
       map.addLayer(layerSpec, beforeId);
-      instance.nativeLayers[layerSpec.id] = true;
+      trackNativeLayer(instance, layerSpec.id, true);
     });
   });
 
@@ -2864,7 +2988,7 @@
     whenStyleReady(instance.map, function() {
       if (instance.map.getLayer(payload.layerId)) {
         instance.map.removeLayer(payload.layerId);
-        delete instance.nativeLayers[payload.layerId];
+        trackNativeLayer(instance, payload.layerId, false);
       }
     });
   });
@@ -3625,7 +3749,7 @@
 
       // Track native layers
       layerIds.forEach(function (lid) {
-        instance.nativeLayers[lid] = true;
+        trackNativeLayer(instance, lid, true);
       });
 
       // Initialize cluster handlers storage if needed
@@ -3694,7 +3818,7 @@
       layerIds.forEach(function (lid) {
         if (map.getLayer(lid)) {
           map.removeLayer(lid);
-          delete instance.nativeLayers[lid];
+          trackNativeLayer(instance, lid, false);
         }
       });
       if (map.getSource(srcId)) {

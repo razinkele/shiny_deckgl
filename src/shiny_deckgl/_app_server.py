@@ -352,11 +352,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             input.ml_basemap(), CARTO_POSITRON,
         )
         await maplibre_widget.set_style(session, style_url)
-        # set_style removes all sources/layers; re-add ours
+        # set_style removes all sources/layers; re-add ours. The legend and
+        # opacity controls stay: the legend refreshes itself on style changes.
         await _ml_add_native_layers()
-        # Re-apply controls so legend picks up the fresh layers
-        controls = _build_ml_controls()
-        await maplibre_widget.set_controls(session, controls)
 
     # Drag marker (MapLibre tab)
     @reactive.Effect

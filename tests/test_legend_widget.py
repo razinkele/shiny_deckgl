@@ -7,6 +7,8 @@ minimal fake DOM, with a fake `deck.Widget` base that merges props on
 """
 from __future__ import annotations
 
+import pytest
+
 import sys
 from pathlib import Path
 
@@ -278,3 +280,74 @@ class TestLegendClient:
             return { registered: registered, after: mapInstances.m1._legendWidget || null };
         """)
         assert got == {"registered": True, "after": None}
+
+
+# ---------------------------------------------------------------------------
+# Swatch colours for auto-introspected entries (L7, L8)
+# ---------------------------------------------------------------------------
+
+DECK_DEFAULT_RAMP = [
+    [255, 255, 178], [254, 217, 118], [254, 178, 76],
+    [253, 141, 60], [240, 59, 32], [189, 0, 38],
+]
+
+
+def _entry_for(layer_js: str):
+    """Introspect a single layer and return its legend entry."""
+    return _js(f"""
+        mapInstances.m1.lastLayers = [{layer_js}];
+        var w = mount({{ autoIntrospect: true }});
+        return w._introspectLayers()[0];
+    """)
+
+
+@requires_node
+class TestSwatchColours:
+    def test_hexagon_colour_range_is_a_gradient(self):
+        e = _entry_for("{ id: 'h', type: 'HexagonLayer', colorRange: [[1,2,3],[4,5,6]] }")
+        assert e["shape"] == "gradient"
+        assert e["colors"] == [[1, 2, 3], [4, 5, 6]]
+
+    @pytest.mark.parametrize("layer_type", [
+        "HeatmapLayer", "HexagonLayer", "GridLayer", "ScreenGridLayer",
+    ])
+    def test_aggregation_without_colour_range_uses_deck_default_ramp(self, layer_type):
+        e = _entry_for(f"{{ id: 'x', type: '{layer_type}' }}")
+        assert e["shape"] == "gradient"
+        assert e["colors"] == DECK_DEFAULT_RAMP
+
+    def test_contour_colours_come_from_contours(self):
+        e = _entry_for("{ id: 'c', type: 'ContourLayer', contours: ["
+                       "{ threshold: 1, color: [255,0,0] }, { threshold: 5, color: [0,0,255] }] }")
+        assert e["shape"] == "gradient"
+        assert e["colors"] == [[255, 0, 0], [0, 0, 255]]
+
+    def test_accessor_path_is_sampled(self):
+        # The row also has a `color` field; the accessor points elsewhere.
+        e = _entry_for("{ id: 's', type: 'ScatterplotLayer', getFillColor: '@@=d.fill_color',"
+                       " data: [{ fill_color: [1,2,3], color: [9,9,9] }] }")
+        assert e["color"] == [1, 2, 3]
+
+    def test_property_accessor_form_is_sampled(self):
+        e = _entry_for("{ id: 's', type: 'PathLayer', getColor: '@@d.rgb',"
+                       " data: [{ rgb: [10,20,30] }] }")
+        assert e["color"] == [10, 20, 30]
+
+    def test_geojson_feature_properties_are_sampled(self):
+        e = _entry_for("{ id: 'g', type: 'GeoJsonLayer', getFillColor: '@@=d.properties.c',"
+                       " data: { type: 'FeatureCollection', features: ["
+                       "{ type: 'Feature', properties: { c: [7,8,9] }, geometry: null }] } }")
+        assert e["color"] == [7, 8, 9]
+
+    def test_arc_accessors_are_sampled(self):
+        e = _entry_for("{ id: 'a', type: 'ArcLayer', getSourceColor: '@@d.a', getTargetColor: '@@d.b',"
+                       " data: [{ a: [1,1,1], b: [2,2,2] }] }")
+        assert e["shape"] == "arc"
+        assert (e["color"], e["color2"]) == ([1, 1, 1], [2, 2, 2])
+
+    def test_unrelated_color_field_is_not_used_for_an_expression(self):
+        # An accessor that can't be read statically must not fall back to a
+        # `color` field it never uses.
+        e = _entry_for("{ id: 's', type: 'ScatterplotLayer', getFillColor: '@@=d.v > 1 ? [1,1,1] : [2,2,2]',"
+                       " data: [{ v: 3, color: [9,9,9] }] }")
+        assert e["color"] != [9, 9, 9]

@@ -73,30 +73,41 @@ def legend_control(
     show_default: bool = False,
     show_checkbox: bool = True,
     only_rendered: bool = True,
-    reverse_order: bool = False,
+    reverse_order: bool = True,
     title: str | None = None,
 ) -> dict:
     """Create a legend control spec (``@watergis/maplibre-gl-legend``).
 
     Displays a collapsible legend panel generated from the MapLibre style.
-    Layer visibility can optionally be toggled with checkboxes.
+    Layer visibility can optionally be toggled with checkboxes.  Only native
+    MapLibre layers appear; deck.gl overlay layers need
+    :func:`~shiny_deckgl.layer_legend_widget`.
 
     Parameters
     ----------
     targets
         Dict mapping MapLibre layer ids to display labels, e.g.
         ``{"water": "Water bodies", "roads": "Roads"}``.  When ``None``
-        (default), all layers are shown.
+        (default), the legend lists the native layers the app added with
+        ``add_maplibre_layer`` / ``add_geodataframe`` / ``add_cluster_layer``
+        (labelled by id), and follows them as they are added or removed.
+        Pass ``{}`` to list every layer of the style, basemap included.
     position
         Control position (default ``"bottom-left"``).
     show_default
-        Whether the legend panel is visible by default (``False``).
+        When ``True`` the panel starts open and stays open.  When ``False``
+        (default) it starts closed and closes again on any click outside it.
     show_checkbox
-        Whether to show visibility checkboxes (``True``).
+        Whether to show visibility checkboxes (``True``).  Toggles only
+        change the browser; the server is not told.
     only_rendered
-        Show only layers that are currently rendered (``True``).
+        Show only layers that are currently rendered (``True``).  Either
+        way the plugin runs a full ``queryRenderedFeatures()`` on every pan
+        and style change, which can take tens of milliseconds on dense
+        vector basemaps.
     reverse_order
-        Reverse the layer order in the legend (``False``).
+        List layers top-most first, the way they are stacked on the map
+        (``True``, the plugin's own default).
     title
         Legend panel title text.  ``None`` uses the plugin default.
     """

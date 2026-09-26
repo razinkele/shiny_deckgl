@@ -127,6 +127,15 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.11.1 — Follow-ups
+
+| Capability | Details |
+| --- | --- |
+| **Per-session controller** | `set_controller()` is stored per session, so exports match the live map's interaction settings. |
+| **Seal IBM demo** | Superseded simulation runs are cancelled; no stale result flashes before the new one. |
+| **Colour helpers** | Integers too large for a float count as missing instead of raising. |
+| **Tests** | The parser tests no longer all skip when `pyproj` is missing. |
+
 ### v1.11.0 — Security, Legends, Data Safety & One Animation Loop
 
 | Capability | Details |

@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.11.1] — 2026-09-27
+
+Follow-ups from the review of the 1.11.0 pull requests.
+
+### Fixed
+
+- **`set_controller()` is recorded per session**, like the style and
+  tooltip, so `to_html()` / `to_json()` export the interaction settings the
+  session's map actually has rather than the constructor's.
+- **Seal IBM demo:** a superseded simulation run (and any queued ones) is
+  cancelled before a new one starts, so an older result no longer shows
+  briefly before the newer one arrives.
+- **`color_bins` / `color_quantiles`** treat an integer too large for a float
+  (e.g. `10**400`) as missing instead of raising `OverflowError`.
+- **Tests:** `tests/test_parsers.py` skipped every test when `pyproj` was
+  absent; only the CRS tests skip now.
+
 ## [1.11.0] — 2026-09-26
 
 From the 2026-09-26 codebase review (`docs/2026-09-26-codebase-review.md`).

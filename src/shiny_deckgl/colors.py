@@ -145,7 +145,8 @@ MISSING_COLOR = [0, 0, 0, 0]
 
 
 def _as_finite(values: Iterable) -> list[float | None]:
-    """Values as floats, with missing entries (None, NaN, inf, pd.NA) as None.
+    """Values as floats; missing entries (None, NaN, inf, pd.NA, or too large
+    for a float, such as 10**400) become None.
 
     Accepts lists, tuples, numpy arrays and pandas Series alike.
     """
@@ -153,7 +154,7 @@ def _as_finite(values: Iterable) -> list[float | None]:
     for v in values:
         try:
             f = float(v)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # e.g. float(10**400)
             out.append(None)
             continue
         out.append(f if math.isfinite(f) else None)
@@ -178,7 +179,8 @@ def color_bins(
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
     missing_color
-        Colour for missing values (``None``, NaN, inf, ``pd.NA``); defaults
+        Colour for missing values (``None``, NaN, inf, ``pd.NA``, or too
+        large for a float); defaults
         to transparent :data:`MISSING_COLOR`.  Bins are computed from the
         finite values only.
 
@@ -227,7 +229,8 @@ def color_quantiles(
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
     missing_color
-        Colour for missing values (``None``, NaN, inf, ``pd.NA``); defaults
+        Colour for missing values (``None``, NaN, inf, ``pd.NA``, or too
+        large for a float); defaults
         to transparent :data:`MISSING_COLOR`.  Bins are computed from the
         finite values only.
 

@@ -260,6 +260,15 @@ class MapWidget:
         """Shiny input for right-click / context-menu events on the map."""
         return f"{self._bare_id}_map_contextmenu"
 
+    @property
+    def legend_visibility_input_id(self) -> str:
+        """Shiny input for layer toggles made in a :func:`layer_legend_widget`.
+
+        Returns ``{layer_id, visible}`` each time the user ticks or unticks
+        a legend checkbox.
+        """
+        return f"{self._bare_id}_legend_visibility"
+
     # -- UI -------------------------------------------------------------------
 
     def ui(self, width: str = "100%", height: str = "400px") -> ui.Tag:
@@ -1002,11 +1011,11 @@ class MapWidget:
             (``"geojson"``, ``"raster"``, ``"vector"``, ``"raster-dem"``,
             ``"image"``).
         """
-        await session.send_custom_message("deck_add_source", {
+        await session.send_custom_message("deck_add_source", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "spec": source_spec,
-        })
+        }))
 
     async def add_maplibre_layer(
         self,
@@ -1094,11 +1103,11 @@ class MapWidget:
             New GeoJSON dict or URL string.
         """
         serialised = _serialise_data(data)
-        await session.send_custom_message("deck_set_source_data", {
+        await session.send_custom_message("deck_set_source_data", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "data": serialised,
-        })
+        }))
 
     # -- Cluster Layers (v1.0.0) ----------------------------------------------
 
@@ -1202,12 +1211,12 @@ class MapWidget:
         if cluster_properties is not None:
             options["clusterProperties"] = cluster_properties
 
-        await session.send_custom_message("deck_add_cluster_layer", {
+        await session.send_custom_message("deck_add_cluster_layer", json_safe({
             "id": self.id,
             "sourceId": source_id,
             "data": serialised,
             "options": options,
-        })
+        }))
 
     async def remove_cluster_layer(
         self,

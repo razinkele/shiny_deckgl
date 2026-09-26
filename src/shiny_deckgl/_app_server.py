@@ -203,7 +203,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # Basemap switching (gallery widget on Tab 1)
     @reactive.Effect
-    @reactive.event(input.basemap)
+    @reactive.event(input.basemap, ignore_init=True)
     async def _switch_basemap():
         style_url = BASEMAP_CHOICES.get(input.basemap(), CARTO_POSITRON)
         await gallery_widget.set_style(session, style_url)
@@ -345,7 +345,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # Basemap switching — re-add native layers after style swap
     @reactive.Effect
-    @reactive.event(input.ml_basemap)
+    @reactive.event(input.ml_basemap, ignore_init=True)
     async def _ml_switch_basemap():
         style_url = BASEMAP_CHOICES.get(
             input.ml_basemap(), CARTO_POSITRON,
@@ -523,7 +523,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # Basemap switching for palette tab
     @reactive.Effect
-    @reactive.event(input.pal_basemap)
+    @reactive.event(input.pal_basemap, ignore_init=True)
     async def _pal_switch_basemap():
         style_url = BASEMAP_CHOICES.get(input.pal_basemap(), CARTO_POSITRON)
         await palette_widget.set_style(session, style_url)
@@ -2573,6 +2573,25 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
         # Update status (legend auto-refreshes via introspection)
         _gl_update_status(active_names)
+
+    # -- Legend checkbox -> sidebar switch --------------------------------
+    # A legend toggle only changes the browser. Mirror it onto the sidebar
+    # switch, whose change then runs _gl_toggle, so the server's visibility
+    # state agrees and the next toggle doesn't undo the user's choice.
+
+    _GL_LAYER_TO_SWITCH: dict[str, str] = {
+        layer_id: sw
+        for sw, pairs in _GL_TOGGLE_MAP.items()
+        for layer_id, _ in pairs
+    }
+
+    @reactive.Effect
+    @reactive.event(input[gallery_widget.legend_visibility_input_id])
+    def _gl_legend_toggle():
+        change = input[gallery_widget.legend_visibility_input_id]()
+        sw = _GL_LAYER_TO_SWITCH.get((change or {}).get("layer_id"))
+        if sw is not None:
+            ui.update_switch(sw, value=bool(change["visible"]))
 
 
     _gl_log: reactive.Value[str] = reactive.Value("")

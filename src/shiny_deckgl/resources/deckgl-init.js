@@ -77,7 +77,10 @@
   // interpolated popup templates.  Uses DOMParser so the browser's own HTML
   // parser handles edge cases (unclosed tags, nested scripts, entity encoding).
   // Fail-closed: returns '' on any error rather than passing input through.
-  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript)$/i;
+  // SVG animation elements are stripped because they can rewrite an href to
+  // javascript: after sanitising; <math> because its parsing quirks are the
+  // usual source of mutation-XSS.
+  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript|math|animate|animatemotion|animatetransform|set)$/i;
   var SANITIZE_STRIP_ATTRS = /^on/i;
   // Browsers strip TAB/LF/CR from anywhere in a URL and leading C0 controls
   // before parsing the scheme, so a TAB inside the scheme word, or a leading
@@ -104,7 +107,19 @@
 
   function sanitizeHtml(html) {
     if (!html) return '';
-    html = String(html);
+    // Serialising and re-parsing can change a DOM (mutation XSS), so the
+    // markup handed to innerHTML must itself come through a pass unchanged.
+    var out = String(html);
+    for (var pass = 0; pass < 4; pass++) {
+      var next = sanitizeHtmlOnce(out);
+      if (next === out) return out;
+      out = next;
+    }
+    console.error('[shiny_deckgl] sanitizeHtml output did not stabilise, blocking output');
+    return '';
+  }
+
+  function sanitizeHtmlOnce(html) {
     try {
       var doc = new DOMParser().parseFromString(html, 'text/html');
       // Walk all elements and remove dangerous ones
@@ -151,14 +166,14 @@
   //
   // Implements the deck.gl Widget interface (onAdd / onRemove / setProps)
   // so it can be passed in the widgets array alongside ZoomWidget, etc.
-  // Reuses the same CSS classes and rendering logic as DeckLegendControl.
+  // Styled by the .deck-legend-* classes in styles.css.
   // -----------------------------------------------------------------------
   // DeckLayerLegendWidget is created lazily via createDeckLayerLegendWidget()
   // because deck.Widget may not be available when this script first loads.
   var _DeckLayerLegendWidgetClass = null;
   var LEGEND_DEFAULTS = {
     entries: [], showCheckbox: true, collapsed: false, title: null,
-    autoIntrospect: false, excludeLayers: [], labelMap: {},
+    autoIntrospect: false, excludeLayers: [], labelMap: {}, includeHidden: false,
   };
 
   function createDeckLayerLegendWidget(props) {
@@ -192,9 +207,18 @@
         this._legendProps = Object.assign({}, LEGEND_DEFAULTS, p);
         this._mapId = null;
         this._rootEl = null;
+        // Collapse state set by the user's clicks. It survives re-renders and
+        // is only reset when the `collapsed` prop itself changes.
+        this._collapsedProp = this._legendProps.collapsed;
+        this._collapsed = !!this._collapsedProp;
       };
 
-      proto.onRemove = function () { this._mapId = null; };
+      proto.onRemove = function () {
+        var inst = this._mapId ? mapInstances[this._mapId] : null;
+        if (inst && inst._legendWidget === this) inst._legendWidget = null;
+        this._mapId = null;
+        this._rootEl = null;
+      };
 
       proto.onRenderHTML = function (el) {
         el.classList.add('deck-legend-ctrl', 'deck-layer-legend-widget');
@@ -206,6 +230,10 @@
         // Sync _legendProps from this.props (kept updated by base setProps)
         if (this.props) {
           this._legendProps = Object.assign({}, LEGEND_DEFAULTS, this.props);
+        }
+        if (this._legendProps.collapsed !== this._collapsedProp) {
+          this._collapsedProp = this._legendProps.collapsed;
+          this._collapsed = !!this._collapsedProp;
         }
         this._resolveMapId();
         // Register this widget on the mapInstance for refresh callbacks
@@ -238,27 +266,38 @@
           ? opts.entries
           : (opts.autoIntrospect ? this._introspectLayers() : []);
 
-        if (opts.title) {
-          var header = document.createElement('button');
-          header.className = 'deck-legend-header';
-          header.setAttribute('aria-label', 'Toggle legend');
-          header.innerHTML = '<span class="deck-legend-title">' +
-            this._esc(opts.title) + '</span><span class="deck-legend-arrow">' +
-            (opts.collapsed ? '\u25B6' : '\u25BC') + '</span>';
-          header.addEventListener('click', function () {
-            var body = container.querySelector('.deck-legend-body');
-            var arrow = header.querySelector('.deck-legend-arrow');
-            if (!body) return;
-            var hidden = body.style.display === 'none';
-            body.style.display = hidden ? '' : 'none';
-            if (arrow) arrow.textContent = hidden ? '\u25BC' : '\u25B6';
-          });
-          container.appendChild(header);
-        }
-
+        var self = this;
         var body = document.createElement('div');
         body.className = 'deck-legend-body';
-        if (opts.collapsed) body.style.display = 'none';
+
+        // The header is the only way to expand the panel, so a collapsed
+        // legend always gets one, titled "Layers" when no title was given.
+        if (opts.title || opts.collapsed) {
+          var header = document.createElement('button');
+          header.type = 'button';
+          header.className = 'deck-legend-header';
+          header.setAttribute('aria-label', 'Toggle legend');
+          var titleEl = document.createElement('span');
+          titleEl.className = 'deck-legend-title';
+          titleEl.textContent = opts.title || 'Layers';
+          var arrow = document.createElement('span');
+          arrow.className = 'deck-legend-arrow';
+          var syncCollapsed = function () {
+            body.style.display = self._collapsed ? 'none' : '';
+            arrow.textContent = self._collapsed ? '\u25B6' : '\u25BC';
+            header.setAttribute('aria-expanded', String(!self._collapsed));
+          };
+          header.addEventListener('click', function () {
+            self._collapsed = !self._collapsed;
+            syncCollapsed();
+          });
+          header.appendChild(titleEl);
+          header.appendChild(arrow);
+          container.appendChild(header);
+          syncCollapsed();
+        } else {
+          this._collapsed = false;
+        }
 
         for (var i = 0; i < entries.length; i++) {
           var entry = entries[i];
@@ -270,7 +309,6 @@
             cb.type = 'checkbox';
             cb.checked = this._isLayerVisible(entry.layer_id);
             cb.className = 'deck-legend-cb';
-            var self = this;
             (function (layerId) {
               cb.addEventListener('change', function () {
                 self._toggleLayer(layerId, this.checked);
@@ -334,11 +372,20 @@
         if (!inst || !inst.lastLayers) return [];
         var exclude = this._legendProps.excludeLayers || [];
         var labelMap = this._legendProps.labelMap || {};
+        var includeHidden = !!this._legendProps.includeHidden;
+        // Layers the user unticked here stay listed (unchecked), or they could
+        // never be ticked again. Layers the server hid are left out unless
+        // includeHidden is set.
+        var userHidden = inst._legendUserHidden || {};
         var entries = [];
         for (var i = 0; i < inst.lastLayers.length; i++) {
           var lp = inst.lastLayers[i];
           if (!lp || !lp.id) continue;
-          if (lp.visible === false) continue;
+          if (lp.visible !== false) {
+            delete userHidden[lp.id];
+          } else if (!includeHidden && !userHidden[lp.id]) {
+            continue;
+          }
           if (exclude.indexOf(lp.id) >= 0) continue;
           var entry = this._extractEntry(lp, labelMap);
           if (entry) entries.push(entry);
@@ -492,18 +539,19 @@
           if (lp.id !== layerId) return lp;
           return Object.assign({}, lp, { visible: visible });
         });
+        if (!inst._legendUserHidden) inst._legendUserHidden = {};
+        if (visible) delete inst._legendUserHidden[layerId];
+        else inst._legendUserHidden[layerId] = true;
         var deckLayers = buildDeckLayers(
           cloneLayersData(inst.lastLayers),
           this._mapId
         );
         inst.overlay.setProps({ layers: deckLayers });
         inst.map.triggerRepaint();
-      };
-
-      proto._esc = function (s) {
-        var d = document.createElement('span');
-        d.textContent = s;
-        return d.innerHTML;
+        // Report the toggle so the server can keep its own state in step;
+        // otherwise its next update() would silently undo the user's choice.
+        Shiny.setInputValue(this._mapId + '_legend_visibility',
+          { layer_id: layerId, visible: visible }, { priority: 'event' });
       };
     }
 
@@ -563,40 +611,55 @@
   }
 
   // -----------------------------------------------------------------------
-  // Style-readiness guard — defers callback until map style is loaded.
+  // Style-readiness guard — defers callback until the map style is parsed.
   // Also respects _deckStyleChanging flag set by deck_set_style to avoid
-  // a race where isStyleLoaded() briefly returns true during a style swap.
+  // a race where the old style still reports ready during a style swap.
   // -----------------------------------------------------------------------
+  var STYLE_DRAIN_EVENTS = ['style.load', 'styledata', 'idle'];
+
+  // Sources and layers can be added once the style JSON is parsed. Do not use
+  // map.isStyleLoaded() for this: it is also false while any source or tile
+  // is loading (e.g. straight after add_source, or during a pan), and a call
+  // queued then used to wait for a 'style.load' that never came.
+  function isStyleReady(map) {
+    if (map._deckStyleChanging) return false;
+    var style = map.style;
+    if (style && typeof style._loaded === 'boolean') return style._loaded;
+    return map.isStyleLoaded();
+  }
+
   function whenStyleReady(map, fn) {
-    if (map.isStyleLoaded() && !map._deckStyleChanging) {
+    // Keep FIFO order: while earlier calls are queued, later ones queue too.
+    if (!map._deckStyleQueue && isStyleReady(map)) {
       fn();
-    } else {
-      // Queue callbacks so that multiple callers during a style swap all run
-      // when the style finishes loading (map.once would only fire one).
-      if (!map._deckStyleQueue) {
-        map._deckStyleQueue = [];
-        var drainFn = function () {
-          var queue = map._deckStyleQueue || [];
-          map._deckStyleQueue = null;
-          map._deckStyleDrainFn = null;
-          for (var i = 0; i < queue.length; i++) {
-            try { queue[i](); } catch (e) {
-              console.error('[shiny_deckgl] Queued style callback [' + i + '/' + queue.length + '] failed:', e);
-            }
-          }
-        };
-        map._deckStyleDrainFn = drainFn;
-        map.once('style.load', drainFn);
-      }
-      map._deckStyleQueue.push(fn);
+      return;
     }
+    if (!map._deckStyleQueue) {
+      map._deckStyleQueue = [];
+      var drainFn = function () {
+        if (!isStyleReady(map)) return;  // keep waiting for a later event
+        var queue = map._deckStyleQueue || [];
+        STYLE_DRAIN_EVENTS.forEach(function (ev) { map.off(ev, drainFn); });
+        map._deckStyleQueue = null;
+        map._deckStyleDrainFn = null;
+        for (var i = 0; i < queue.length; i++) {
+          try { queue[i](); } catch (e) {
+            console.error('[shiny_deckgl] Queued style callback [' + i + '/' + queue.length + '] failed:', e);
+          }
+        }
+      };
+      map._deckStyleDrainFn = drainFn;
+      STYLE_DRAIN_EVENTS.forEach(function (ev) { map.on(ev, drainFn); });
+    }
+    map._deckStyleQueue.push(fn);
   }
 
   /** Clean up the style-ready queue and its listener (used on error/timeout). */
   function _clearStyleQueue(map) {
     var abandoned = map._deckStyleQueue || [];
     if (map._deckStyleDrainFn) {
-      map.off('style.load', map._deckStyleDrainFn);
+      var drainFn = map._deckStyleDrainFn;
+      STYLE_DRAIN_EVENTS.forEach(function (ev) { map.off(ev, drainFn); });
       map._deckStyleDrainFn = null;
     }
     map._deckStyleQueue = null;
@@ -882,6 +945,18 @@
   // Tear down a map instance and release its resources when its DOM node is
   // removed (e.g. a Shiny tab/UI is re-rendered). Without this, MapLibre maps,
   // deck.gl overlays, RAF loops and animation globals leak.
+  // True when `removedEl` is the container of `instance` and has left the
+  // document. Checking the id instead is wrong: Shiny's render.ui swaps in a
+  // replacement with the same id before the MutationObserver runs, so the id
+  // still resolves while the map's own node is gone. A node that was only
+  // moved is still connected and keeps its map.
+  function isDetachedMapContainer(instance, removedEl) {
+    var container = null;
+    try { container = instance.map && instance.map.getContainer(); } catch (e) { /* ignore */ }
+    if (!container) return !document.getElementById(removedEl.id);
+    return container === removedEl && !container.isConnected;
+  }
+
   function disposeMap(id) {
     var instance = mapInstances[id];
     if (!instance) return;
@@ -1027,6 +1102,7 @@
   // function has no way to reach a global.
   var ACCESSOR_DANGEROUS_PROPS_RE = /(?:__proto__|constructor|prototype)/i;
   var ACCESSOR_ALLOWED_IDENTS = { d: true, true: true, false: true, null: true, undefined: true };
+  var ACCESSOR_KEY_RE = /^\s*(?:\d+(?:\.\d+)?|d(?:\s*\??\.\s*[A-Za-z_$][A-Za-z0-9_$]*)*)\s*$/;
 
   function isSafeAccessorExpr(expr) {
     if (typeof expr !== 'string') return false;
@@ -1044,8 +1120,17 @@
     if (s.indexOf('//') !== -1 || s.indexOf('/*') !== -1) return false;
     // No increment/decrement, no arrow functions.
     if (/\+\+|--|=>/.test(s)) return false;
-    // A '(' directly after an identifier, ')' or ']' is a call.
-    if (/[A-Za-z0-9_$)\]]\s*\(/.test(s)) return false;
+    // A '(' directly after an identifier, ')', ']' or '.' is a call; the '.'
+    // case is the optional call `f?.(...)`.
+    if (/[A-Za-z0-9_$)\].]\s*\(/.test(s)) return false;
+    // A computed key must be a literal (strings are blanked to 0 above) or a
+    // plain `d.a.b` path. Anything else, e.g. "con"+"structor", could build a
+    // name at run time that ACCESSOR_DANGEROUS_PROPS_RE never saw.
+    var keys = s.split('[').slice(1);
+    for (var k = 0; k < keys.length; k++) {
+      var close = keys[k].indexOf(']');
+      if (close === -1 || !ACCESSOR_KEY_RE.test(keys[k].slice(0, close))) return false;
+    }
     // Assignment: strip the multi-character comparison operators first, then
     // any '=' that remains is an assignment (or an arrow already excluded).
     if (/=/.test(s.replace(/===|!==|==|!=|<=|>=/g, ' '))) return false;
@@ -1106,7 +1191,8 @@
         const expr = raw.slice(1).trim();
         if (!isSafeAccessorExpr(expr)) {
           console.warn('[shiny_deckgl] Rejected unsafe accessor expression "' + val +
-            '": only arithmetic, comparison and property access over `d` are allowed.');
+            '": only arithmetic, comparison and property access over `d` are allowed ' +
+            '(no function calls; a [...] index must be a number, a quoted string or a d.a.b path).');
           // Delete rather than leave the raw "@@=..." string behind: deck.gl
           // treats a non-function accessor as a constant and coerces the
           // string to NaN, silently rendering nothing.
@@ -1372,7 +1458,10 @@
   }
 
   function buildWidgets(widgetSpecs, targetId) {
-    if (!widgetSpecs || !widgetSpecs.length) return undefined;
+    if (!widgetSpecs) return undefined;
+    // An explicit empty list must reach overlay.setProps so deck.gl removes
+    // the current widgets; `undefined` would leave them in place.
+    if (!widgetSpecs.length) return [];
     // Resolve the map container element so FullscreenWidget can target it
     const containerEl = targetId ? document.getElementById(targetId) : null;
     return widgetSpecs.map(spec => {
@@ -2557,9 +2646,16 @@
       instance._styleChangeTimeout = null;
       instance._styleLoadHandler = null;
       if (instance.map._deckStyleChanging) {
-        console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
         instance.map._deckStyleChanging = false;
-        _clearStyleQueue(instance.map);
+        if (instance.map._deckStyleDrainFn && isStyleReady(instance.map)) {
+          // No 'style.load' came (e.g. a diff), but the style is usable:
+          // run the queued calls rather than throwing them away.
+          console.warn('[shiny_deckgl] No style.load within 30s; running queued calls against the current style');
+          instance.map._deckStyleDrainFn();
+        } else {
+          console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
+          _clearStyleQueue(instance.map);
+        }
       }
     }, 30000);
 
@@ -2568,6 +2664,9 @@
       instance._styleChangeTimeout = null;
       instance._styleLoadHandler = null;
       instance.map._deckStyleChanging = false;
+      // Run calls queued during the swap now, rather than waiting for a later
+      // 'idle', which never comes while an animation keeps repainting.
+      if (instance.map._deckStyleDrainFn) instance.map._deckStyleDrainFn();
     };
     instance.map.once('style.load', instance._styleLoadHandler);
 
@@ -2575,10 +2674,11 @@
     // A once('error') handler was removed because MapLibre fires 'error'
     // for unrelated tile/data errors that would prematurely clear the
     // style-change guard and abandon queued callbacks.
-    const styleOpts = {};
-    if (payload.diff) {
-      styleOpts.diff = true;
-    }
+    // Always pass diff explicitly: MapLibre diffs by default, which does not
+    // match set_style(diff=False). A diff never fires 'style.load' when the
+    // style is unchanged, and when it lands after layers were re-added it
+    // diffs them away against the bare basemap JSON.
+    const styleOpts = { diff: !!payload.diff };
     instance.map.setStyle(payload.style, styleOpts);
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)
@@ -3707,9 +3807,19 @@
         }
         for (var m = 0; m < rmaps.length; m++) {
           var rel = rmaps[m];
-          if (rel.id && mapInstances[rel.id] && !document.getElementById(rel.id)) {
+          if (rel.id && mapInstances[rel.id] && isDetachedMapContainer(mapInstances[rel.id], rel)) {
             console.debug('[shiny_deckgl] MutationObserver: disposing removed .deckgl-map "' + rel.id + '"');
             disposeMap(rel.id);
+            // The replacement may have been inserted before the old node was
+            // removed; its add record was then skipped while the old map
+            // still held the id, so initialise it here.
+            var fresh = document.getElementById(rel.id);
+            if (fresh && fresh !== rel && fresh.classList.contains('deckgl-map') &&
+                typeof maplibregl !== 'undefined' && typeof deck !== 'undefined' &&
+                isInVisibleTab(fresh)) {
+              safeInitMap(fresh);
+              replayDeferredMessages(fresh.id);
+            }
           }
         }
       }

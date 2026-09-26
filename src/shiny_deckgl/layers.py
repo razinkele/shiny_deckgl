@@ -16,7 +16,12 @@ converter resolves at runtime:
 - ``"@@=expr"`` — Expression accessor.  ``expr`` is a **safe** JavaScript
   property/index expression that **must start with ``d``** (the datum),
   e.g. ``"@@=d.position"``, ``"@@=d.color"``, ``"@@=d.depth_m * 5"``.
-  The client validates it against a whitelist before evaluating.
+  The client validates it against a whitelist before evaluating: property
+  access, arithmetic, comparison, ``&&``/``||``/``??`` and ``? :`` are
+  allowed; function calls are not.  A bracketed index must be a number, a
+  quoted string or a ``d.a.b`` path (``d.arr[0]``, ``d["k"]``,
+  ``d.lut[d.cat]``), not a computed expression such as ``d.arr[d.i - 1]``.
+  A rejected expression is dropped with a console warning.
 
   (Binary-encoded attributes use a different mechanism: the dict produced
   by ``encode_binary_attribute()`` carries an ``@@binary`` marker — it is

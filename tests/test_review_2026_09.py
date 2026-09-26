@@ -453,6 +453,7 @@ class TestAccessorExpressions:
         return "\n".join([
             extract_var("ACCESSOR_DANGEROUS_PROPS_RE"),
             extract_var("ACCESSOR_ALLOWED_IDENTS"),
+            extract_var("ACCESSOR_KEY_RE"),
             extract_function("isSafeAccessorExpr"),
             extract_function("resolveAccessors"),
         ])
@@ -501,10 +502,43 @@ class TestAccessorExpressions:
         "eval('1')",
         "d[globalThis]",
         "new Function('return 1')",
+        # 2026-09-26 review J1: optional-call syntax slipped past the call
+        # check, and a key assembled from string pieces slipped past the
+        # dangerous-name check -- together they ran arbitrary code.
+        'd["con"+"structor"]["con"+"structor"]?.("globalThis.PWNED=1")?.()',
+        "d.f?.()",
+        "d?.f?.(1)",
+        "d.f ?. (1)",
+        'd["con" + "structor"]',
+        "d['__pro'+'to__']",
+        "d[d.a + 'x']",
+        "d[d[0]]",
     ])
     def test_unsafe_expressions_are_rejected(self, expr):
         got = self._resolve(expr)
         assert got["kind"] != "fn", f"{expr!r} must not compile to an accessor"
+
+    def test_j1_bypass_does_not_execute(self):
+        """The exact J1 payload must neither compile nor run."""
+        got = run_js(self._prelude(), (
+            "(function(){var p={getRadius:'@@=d[\"con\"+\"structor\"][\"con\"+\"structor\"]"
+            "?.(\"globalThis.PWNED=1\")?.()'};resolveAccessors(p);"
+            "try { if (typeof p.getRadius === 'function') p.getRadius({}); } catch (e) {}"
+            "return {kind: typeof p.getRadius, pwned: globalThis.PWNED === 1};})()"
+        ))
+        assert got == {"kind": "undefined", "pwned": False}
+
+    @pytest.mark.parametrize("expr,expected", [
+        ('d.a["b"]', 7),
+        ("d?.a?.b", 7),
+        ("d?.[\"k\"]", "kv"),
+        ("d.a[d.k] || 0", 0),
+        ("d[d.phase] || 'none'", "none"),
+    ])
+    def test_literal_and_path_keys_still_resolve(self, expr, expected):
+        got = self._resolve(expr)
+        assert got["kind"] == "fn", f"{expr!r} was not compiled to an accessor"
+        assert got["value"] == expected
 
     @pytest.mark.parametrize("expr", ["fetch('/x')", "d = 1", "() => 1"])
     def test_rejected_accessor_is_removed_not_left_as_a_string(self, expr):

@@ -207,6 +207,9 @@ class MapWidget:
         # session, so a style change must be recorded against the
         # session that made it rather than on the shared object.
         self._session_styles: "WeakKeyDictionary[Any, str]" = WeakKeyDictionary()
+        # Same for other settings a session can change at run time
+        # (tooltip, cooperative gestures): {session: {name: value}}.
+        self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -566,7 +569,7 @@ class MapWidget:
         enabled
             ``True`` to enable cooperative gestures, ``False`` to disable.
         """
-        self.cooperative_gestures = enabled
+        self._remember(session, "cooperative_gestures", enabled)
         await session.send_custom_message("deck_set_cooperative_gestures", {
             "id": self.id,
             "enabled": enabled,
@@ -755,6 +758,30 @@ class MapWidget:
                 pass
         return self.style
 
+    def _remember(self, session: "Session", name: str, value: Any) -> None:
+        """Record a run-time setting against *session*, not the shared widget."""
+        try:
+            self._session_state.setdefault(session, {})[name] = value
+        except TypeError:
+            # Session object is not weak-referenceable; fall back to the
+            # shared attribute rather than losing the change entirely.
+            setattr(self, name, value)
+
+    def _recall(self, session: "Session | None", name: str) -> Any:
+        """A setting as *session* last set it, else the constructed value."""
+        if session is not None:
+            try:
+                state = self._session_state.get(session)
+            except TypeError:
+                state = None
+            if state is not None and name in state:
+                return state[name]
+        return getattr(self, name)
+
+    def current_tooltip(self, session: "Session | None" = None) -> dict | None:
+        """The tooltip configuration in force for *session*."""
+        return self._recall(session, "tooltip")
+
     async def update_tooltip(
         self,
         session: "Session",
@@ -771,7 +798,7 @@ class MapWidget:
             ``tooltip`` parameter), or ``None`` to disable tooltips.
         """
         _validate_tooltip(tooltip)
-        self.tooltip = tooltip
+        self._remember(session, "tooltip", tooltip)
         await session.send_custom_message("deck_update_tooltip", {
             "id": self.id,
             "tooltip": tooltip,
@@ -2019,7 +2046,13 @@ class MapWidget:
 
     # -- Serialisation --------------------------------------------------------
 
-    def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:
+    def to_json(
+        self,
+        layers: list[dict],
+        effects: list[dict] | None = None,
+        *,
+        session: "Session | None" = None,
+    ) -> str:
         """Serialise the map spec (view state, style, layers, effects) to JSON.
 
         Parameters
@@ -2029,6 +2062,9 @@ class MapWidget:
             helpers.
         effects
             Optional list of effects dicts.
+        session
+            When given, use the style and tooltip this session set with
+            :meth:`set_style` / :meth:`update_tooltip`.
 
         Returns
         -------
@@ -2039,11 +2075,12 @@ class MapWidget:
         spec: dict = {
             "id": self._bare_id,
             "viewState": self.view_state,
-            "style": self.style,
+            "style": self.current_style(session),
             "layers": layers,
         }
-        if self.tooltip is not None:
-            spec["tooltip"] = self.tooltip
+        tooltip = self.current_tooltip(session)
+        if tooltip is not None:
+            spec["tooltip"] = tooltip
         if self.mapbox_api_key is not None:
             spec["mapboxApiKey"] = self.mapbox_api_key
         if effects:
@@ -2116,8 +2153,9 @@ class MapWidget:
             return _html_mod.escape(str(vs.get(key, default)), quote=True)
 
         tooltip_attr = ""
-        if self.tooltip is not None:
-            tooltip_json = json.dumps(self.tooltip)
+        _tooltip = self.current_tooltip(session)
+        if _tooltip is not None:
+            tooltip_json = json.dumps(_tooltip)
             tooltip_attr = f' data-tooltip="{_html_mod.escape(tooltip_json, quote=True)}"'
 
         mapbox_attr = ""

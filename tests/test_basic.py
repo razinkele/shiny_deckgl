@@ -880,8 +880,8 @@ class TestUpdateTooltip:
         assert callable(w.update_tooltip)
 
     def test_update_tooltip_sets_attribute(self):
-        """Calling update_tooltip should update the widget's tooltip attr
-        (the actual message send requires a live session, tested manually)."""
+        """update_tooltip records the tooltip for that session (not on the
+        shared widget, P6) and sends it to the client."""
 
         w = MapWidget("utt2", tooltip={"html": "<b>{name}</b>"})
         assert w.tooltip is not None
@@ -889,7 +889,7 @@ class TestUpdateTooltip:
         fake = _FakeSession()
         new_tip = {"html": "{x}", "style": {"color": "red"}}
         asyncio.run(w.update_tooltip(fake, new_tip))
-        assert w.tooltip == new_tip
+        assert w.current_tooltip(fake) == new_tip
         assert len(fake.messages) == 1
         assert fake.messages[0][0] == "deck_update_tooltip"
         assert fake.messages[0][1]["tooltip"] == new_tip
@@ -900,7 +900,7 @@ class TestUpdateTooltip:
 
         fake = _FakeSession()
         asyncio.run(w.update_tooltip(fake, None))
-        assert w.tooltip is None
+        assert w.current_tooltip(fake) is None
         assert fake.messages[0][1]["tooltip"] is None
 
 
@@ -990,7 +990,9 @@ class TestCooperativeGestures:
 
         fake = _FakeSession()
         asyncio.run(w.set_cooperative_gestures(fake, True))
-        assert w.cooperative_gestures is True
+        # Recorded for this session, not on the shared widget (P6).
+        assert w._recall(fake, "cooperative_gestures") is True
+        assert w.cooperative_gestures is False
         assert fake.messages[0][0] == "deck_set_cooperative_gestures"
         assert fake.messages[0][1]["enabled"] is True
 
@@ -999,7 +1001,8 @@ class TestCooperativeGestures:
 
         fake = _FakeSession()
         asyncio.run(w.set_cooperative_gestures(fake, False))
-        assert w.cooperative_gestures is False
+        assert w._recall(fake, "cooperative_gestures") is False
+        assert w.cooperative_gestures is True
         assert fake.messages[0][1]["enabled"] is False
 
 
@@ -2804,7 +2807,7 @@ class TestUpdateTooltipExtended:
             "style": {"backgroundColor": "#222", "color": "#fff"},
         }
         asyncio.run(w.update_tooltip(fake, tooltip))
-        assert w.tooltip == tooltip
+        assert w.current_tooltip(fake) == tooltip
         msg = fake.messages[0][1]
         assert msg["tooltip"] == tooltip
 
@@ -2812,11 +2815,11 @@ class TestUpdateTooltipExtended:
         w = MapWidget("ute2")
         fake = _FakeSession()
         asyncio.run(w.update_tooltip(fake, {"html": "First"}))
-        assert w.tooltip == {"html": "First"}
+        assert w.current_tooltip(fake) == {"html": "First"}
         asyncio.run(w.update_tooltip(fake, {"html": "Second"}))
-        assert w.tooltip == {"html": "Second"}
+        assert w.current_tooltip(fake) == {"html": "Second"}
         asyncio.run(w.update_tooltip(fake, None))
-        assert w.tooltip is None
+        assert w.current_tooltip(fake) is None
         assert len(fake.messages) == 3
 
 

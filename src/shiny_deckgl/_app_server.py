@@ -1078,7 +1078,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.event(input.export_json)
     async def _do_export_json():
         layers = _gl_build_all_layers()
-        spec = gallery_widget.to_json(layers)
+        spec = gallery_widget.to_json(layers, session=session)
         ellip = "\u2026" if len(spec) > 2000 else ""
         _export_log.set(
             f"JSON spec ({len(spec):,} chars):\n\n{spec[:2000]}{ellip}"
@@ -1088,17 +1088,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.event(input.roundtrip_json)
     async def _do_roundtrip():
         layers = _gl_build_all_layers()
-        spec_json = gallery_widget.to_json(layers)
+        spec_json = gallery_widget.to_json(layers, session=session)
         w2, layers2 = MapWidget.from_json(spec_json)
         checks = [
             f"Original widget id:     {gallery_widget.id}",
             f"Restored widget id:     {w2.id}",
             f"IDs match:              {gallery_widget.id == w2.id}",
-            f"Style match:            {gallery_widget.style == w2.style}",
+            f"Style match:            "
+            f"{gallery_widget.current_style(session) == w2.style}",
             f"View state match:       "
             f"{gallery_widget.view_state == w2.view_state}",
             f"Tooltip match:          "
-            f"{gallery_widget.tooltip == w2.tooltip}",
+            f"{gallery_widget.current_tooltip(session) == w2.tooltip}",
             f"Layer count match:      "
             f"{len(layers)} == {len(layers2)}",
             f"Layer IDs (original):   "

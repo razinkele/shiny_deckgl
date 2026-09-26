@@ -1427,3 +1427,53 @@ class TestEffectsAndViewsCanBeCleared:
             " eu: buildEffects(undefined) === undefined, vu: buildViews(undefined) === undefined})"
         ))
         assert got == {"e": [], "v": None, "eu": True, "vu": True}
+
+
+class TestPerSessionWidgetState:
+    """P6 (2026-09-26 review): fix #21 only made the style per-session.
+
+    update_tooltip() and set_cooperative_gestures() still wrote to the shared
+    widget object -- the demo's widgets are module-level singletons -- so one
+    session's tooltip leaked into another session's export.
+    """
+
+    def _widget_and_sessions(self):
+        from conftest import _FakeSession
+        from shiny_deckgl import MapWidget
+        w = MapWidget("m", tooltip={"html": "ORIGINAL {name}"})
+        return w, _FakeSession(), _FakeSession()
+
+    def test_tooltip_change_stays_in_its_session(self):
+        import asyncio
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.update_tooltip(s1, {"html": "CHANGED {name}"}))
+        assert w.tooltip == {"html": "ORIGINAL {name}"}
+        assert "CHANGED" in w.to_html([], session=s1)
+        assert "ORIGINAL" in w.to_html([], session=s2)
+        assert "ORIGINAL" in w.to_html([])
+
+    def test_tooltip_can_be_disabled_per_session(self):
+        import asyncio
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.update_tooltip(s1, None))
+        assert ' data-tooltip="' not in w.to_html([], session=s1)
+        assert ' data-tooltip="' in w.to_html([], session=s2)
+
+    def test_cooperative_gestures_stay_in_their_session(self):
+        import asyncio
+        w, s1, _ = self._widget_and_sessions()
+        before = w.cooperative_gestures
+        asyncio.run(w.set_cooperative_gestures(s1, not before))
+        assert w.cooperative_gestures == before
+
+    def test_to_json_uses_the_sessions_style_and_tooltip(self):
+        import asyncio
+        import json as _json
+        from shiny_deckgl import CARTO_DARK
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.set_style(s1, CARTO_DARK))
+        asyncio.run(w.update_tooltip(s1, {"html": "CHANGED"}))
+        spec1 = _json.loads(w.to_json([], session=s1))
+        spec2 = _json.loads(w.to_json([], session=s2))
+        assert spec1["style"] == CARTO_DARK and spec1["tooltip"] == {"html": "CHANGED"}
+        assert spec2["style"] == w.style and spec2["tooltip"] == {"html": "ORIGINAL {name}"}

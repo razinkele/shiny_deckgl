@@ -1470,7 +1470,9 @@
   }
 
   function buildEffects(effectsData) {
-    if (!effectsData || !effectsData.length) return undefined;
+    if (!effectsData) return undefined;
+    // An explicit [] clears the effects an earlier update set.
+    if (!effectsData.length) return [];
     return effectsData.map(spec => {
       if (spec.type === 'LightingEffect') {
         const lights = {};
@@ -1567,7 +1569,9 @@
   }
 
   function buildViews(viewsData) {
-    if (!viewsData || !viewsData.length) return undefined;
+    if (!viewsData) return undefined;
+    // An explicit [] restores deck.gl's default view.
+    if (!viewsData.length) return null;
     return viewsData.map(spec => {
       const typeName = spec['@@type'] || 'MapView';
       const props = Object.assign({}, spec);
@@ -2482,7 +2486,7 @@
 
     // Views (MapView, OrthographicView, FirstPersonView)
     const views = buildViews(payload.views);
-    if (views) overlayProps.views = views;
+    if (views !== undefined) overlayProps.views = views;
 
     // Deck-level props (v0.7.0)
     if (payload.pickingRadius !== undefined) overlayProps.pickingRadius = payload.pickingRadius;

@@ -1389,3 +1389,41 @@ class TestToHtmlLoadsH3:
         html = MapWidget("m").to_html([])
         assert H3_JS in html
         assert html.index(H3_JS) < html.index(DECKGL_JS)
+
+
+class TestEffectsAndViewsCanBeCleared:
+    """J8 (2026-09-26 review): update(effects=[]) / views=[] were ignored.
+
+    Python dropped empty lists (truthiness test) and the client treated an
+    empty list like "not given", so lighting switched on could never be
+    switched off again -- the demo's Advanced tab hit this.
+    """
+
+    def _payload(self, **kw):
+        import asyncio
+        from conftest import _FakeSession
+        from shiny_deckgl import MapWidget
+        s = _FakeSession()
+        asyncio.run(MapWidget("m").update(s, [], **kw))
+        return s.messages[0][1]
+
+    def test_empty_lists_are_sent(self):
+        p = self._payload(effects=[], views=[])
+        assert p["effects"] == [] and p["views"] == []
+
+    def test_none_is_not_sent(self):
+        p = self._payload()
+        assert "effects" not in p and "views" not in p
+
+    @requires_node
+    def test_client_turns_empty_lists_into_clears(self):
+        prelude = "\n".join([
+            "var deck = {}; var luma = {};",
+            extract_function("buildEffects"),
+            extract_function("buildViews"),
+        ])
+        got = run_js(prelude, (
+            "({e: buildEffects([]), v: buildViews([]),"
+            " eu: buildEffects(undefined) === undefined, vu: buildViews(undefined) === undefined})"
+        ))
+        assert got == {"e": [], "v": None, "eu": True, "vu": True}

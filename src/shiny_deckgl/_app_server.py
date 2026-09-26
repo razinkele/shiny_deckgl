@@ -761,7 +761,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     )
     async def _apply_lighting():
         layers = _adv_layers.get()
-        effects = None
+        effects: list = []  # [] clears the lighting; None would leave it on
         if input.enable_lighting():
             amb = ambient_light(intensity=input.ambient())
             pl = point_light(

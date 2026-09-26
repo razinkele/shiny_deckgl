@@ -353,10 +353,12 @@ class MapWidget:
         effects
             Optional list of lighting/effect dicts, e.g.
             ``[{"type": "LightingEffect", "ambientLight": {...}, "pointLights": [...]}]``.
+            ``None`` (default) keeps the current effects; ``[]`` removes them.
         views
             Optional list of view dicts (e.g. from ``map_view()``,
             ``orthographic_view()``).  When provided the JS client passes
-            them to ``overlay.setProps({views})``.
+            them to ``overlay.setProps({views})``.  ``None`` (default) keeps
+            the current views; ``[]`` restores deck.gl's default view.
         picking_radius
             Override picking radius for this update.
         use_device_pixels
@@ -391,9 +393,11 @@ class MapWidget:
             payload["viewState"] = view_state
             if transition_duration > 0:
                 payload["transitionDuration"] = transition_duration
-        if effects:
+        # `is not None`, not truthiness: an explicit [] must reach the client
+        # to clear what an earlier update set.
+        if effects is not None:
             payload["effects"] = effects
-        if views:
+        if views is not None:
             payload["views"] = views
         # Deck-level props
         if picking_radius is not None:

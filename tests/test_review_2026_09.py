@@ -1373,3 +1373,19 @@ class TestCredentialedLayersAreNotFetchedUnconditionally:
         nearby = src[max(0, idx - 600):idx]
         assert "API key" in nearby, (
             "the call site should say that this endpoint needs an API key")
+
+
+class TestToHtmlLoadsH3:
+    """P4 (2026-09-26 review): to_html() omitted h3-js.
+
+    The served page loads it (CDN_HEAD_FRAGMENT) because H3HexagonLayer and
+    H3ClusterLayer need the global `h3`; without it they draw nothing in an
+    exported file.
+    """
+
+    def test_h3_is_loaded_before_deck(self):
+        from shiny_deckgl import MapWidget
+        from shiny_deckgl._cdn import DECKGL_JS, H3_JS
+        html = MapWidget("m").to_html([])
+        assert H3_JS in html
+        assert html.index(H3_JS) < html.index(DECKGL_JS)

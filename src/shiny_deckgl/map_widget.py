@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ._cdn import (
     MAPLIBRE_EXPORT_JS,
     MAPLIBRE_EXPORT_CSS,
+    H3_JS,
     DECKGL_JS,
     DECKGL_WIDGETS_JS,
     DECKGL_WIDGETS_CSS,
@@ -2132,6 +2133,7 @@ class MapWidget:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{_html_mod.escape(title)}</title>
+<script src="{H3_JS}"></script>
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>

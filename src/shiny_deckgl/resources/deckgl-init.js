@@ -1372,7 +1372,9 @@
     layerProps.extensions = layerProps['@@extensions'].map(item => {
       // String form: instantiate with no arguments
       if (typeof item === 'string') {
-        const Cls = deck[item];
+        // deck.gl exports experimental classes with a leading underscore
+        // (deck._TerrainExtension), like the widgets and GlobeView.
+        const Cls = resolveWidgetClass(deck, item);
         if (!Cls) {
           console.warn('[shiny_deckgl] Unknown extension: ' + item);
           return null;
@@ -1381,7 +1383,7 @@
       }
       // Object form: { "@@extClass": "Name", "@@extOpts": {...} }
       if (item && item['@@extClass']) {
-        const Cls = deck[item['@@extClass']];
+        const Cls = resolveWidgetClass(deck, item['@@extClass']);
         if (!Cls) {
           console.warn('[shiny_deckgl] Unknown extension: ' + item['@@extClass']);
           return null;

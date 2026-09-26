@@ -77,7 +77,10 @@
   // interpolated popup templates.  Uses DOMParser so the browser's own HTML
   // parser handles edge cases (unclosed tags, nested scripts, entity encoding).
   // Fail-closed: returns '' on any error rather than passing input through.
-  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript)$/i;
+  // SVG animation elements are stripped because they can rewrite an href to
+  // javascript: after sanitising; <math> because its parsing quirks are the
+  // usual source of mutation-XSS.
+  var SANITIZE_STRIP_TAGS = /^(script|style|iframe|object|embed|applet|form|base|meta|link|template|noscript|math|animate|animatemotion|animatetransform|set)$/i;
   var SANITIZE_STRIP_ATTRS = /^on/i;
   // Browsers strip TAB/LF/CR from anywhere in a URL and leading C0 controls
   // before parsing the scheme, so a TAB inside the scheme word, or a leading
@@ -104,7 +107,19 @@
 
   function sanitizeHtml(html) {
     if (!html) return '';
-    html = String(html);
+    // Serialising and re-parsing can change a DOM (mutation XSS), so the
+    // markup handed to innerHTML must itself come through a pass unchanged.
+    var out = String(html);
+    for (var pass = 0; pass < 4; pass++) {
+      var next = sanitizeHtmlOnce(out);
+      if (next === out) return out;
+      out = next;
+    }
+    console.error('[shiny_deckgl] sanitizeHtml output did not stabilise, blocking output');
+    return '';
+  }
+
+  function sanitizeHtmlOnce(html) {
     try {
       var doc = new DOMParser().parseFromString(html, 'text/html');
       // Walk all elements and remove dangerous ones

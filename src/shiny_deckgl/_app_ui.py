@@ -1129,12 +1129,12 @@ def build_ui():
                             ui.input_slider(
                                 "seal_sim_hours",
                                 "Simulation hours",
-                                min=24, max=720, value=168, step=24,
+                                min=24, max=336, value=168, step=24,
                             ),
                         ),
                         ui.input_slider(
                             "seal_n_individuals", "Number of seals",
-                            min=5, max=1000, value=30, step=5,
+                            min=5, max=200, value=30, step=5,
                         ),
                         ui.input_checkbox_group(
                             "seal_species", "Species to show",

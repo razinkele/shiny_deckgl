@@ -6,6 +6,7 @@ for the comprehensive shiny_deckgl demo application.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -633,18 +634,23 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     )
     async def _pal_update_map():
         colours = _pal_colors()
-        lo, hi = min(_pal_depths), max(_pal_depths)
         layer_type = input.pal_layer()
 
-        # Build coloured data
+        # Derive the bins from the colours actually assigned, so the legend
+        # and the tooltip agree with the map in every mode (equal-width bins
+        # and quantiles have different break points).
+        depth_by_colour: dict[tuple, list[float]] = {}
+        for pt, c in zip(_pal_bathy, colours):
+            depth_by_colour.setdefault(tuple(c), []).append(pt["depth_m"])
+        bins = sorted(depth_by_colour.items(), key=lambda kv: min(kv[1]))
+        bin_of = {colour: i for i, (colour, _) in enumerate(bins)}
+
         coloured_data = []
         for pt, c in zip(_pal_bathy, colours):
-            bin_idx = int((pt["depth_m"] - lo) / max(hi - lo, 1) * (input.pal_nbins() - 1))
-            bin_idx = max(0, min(bin_idx, input.pal_nbins() - 1))
             coloured_data.append({
                 **pt,
                 "color": c,
-                "bin_label": f"Bin {bin_idx + 1}/{input.pal_nbins()}",
+                "bin_label": f"Bin {bin_of[tuple(c)] + 1}/{len(bins)}",
             })
 
         layers: list[dict] = []
@@ -682,23 +688,31 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 pickable=False,
             ))
 
-        # Build legend entries from swatch colours
-        swatch = _pal_range_colors()
-        legend_entries = []
-        for i, c in enumerate(swatch):
-            # Compute approximate depth range for label
-            bin_lo = lo + (hi - lo) * i / len(swatch)
-            bin_hi = lo + (hi - lo) * (i + 1) / len(swatch)
-            legend_entries.append({
-                "layer_id": f"pal-bin-{i}",
-                "label": f"{bin_lo:.0f}\u2013{bin_hi:.0f} m",
-                "color": c[:3],
+        # Legend: one row per bin, labelled with the depths it really holds.
+        # The heatmap ignores the palette and uses deck.gl's default ramp.
+        if layer_type == "heatmap":
+            legend_entries = [{
+                "label": "Depth-weighted density",
+                "colors": [[255, 255, 178], [254, 217, 118], [254, 178, 76],
+                           [253, 141, 60], [240, 59, 32], [189, 0, 38]],
+                "shape": "gradient",
+            }]
+        else:
+            legend_entries = [{
+                "label": f"{min(depths):.0f} to {max(depths):.0f} m",
+                "color": list(colour[:3]),
                 "shape": "rect",
-            })
+            } for colour, depths in bins]
 
         widgets = [
             zoom_widget(), compass_widget(),
             fullscreen_widget(), scale_widget(),
+            layer_legend_widget(
+                entries=legend_entries,
+                placement="bottom-right",
+                title="Depth",
+                show_checkbox=False,
+            ),
         ]
 
         await palette_widget.update(
@@ -1274,7 +1288,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             extra["filterRange"] = [fmin, fmax]
             extra["filterEnabled"] = True
 
-        layers = [
+        ports = [
             scatterplot_layer(
                 "v1_ports",
                 _v1_port_data,
@@ -1288,6 +1302,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 **extra,
             ),
         ]
+        # Swap only our own layer into the shared list. Replacing the list
+        # wiped the cargo columns and every brushing/filter/transition layer
+        # the other effects had added. If this runs before _adv_init has
+        # filled the list, start from the base layers.
+        current = _adv_layers.get() or _adv_base_layers()
+        layers = [lyr for lyr in current if lyr.get("id") != "v1_ports"] + ports
         # Record the pushed layers in the shared reactive value: every other
         # effect that drives adv_widget reads or writes _adv_layers, and an
         # unrecorded push is silently discarded by the next one of them.
@@ -1460,20 +1480,30 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "seal_anim", widget=seal_widget, session=session,
     )
 
+    # The McConnell IBM is pure Python and takes seconds (about 0.3 ms per
+    # seal-hour). Run it in a worker thread so it doesn't block the event
+    # loop -- and with it every other session on the server.
+    @reactive.extended_task
+    async def _seal_ibm_task(n_seals: int, sim_hours: int):
+        return await asyncio.to_thread(
+            make_seal_trips_ibm,
+            n_seals=n_seals, sim_hours=sim_hours, loop_length=_SEAL_LOOP,
+        )
+
+    @reactive.Effect
+    def _seal_start_ibm():
+        if input.seal_model_type() == "mcconnell":
+            _seal_ibm_task.invoke(input.seal_n_individuals(), input.seal_sim_hours())
+
     @reactive.Calc
     def _seal_trips():
         """Regenerate trips when model type or parameters change."""
-        model = input.seal_model_type()
-        n = input.seal_n_individuals()
-        if model == "mcconnell":
-            sim_h = input.seal_sim_hours()
-            return make_seal_trips_ibm(
-                n_seals=n,
-                sim_hours=sim_h,
-                loop_length=_SEAL_LOOP,
-            )
+        if input.seal_model_type() == "mcconnell":
+            # Silently cancels dependants while the task runs; they re-run
+            # when the result arrives.
+            return _seal_ibm_task.result()
         return make_seal_trips(
-            n_seals=n,
+            n_seals=input.seal_n_individuals(),
             loop_length=_SEAL_LOOP,
         )
 
@@ -1492,8 +1522,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.seal_sim_hours,
         input.seal_species,
         input.seal_icon_shape,
-        seal_anim.speed,
-        seal_anim.trail,
+        _seal_trips,
         input.seal_bathymetry,
         input.seal_haulouts,
         input.seal_foraging,
@@ -1553,6 +1582,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 trips_layer(
                     "seal_trips",
                     filtered_trips,
+                    # Not event triggers: speed/trail changes are sent by
+                    # _seal_anim_params as a small patch, not a full resend.
                     trailLength=seal_anim.trail(),
                     fadeTrail=True,
                     getColor="@@d.color",
@@ -1641,6 +1672,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             session, layers,
             widgets=[loading_widget()],
         )
+        _seal_has_trips.set(bool(filtered_trips))
+
+    _seal_has_trips: reactive.Value[bool] = reactive.Value(False)
+
+    # Speed and trail only touch two props of the trips layer, so patch those
+    # instead of resending every track (megabytes for large runs).
+    @reactive.Effect
+    @reactive.event(seal_anim.speed, seal_anim.trail, ignore_init=True)
+    async def _seal_anim_params():
+        if not _seal_has_trips.get():
+            return
+        await seal_widget.partial_update(session, [{
+            "id": "seal_trips",
+            "trailLength": seal_anim.trail(),
+            "_tripsAnimation": {"loopLength": _SEAL_LOOP, "speed": seal_anim.speed()},
+        }])
 
     # ===================================================================
     # Tab 9: Widgets Gallery
@@ -1719,12 +1766,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     },
                 ))
             else:
-                meta = _WG_LAYER_META.get(input.wg_layer_combo())
-                if meta:
-                    layer_id, label, color, shape = meta
+                entry = _WG_LEGEND_ENTRIES.get(input.wg_layer_combo())
+                if entry:
                     widgets.append(layer_legend_widget(
-                        entries=[{"layer_id": layer_id, "label": label,
-                                  "color": color, "shape": shape}],
+                        entries=[entry],
                         placement="top-left",
                         title="Active Layer",
                         show_checkbox=True,
@@ -1750,11 +1795,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 pickable=True,
             )]
         elif choice == "heatmap":
+            # Points are [lon, lat, weight] lists: the helper's default
+            # getPosition="@@d" takes the list as is.
             return [heatmap_layer(
                 "wg-heat",
                 _heatmap_points,
-                getPosition="@@=d.position",
-                getWeight="@@=d.weight || 1",
+                getWeight="@@=d[2]",
                 radiusPixels=40,
                 intensity=1.2,
                 threshold=0.05,
@@ -1763,8 +1809,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return [arc_layer(
                 "wg-arcs",
                 _arc_data,
-                getSourcePosition="@@=d.from",
-                getTargetPosition="@@=d.to",
                 getSourceColor=[0, 128, 255],
                 getTargetColor=[255, 100, 0],
                 getWidth=2,
@@ -1795,7 +1839,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return [hexagon_layer(
                 "wg-hexagons",
                 _heatmap_points,
-                getPosition="@@=d.position",
                 radius=20000,
                 elevationScale=50,
                 extruded=True,
@@ -1805,13 +1848,27 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # -- Legend for active layer scenario ---------------------------------
 
-    _WG_LAYER_META: dict[str, tuple[str, str, list[int], str]] = {
-        "ports": ("wg-ports", "Ports (ScatterplotLayer)", [20, 130, 180], "circle"),
-        "heatmap": ("wg-heat", "Heatmap (HeatmapLayer)", [255, 80, 0], "gradient"),
-        "arcs": ("wg-arcs", "Arcs (ArcLayer)", [0, 128, 255], "arc"),
-        "routes": ("wg-routes", "Routes (PathLayer)", [180, 100, 60], "line"),
-        "3d_columns": ("wg-columns", "3-D Columns (ColumnLayer)", [14, 145, 155], "rect"),
-        "hexagons": ("wg-hexagons", "Hexagons (HexagonLayer)", [80, 160, 80], "rect"),
+    # deck.gl's default colorRange (YlOrRd), used by the heatmap and hexagon
+    # layers above since they don't set their own.
+    _DECK_DEFAULT_RAMP = [
+        [255, 255, 178], [254, 217, 118], [254, 178, 76],
+        [253, 141, 60], [240, 59, 32], [189, 0, 38],
+    ]
+
+    # One legend entry per scenario, with colours matching what is drawn.
+    _WG_LEGEND_ENTRIES: dict[str, dict] = {
+        "ports": {"layer_id": "wg-ports", "label": "Ports (ScatterplotLayer)",
+                  "color": [20, 130, 180], "shape": "circle"},
+        "heatmap": {"layer_id": "wg-heat", "label": "Heatmap (HeatmapLayer)",
+                    "colors": _DECK_DEFAULT_RAMP, "shape": "gradient"},
+        "arcs": {"layer_id": "wg-arcs", "label": "Arcs (ArcLayer)",
+                 "color": [0, 128, 255], "color2": [255, 100, 0], "shape": "arc"},
+        "routes": {"layer_id": "wg-routes", "label": "Routes, one colour each (PathLayer)",
+                   "colors": [p["color"][:3] for p in _path_data], "shape": "gradient"},
+        "3d_columns": {"layer_id": "wg-columns", "label": "3-D Columns (ColumnLayer)",
+                       "color": [14, 145, 155], "shape": "rect"},
+        "hexagons": {"layer_id": "wg-hexagons", "label": "Hexagons (HexagonLayer)",
+                     "colors": _DECK_DEFAULT_RAMP, "shape": "gradient"},
     }
 
     # -- Init: send default widgets + layers on first load ----------------

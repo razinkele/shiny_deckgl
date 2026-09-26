@@ -2161,6 +2161,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_scenegraph":    [("gl-scenegraph", "ScenegraphLayer")],
     }
 
+    # Counted from the table, so the status line can't drift from it again.
+    _GL_LAYER_COUNT = sum(len(pairs) for pairs in _GL_TOGGLE_MAP.values())
+
     # 3-D layer names that need pitched view
     _GL_3D_NAMES = {
         "TerrainLayer", "PointCloudLayer", "SimpleMeshLayer",
@@ -2602,7 +2605,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # -- Status helper (lightweight, no layer data) ----------------------
 
     def _gl_update_status(active_names: set[str]) -> None:
-        lines = [f"Active layers: {len(active_names)} / 24", ""]
+        lines = [f"Active layers: {len(active_names)} / {_GL_LAYER_COUNT}", ""]
         if active_names:
             for n in sorted(active_names):
                 lines.append(f"  • {n}")

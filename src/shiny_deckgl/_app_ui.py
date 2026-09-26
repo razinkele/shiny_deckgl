@@ -64,7 +64,7 @@ def build_ui():
                 ),
                 sidebar_hint(
                     "Toggle each layer type to see it on the map. "
-                    "All 24 typed helper functions from "
+                    "All 33 typed layer helpers from "
                     "shiny_deckgl.layers are demonstrated here "
                     "with Baltic Sea sample data."
                 ),
@@ -736,7 +736,7 @@ def build_ui():
                     ui.accordion_panel(
                         "\u26A1 Binary Transport",
                         sidebar_hint(
-                            "Push 2,500 random points encoded as numpy "
+                            "Push a 50 \u00d7 50 grid (2,500 points) encoded as numpy "
                             "binary arrays."
                         ),
                         ui.input_action_button(
@@ -1351,7 +1351,7 @@ def build_ui():
                         ),
                         ui.input_action_button(
                             "wg_preset_all",
-                            "\U0001F4A5 All 17 Widgets",
+                            "\U0001F4A5 All 17 deck.gl Widgets",
                             class_="btn-sm btn-outline-danger mb-1 w-100",
                         ),
                         ui.input_action_button(
@@ -1396,7 +1396,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F9E9 Widget Gallery - All 18 deck.gl Widgets"
+                    "\U0001F9E9 Widget Gallery - 17 deck.gl Widgets + Layer Legend"
                 ),
                 widgets_gallery_widget.ui(height="60vh"),
             ),

@@ -112,8 +112,7 @@ var mapInstances = { m1: {
     { id: 'b', type: 'PathLayer', getColor: [0, 0, 255] },
   ],
 } };
-function buildDeckLayers(layers) { return layers; }
-function cloneLayersData(layers) { return layers; }
+function renderNow(inst) { inst.overlay.setProps({ layers: inst.lastLayers }); }
 
 // Mount a widget the way WidgetManager._addWidget does.
 function mount(props) {

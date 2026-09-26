@@ -8,7 +8,11 @@
   // updateTriggers).  Handles non-cloneable values like Canvas elements
   // (from rasterised SVG icon atlases) that structuredClone cannot copy.
   function cloneLayersData(layersData) {
-    return layersData.map(function (lp) {
+    return layersData.map(cloneLayer);
+  }
+
+  function cloneLayer(lp) {
+    {
       var clone = Object.assign({}, lp);
       // Deep-clone nested objects that buildDeckLayers mutates in-place.
       // transitions needs two levels: the map of prop→spec AND each spec
@@ -43,7 +47,7 @@
         }
       }
       return clone;
-    });
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -596,8 +600,7 @@
         if (!inst._legendUserHidden) inst._legendUserHidden = {};
         if (visible) delete inst._legendUserHidden[layerId];
         else inst._legendUserHidden[layerId] = true;
-        var deckLayers = buildDeckLayers(
-          cloneLayersData(inst.lastLayers),
+        var deckLayers = buildDeckLayers(inst.lastLayers,
           this._mapId
         );
         inst.overlay.setProps({ layers: deckLayers });
@@ -1714,8 +1717,64 @@
   // -----------------------------------------------------------------------
   const RASTER_TYPES = new Set(["TileLayer", "BitmapLayer"]);
 
+  // -----------------------------------------------------------------------
+  // Layer construction: resolve once, instantiate per render.
+  //
+  // Resolving a layer's props (accessor strings -> functions, @@binary ->
+  // typed arrays, extensions, easing, pick handlers, meshes) is cached per
+  // source props object, the entries of instance.lastLayers. Re-rendering the
+  // same object -- every animation frame, a tab show, a visibility toggle of
+  // another layer -- then hands deck.gl the SAME functions and data, so it
+  // does not recompute attributes or re-upload buffers. A patched layer is a
+  // new object and is resolved afresh. Resolution works on a clone, so the
+  // cached source is never mutated.
+  // -----------------------------------------------------------------------
+  var _resolvedLayerCache = new WeakMap();
+
   function buildDeckLayers(layersData, targetId) {
-    return layersData.map(layerProps => {
+    var out = [];
+    for (var i = 0; i < layersData.length; i++) {
+      var layer = instantiateLayer(resolveLayerCached(layersData[i], targetId));
+      if (layer) out.push(layer);
+    }
+    return out;
+  }
+
+  function resolveLayerCached(lp, targetId) {
+    var hit = lp && typeof lp === 'object' ? _resolvedLayerCache.get(lp) : null;
+    if (hit && hit.targetId === targetId) return hit.resolved;
+    var resolved = resolveLayerProps(cloneLayer(lp), targetId);
+    if (lp && typeof lp === 'object') {
+      _resolvedLayerCache.set(lp, { targetId: targetId, resolved: resolved });
+    }
+    return resolved;
+  }
+
+  // Per-render values that must not be cached: the current value of each
+  // @@animate prop and the rasterised SVG icon atlas (it may finish loading
+  // after the layer was first resolved). `extra` overrides (e.g. currentTime).
+  function instantiateLayer(resolved, extra) {
+    if (!resolved) return null;
+    var props = Object.assign({}, resolved);
+    var anim = resolved._animConfigs;
+    if (anim) {
+      for (var key in anim) props[key] = window[anim[key].globalKey];
+    }
+    if (typeof props.iconAtlas === 'string'
+        && props.iconAtlas.indexOf('data:image/svg+xml') === 0
+        && _svgAtlasCache[props.iconAtlas]) {
+      props.iconAtlas = _svgAtlasCache[props.iconAtlas];
+    }
+    if (extra) Object.assign(props, extra);
+    var LayerClass = props._LayerClass;
+    delete props._LayerClass;
+    return new LayerClass(props);
+  }
+
+  // Everything about a layer that does not change from frame to frame.
+  // Returns the props object (with the class in _LayerClass), or null.
+  function resolveLayerProps(layerProps, targetId) {
+    {
       resolveAccessors(layerProps);
       resolveExtensions(layerProps);
       resolveBinaryAttributes(layerProps);
@@ -1725,15 +1784,16 @@
       for (const key of Object.keys(layerProps)) {
         const val = layerProps[key];
         if (val && typeof val === 'object' && val['@@animate'] === true) {
+          // Replace with accessor that reads the animated global
+          const globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           animConfigs[key] = {
             prop: val.prop,
             speed: val.speed || 1,
             loop: val.loop !== false,
             rangeMin: val.range_min != null ? val.range_min : 0,
             rangeMax: val.range_max != null ? val.range_max : 360,
+            globalKey: globalKey,
           };
-          // Replace with accessor that reads the animated global
-          const globalKey = '_deckgl_anim_' + targetId + '_' + val.prop;
           if (window[globalKey] === undefined) {
             window[globalKey] = val.range_min != null ? val.range_min : 0;
           }
@@ -1741,10 +1801,8 @@
           // globals (a prefix match on "map" also caught "map_2").
           var owner = mapInstances[targetId];
           if (owner) (owner._animGlobals = owner._animGlobals || {})[globalKey] = true;
-          // Assign current value as a plain number (not an accessor function).
-          // This works because buildDeckLayers() is called every frame by the
-          // animation RAF loop, so the value is refreshed each frame. deck.gl
-          // detects the change via numeric shallow comparison.
+          // The current value is filled in by instantiateLayer() on every
+          // render as a plain number; deck.gl sees it change by value.
           layerProps[key] = window[globalKey];
         }
       }
@@ -1959,16 +2017,10 @@
         }
       }
 
-      // Use pre-rasterised canvas for SVG icon atlases (cache populated
-      // by rasteriseIconAtlas during animation setup or prior render).
-      if (layerProps.iconAtlas && typeof layerProps.iconAtlas === 'string'
-          && layerProps.iconAtlas.indexOf('data:image/svg+xml') === 0
-          && _svgAtlasCache[layerProps.iconAtlas]) {
-        layerProps.iconAtlas = _svgAtlasCache[layerProps.iconAtlas];
-      }
-
-      return new LayerClass(layerProps);
-    }).filter(l => l !== null);
+      // The rasterised SVG icon atlas is swapped in by instantiateLayer().
+      layerProps._LayerClass = LayerClass;
+      return layerProps;
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -2158,8 +2210,7 @@
       }
 
       // Rebuild layers with updated values
-      const deckLayers = buildDeckLayers(
-        cloneLayersData(instance.lastLayers),
+      const deckLayers = buildDeckLayers(instance.lastLayers,
         mapId
       );
       instance.overlay.setProps({ layers: deckLayers });
@@ -2552,8 +2603,7 @@
     // Render the cache as it is now, not the array captured above: a
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
-    const deckLayers = buildDeckLayers(
-      cloneLayersData(instance.lastLayers),
+    const deckLayers = buildDeckLayers(instance.lastLayers,
       targetId
     );
     const overlayProps = { layers: deckLayers };
@@ -2655,8 +2705,7 @@
       if (mapInstances[targetId] !== instance) return;  // disposed meanwhile
       // As in deck_update: render the current cache, which may have been
       // patched again while the atlases were loading.
-      const deckLayers = buildDeckLayers(
-        cloneLayersData(instance.lastLayers),
+      const deckLayers = buildDeckLayers(instance.lastLayers,
         targetId
       );
       instance.overlay.setProps({ layers: deckLayers });
@@ -2799,8 +2848,7 @@
     instance.lastLayers = patched;
     if (instance._legendWidget) instance._legendWidget._refresh();
 
-    const deckLayers = buildDeckLayers(
-      cloneLayersData(patched),
+    const deckLayers = buildDeckLayers(patched,
       targetId
     );
     instance.overlay.setProps({ layers: deckLayers });
@@ -3932,8 +3980,7 @@
           inst.map.resize();
           // Re-apply current layers to force deck.gl re-render
           if (inst.overlay && inst.lastLayers && inst.lastLayers.length) {
-            const deckLayers = buildDeckLayers(
-              cloneLayersData(inst.lastLayers),
+            const deckLayers = buildDeckLayers(inst.lastLayers,
               el.id
             );
             inst.overlay.setProps({ layers: deckLayers });

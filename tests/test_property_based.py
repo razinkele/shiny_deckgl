@@ -24,7 +24,6 @@ from shiny_deckgl import (
     PALETTE_VIRIDIS,
     PALETTE_PLASMA,
 )
-from shiny_deckgl._mixins import NavigationMixin
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +103,7 @@ class TestMapWidgetProperties:
     )
     def test_build_view_state_omits_none(self, lng, lat, zoom, p, b):
         """_build_view_state should omit None values."""
-        vs = NavigationMixin._build_view_state(lng, lat, zoom, p, b)
+        vs = MapWidget._build_view_state(lng, lat, zoom, p, b)
 
         assert vs["longitude"] == lng
         assert vs["latitude"] == lat
@@ -283,7 +282,7 @@ class TestComputeBoundsProperties:
         ]
         geojson = {"type": "FeatureCollection", "features": features}
 
-        bounds = NavigationMixin.compute_bounds(geojson)
+        bounds = MapWidget.compute_bounds(geojson)
 
         sw_lng, sw_lat = bounds[0]
         ne_lng, ne_lat = bounds[1]
@@ -310,7 +309,7 @@ class TestComputeBoundsProperties:
         ]
         geojson = {"type": "FeatureCollection", "features": features}
 
-        bounds = NavigationMixin.compute_bounds(geojson)
+        bounds = MapWidget.compute_bounds(geojson)
 
         lngs = [c[0] for c in coords]
         lats = [c[1] for c in coords]

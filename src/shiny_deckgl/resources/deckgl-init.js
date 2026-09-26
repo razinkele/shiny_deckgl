@@ -151,14 +151,14 @@
   //
   // Implements the deck.gl Widget interface (onAdd / onRemove / setProps)
   // so it can be passed in the widgets array alongside ZoomWidget, etc.
-  // Reuses the same CSS classes and rendering logic as DeckLegendControl.
+  // Styled by the .deck-legend-* classes in styles.css.
   // -----------------------------------------------------------------------
   // DeckLayerLegendWidget is created lazily via createDeckLayerLegendWidget()
   // because deck.Widget may not be available when this script first loads.
   var _DeckLayerLegendWidgetClass = null;
   var LEGEND_DEFAULTS = {
     entries: [], showCheckbox: true, collapsed: false, title: null,
-    autoIntrospect: false, excludeLayers: [], labelMap: {},
+    autoIntrospect: false, excludeLayers: [], labelMap: {}, includeHidden: false,
   };
 
   function createDeckLayerLegendWidget(props) {
@@ -192,9 +192,18 @@
         this._legendProps = Object.assign({}, LEGEND_DEFAULTS, p);
         this._mapId = null;
         this._rootEl = null;
+        // Collapse state set by the user's clicks. It survives re-renders and
+        // is only reset when the `collapsed` prop itself changes.
+        this._collapsedProp = this._legendProps.collapsed;
+        this._collapsed = !!this._collapsedProp;
       };
 
-      proto.onRemove = function () { this._mapId = null; };
+      proto.onRemove = function () {
+        var inst = this._mapId ? mapInstances[this._mapId] : null;
+        if (inst && inst._legendWidget === this) inst._legendWidget = null;
+        this._mapId = null;
+        this._rootEl = null;
+      };
 
       proto.onRenderHTML = function (el) {
         el.classList.add('deck-legend-ctrl', 'deck-layer-legend-widget');
@@ -206,6 +215,10 @@
         // Sync _legendProps from this.props (kept updated by base setProps)
         if (this.props) {
           this._legendProps = Object.assign({}, LEGEND_DEFAULTS, this.props);
+        }
+        if (this._legendProps.collapsed !== this._collapsedProp) {
+          this._collapsedProp = this._legendProps.collapsed;
+          this._collapsed = !!this._collapsedProp;
         }
         this._resolveMapId();
         // Register this widget on the mapInstance for refresh callbacks
@@ -238,27 +251,38 @@
           ? opts.entries
           : (opts.autoIntrospect ? this._introspectLayers() : []);
 
-        if (opts.title) {
-          var header = document.createElement('button');
-          header.className = 'deck-legend-header';
-          header.setAttribute('aria-label', 'Toggle legend');
-          header.innerHTML = '<span class="deck-legend-title">' +
-            this._esc(opts.title) + '</span><span class="deck-legend-arrow">' +
-            (opts.collapsed ? '\u25B6' : '\u25BC') + '</span>';
-          header.addEventListener('click', function () {
-            var body = container.querySelector('.deck-legend-body');
-            var arrow = header.querySelector('.deck-legend-arrow');
-            if (!body) return;
-            var hidden = body.style.display === 'none';
-            body.style.display = hidden ? '' : 'none';
-            if (arrow) arrow.textContent = hidden ? '\u25BC' : '\u25B6';
-          });
-          container.appendChild(header);
-        }
-
+        var self = this;
         var body = document.createElement('div');
         body.className = 'deck-legend-body';
-        if (opts.collapsed) body.style.display = 'none';
+
+        // The header is the only way to expand the panel, so a collapsed
+        // legend always gets one, titled "Layers" when no title was given.
+        if (opts.title || opts.collapsed) {
+          var header = document.createElement('button');
+          header.type = 'button';
+          header.className = 'deck-legend-header';
+          header.setAttribute('aria-label', 'Toggle legend');
+          var titleEl = document.createElement('span');
+          titleEl.className = 'deck-legend-title';
+          titleEl.textContent = opts.title || 'Layers';
+          var arrow = document.createElement('span');
+          arrow.className = 'deck-legend-arrow';
+          var syncCollapsed = function () {
+            body.style.display = self._collapsed ? 'none' : '';
+            arrow.textContent = self._collapsed ? '\u25B6' : '\u25BC';
+            header.setAttribute('aria-expanded', String(!self._collapsed));
+          };
+          header.addEventListener('click', function () {
+            self._collapsed = !self._collapsed;
+            syncCollapsed();
+          });
+          header.appendChild(titleEl);
+          header.appendChild(arrow);
+          container.appendChild(header);
+          syncCollapsed();
+        } else {
+          this._collapsed = false;
+        }
 
         for (var i = 0; i < entries.length; i++) {
           var entry = entries[i];
@@ -270,7 +294,6 @@
             cb.type = 'checkbox';
             cb.checked = this._isLayerVisible(entry.layer_id);
             cb.className = 'deck-legend-cb';
-            var self = this;
             (function (layerId) {
               cb.addEventListener('change', function () {
                 self._toggleLayer(layerId, this.checked);
@@ -334,11 +357,20 @@
         if (!inst || !inst.lastLayers) return [];
         var exclude = this._legendProps.excludeLayers || [];
         var labelMap = this._legendProps.labelMap || {};
+        var includeHidden = !!this._legendProps.includeHidden;
+        // Layers the user unticked here stay listed (unchecked), or they could
+        // never be ticked again. Layers the server hid are left out unless
+        // includeHidden is set.
+        var userHidden = inst._legendUserHidden || {};
         var entries = [];
         for (var i = 0; i < inst.lastLayers.length; i++) {
           var lp = inst.lastLayers[i];
           if (!lp || !lp.id) continue;
-          if (lp.visible === false) continue;
+          if (lp.visible !== false) {
+            delete userHidden[lp.id];
+          } else if (!includeHidden && !userHidden[lp.id]) {
+            continue;
+          }
           if (exclude.indexOf(lp.id) >= 0) continue;
           var entry = this._extractEntry(lp, labelMap);
           if (entry) entries.push(entry);
@@ -492,18 +524,19 @@
           if (lp.id !== layerId) return lp;
           return Object.assign({}, lp, { visible: visible });
         });
+        if (!inst._legendUserHidden) inst._legendUserHidden = {};
+        if (visible) delete inst._legendUserHidden[layerId];
+        else inst._legendUserHidden[layerId] = true;
         var deckLayers = buildDeckLayers(
           cloneLayersData(inst.lastLayers),
           this._mapId
         );
         inst.overlay.setProps({ layers: deckLayers });
         inst.map.triggerRepaint();
-      };
-
-      proto._esc = function (s) {
-        var d = document.createElement('span');
-        d.textContent = s;
-        return d.innerHTML;
+        // Report the toggle so the server can keep its own state in step;
+        // otherwise its next update() would silently undo the user's choice.
+        Shiny.setInputValue(this._mapId + '_legend_visibility',
+          { layer_id: layerId, visible: visible }, { priority: 'event' });
       };
     }
 
@@ -1383,7 +1416,10 @@
   }
 
   function buildWidgets(widgetSpecs, targetId) {
-    if (!widgetSpecs || !widgetSpecs.length) return undefined;
+    if (!widgetSpecs) return undefined;
+    // An explicit empty list must reach overlay.setProps so deck.gl removes
+    // the current widgets; `undefined` would leave them in place.
+    if (!widgetSpecs.length) return [];
     // Resolve the map container element so FullscreenWidget can target it
     const containerEl = targetId ? document.getElementById(targetId) : null;
     return widgetSpecs.map(spec => {

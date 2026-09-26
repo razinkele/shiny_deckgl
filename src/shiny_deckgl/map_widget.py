@@ -260,6 +260,15 @@ class MapWidget:
         """Shiny input for right-click / context-menu events on the map."""
         return f"{self._bare_id}_map_contextmenu"
 
+    @property
+    def legend_visibility_input_id(self) -> str:
+        """Shiny input for layer toggles made in a :func:`layer_legend_widget`.
+
+        Returns ``{layer_id, visible}`` each time the user ticks or unticks
+        a legend checkbox.
+        """
+        return f"{self._bare_id}_legend_visibility"
+
     # -- UI -------------------------------------------------------------------
 
     def ui(self, width: str = "100%", height: str = "400px") -> ui.Tag:

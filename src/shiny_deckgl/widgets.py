@@ -191,6 +191,7 @@ def layer_legend_widget(
     auto_introspect: bool = False,
     exclude_layers: list[str] | None = None,
     label_map: dict[str, str] | None = None,
+    include_hidden: bool = False,
     **kwargs,
 ) -> dict:
     """Create a layer legend **widget** for deck.gl overlay layers.
@@ -221,10 +222,21 @@ def layer_legend_widget(
         Widget placement (default ``"top-left"``).
     show_checkbox
         Show a checkbox per entry to toggle deck.gl layer visibility.
+        Toggles happen in the browser and are reported to the server as
+        ``input[widget.legend_visibility_input_id]()``, a
+        ``{"layer_id": str, "visible": bool}`` dict.  The next
+        :meth:`~shiny_deckgl.MapWidget.update` resends each layer's
+        ``visible`` prop, so apps that push updates should keep that
+        prop in step with this input.  A layer unticked in the legend
+        stays listed, unchecked, so it can be ticked again.
     collapsed
-        Start the panel in collapsed state.
+        Start the panel in collapsed state.  Once the user expands or
+        collapses the panel, their choice survives layer updates until
+        this value changes.
     title
         Optional header text.  When provided the panel is collapsible.
+        A collapsed legend without a title gets a "Layers" header so it
+        can still be opened.
     auto_introspect
         When ``True`` and no manual ``entries`` are given, the widget
         introspects active deck.gl layers on the client side and generates
@@ -235,6 +247,11 @@ def layer_legend_widget(
         Layer IDs to exclude from auto-introspected legend.
     label_map
         ``{layer_id: display_label}`` overrides for auto-introspected labels.
+    include_hidden
+        Auto-introspect only.  When ``False`` (default), layers the server
+        sent with ``visible=False`` are left out of the legend, so it lists
+        the active layers.  When ``True``, they are listed unchecked, so the
+        legend doubles as a layer switcher.
     """
     opts: dict = {
         "@@widgetClass": "_DeckLayerLegendWidget",
@@ -244,12 +261,12 @@ def layer_legend_widget(
         "showCheckbox": show_checkbox,
         "collapsed": collapsed,
         "autoIntrospect": auto_introspect,
+        # Always sent, even when empty: deck.gl merges new widget props into
+        # the old ones, so an omitted key would keep its previous value.
+        "title": title,
+        "excludeLayers": list(exclude_layers or []),
+        "labelMap": dict(label_map or {}),
+        "includeHidden": include_hidden,
         **kwargs,
     }
-    if title is not None:
-        opts["title"] = title
-    if exclude_layers:
-        opts["excludeLayers"] = list(exclude_layers)
-    if label_map:
-        opts["labelMap"] = dict(label_map)
     return opts

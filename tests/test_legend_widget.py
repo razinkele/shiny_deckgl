@@ -351,3 +351,14 @@ class TestSwatchColours:
         e = _entry_for("{ id: 's', type: 'ScatterplotLayer', getFillColor: '@@=d.v > 1 ? [1,1,1] : [2,2,2]',"
                        " data: [{ v: 3, color: [9,9,9] }] }")
         assert e["color"] != [9, 9, 9]
+
+    @pytest.mark.parametrize("geom,shape", [
+        ("Point", "circle"), ("MultiPoint", "circle"),
+        ("LineString", "line"), ("MultiLineString", "line"),
+        ("Polygon", "rect"), ("MultiPolygon", "rect"),
+    ])
+    def test_geojson_shape_follows_the_geometry(self, geom, shape):
+        # L10: every GeoJsonLayer got a circle swatch, even lines and polygons.
+        e = _entry_for("{ id: 'g', type: 'GeoJsonLayer', data: { type: 'FeatureCollection',"
+                       f" features: [{{ type: 'Feature', properties: {{}}, geometry: {{ type: '{geom}' }} }}] }} }}")
+        assert e["shape"] == shape

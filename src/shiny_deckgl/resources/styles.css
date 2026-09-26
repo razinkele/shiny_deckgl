@@ -18,7 +18,7 @@ html, body { height: 100%; margin: 0; }
 }
 
 /* ===================================================================
-   Deck.gl Legend Control
+   Layer legend widget (layer_legend_widget / _DeckLayerLegendWidget)
    =================================================================== */
 .deck-legend-ctrl {
   background: #fff;

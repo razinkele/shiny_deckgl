@@ -405,6 +405,13 @@
         // Strip module prefix (e.g. "HexagonLayer" from "@deck.gl/aggregation-layers/HexagonLayer")
         var shortType = layerType.split('/').pop() || layerType;
         var shape = TYPE_SHAPE[shortType] || 'circle';
+        // GeoJSON can hold points, lines or polygons: use the first feature's.
+        if (shortType === 'GeoJsonLayer') {
+          var f = this._firstDatum(lp);
+          var g = f && f.geometry && f.geometry.type;
+          if (/LineString$/.test(g || '')) shape = 'line';
+          else if (/Polygon$/.test(g || '')) shape = 'rect';
+        }
         var label = (labelMap && labelMap[lp.id]) || lp.id;
         var entry = { layer_id: lp.id, label: label, shape: shape };
 

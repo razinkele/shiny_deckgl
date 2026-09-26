@@ -15,9 +15,9 @@ def transition(duration: int = 1000, easing: str | None = None,
         Transition duration in milliseconds (used for ``"interpolation"``
         type only).
     easing
-        Named easing function.  Supported values:
-        ``"ease-in-cubic"``, ``"ease-out-cubic"``,
-        ``"ease-in-out-cubic"``, ``"ease-in-out-sine"``.
+        Named easing function: ``"linear"``, or ``"ease-in-"``,
+        ``"ease-out-"`` or ``"ease-in-out-"`` followed by ``cubic``,
+        ``sine``, ``quad`` or ``expo`` (see :class:`~shiny_deckgl.EasingFunction`).
         The JS client resolves these into real easing functions.
     type
         ``"interpolation"`` (default) or ``"spring"``.

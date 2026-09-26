@@ -28,7 +28,9 @@ def timeline_control(
     labels
         List of step labels (e.g. month names). Length determines slider range.
     interval_ms
-        Milliseconds between frames during auto-play (default 1000).
+        Has no effect: the auto-play cadence is set by
+        :func:`timeline_server`'s ``interval_ms``.  Kept (and still
+        validated) so existing calls keep working.
 
     Returns
     -------
@@ -104,6 +106,9 @@ def timeline_server(
 
     if not labels:
         raise ValueError("labels must be a non-empty list")
+    # 0 or less would re-run the auto-advance effect in a tight loop.
+    if interval_ms <= 0:
+        raise ValueError(f"interval_ms must be > 0, got {interval_ms}")
 
     try:
         from shiny import module, reactive

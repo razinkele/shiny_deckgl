@@ -1477,3 +1477,13 @@ class TestPerSessionWidgetState:
         spec2 = _json.loads(w.to_json([], session=s2))
         assert spec1["style"] == CARTO_DARK and spec1["tooltip"] == {"html": "CHANGED"}
         assert spec2["style"] == w.style and spec2["tooltip"] == {"html": "ORIGINAL {name}"}
+
+
+class TestTimelineServerInterval:
+    """P12: timeline_server accepted interval_ms=0, a tight auto-advance loop."""
+
+    @pytest.mark.parametrize("bad", [0, -5])
+    def test_non_positive_interval_is_rejected(self, bad):
+        from shiny_deckgl._timeline import timeline_server
+        with pytest.raises(ValueError, match="interval_ms"):
+            timeline_server("tl", ["a", "b"], interval_ms=bad)

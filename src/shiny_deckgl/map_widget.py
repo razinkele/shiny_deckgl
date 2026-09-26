@@ -1340,8 +1340,9 @@ class MapWidget:
     ) -> None:
         """Check whether *image_id* is loaded and report back via input.
 
-        The result is delivered asynchronously as a boolean through
-        ``input.<map_id>_has_image``.
+        The result is delivered asynchronously through
+        ``input[widget.has_image_input_id]()`` as
+        ``{"imageId": str, "exists": bool}``.
 
         Parameters
         ----------

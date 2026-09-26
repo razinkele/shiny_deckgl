@@ -159,3 +159,42 @@ class TestGeoDataFrameCrs:
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             _serialise_data(gdf)
+
+
+# ---------------------------------------------------------------------------
+# P9 -- colour helpers on real data
+# ---------------------------------------------------------------------------
+
+from shiny_deckgl import color_bins, color_quantiles, color_range  # noqa: E402
+
+MISSING = [0, 0, 0, 0]
+
+
+class TestColourHelpersOnRealData:
+    @pytest.mark.parametrize("fn", [color_bins, color_quantiles])
+    def test_nan_gets_the_missing_colour_and_others_are_unaffected(self, fn):
+        clean = fn([1.0, 2.0, 3.0, 4.0], n_bins=4)
+        got = fn([1.0, float("nan"), 2.0, 3.0, None, 4.0, float("inf")], n_bins=4)
+        assert got[1] == MISSING and got[4] == MISSING and got[6] == MISSING
+        assert [got[0], got[2], got[3], got[5]] == clean
+
+    @pytest.mark.parametrize("fn", [color_bins, color_quantiles])
+    def test_series_and_arrays_are_accepted(self, fn):
+        expected = fn([5.0, 1.0, 3.0], n_bins=3)
+        assert fn(pd.Series([5.0, 1.0, 3.0]), n_bins=3) == expected
+        assert fn(np.array([5.0, 1.0, 3.0]), n_bins=3) == expected
+        assert fn(pd.Series([5, 1, 3], dtype="Int64"), n_bins=3) == expected
+
+    @pytest.mark.parametrize("fn", [color_bins, color_quantiles])
+    def test_all_missing(self, fn):
+        assert fn([float("nan"), None], n_bins=3) == [MISSING, MISSING]
+
+    def test_custom_missing_colour(self):
+        got = color_bins([1.0, float("nan")], n_bins=2, missing_color=[9, 9, 9, 255])
+        assert got[1] == [9, 9, 9, 255]
+
+    def test_quantile_breaks_ignore_nan(self):
+        # NaN used to sort to an arbitrary place and corrupt the breaks.
+        vals = [1.0, 2.0, 3.0, 4.0]
+        top = color_range(4)[-1]
+        assert color_quantiles(vals + [float("nan")] * 4, n_bins=4)[3] == top

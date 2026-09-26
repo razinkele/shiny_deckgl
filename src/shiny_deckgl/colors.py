@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from typing import Iterable
+
 __all__ = [
     "CARTO_POSITRON",
     "CARTO_DARK",
@@ -137,10 +140,32 @@ def color_range(
     return result
 
 
+#: Colour given to missing values (None, NaN, inf) by the binning helpers.
+MISSING_COLOR = [0, 0, 0, 0]
+
+
+def _as_finite(values: Iterable) -> list[float | None]:
+    """Values as floats, with missing entries (None, NaN, inf, pd.NA) as None.
+
+    Accepts lists, tuples, numpy arrays and pandas Series alike.
+    """
+    out: list[float | None] = []
+    for v in values:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            out.append(None)
+            continue
+        out.append(f if math.isfinite(f) else None)
+    return out
+
+
 def color_bins(
-    values: list[float],
+    values: Iterable[float],
     n_bins: int = 6,
     palette: list[list[int]] | None = None,
+    *,
+    missing_color: list[int] | None = None,
 ) -> list[list[int]]:
     """Map each value to a color using equal-width bins.
 
@@ -152,20 +177,30 @@ def color_bins(
         Number of color bins.
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
+    missing_color
+        Colour for missing values (``None``, NaN, inf, ``pd.NA``); defaults
+        to transparent :data:`MISSING_COLOR`.  Bins are computed from the
+        finite values only.
 
     Returns
     -------
     list[list[int]]
         One ``[R, G, B, A]`` color per input value.
     """
-    if not values:
-        return []
+    vals = _as_finite(values)
+    missing = list(missing_color) if missing_color is not None else list(MISSING_COLOR)
+    finite = [v for v in vals if v is not None]
+    if not finite:
+        return [list(missing) for _ in vals]
     colors = color_range(n_bins, palette)
-    lo = min(values)
-    hi = max(values)
+    lo = min(finite)
+    hi = max(finite)
     span = hi - lo if hi != lo else 1.0
     result: list[list[int]] = []
-    for v in values:
+    for v in vals:
+        if v is None:
+            result.append(list(missing))
+            continue
         idx = int((v - lo) / span * n_bins)
         idx = max(0, min(idx, n_bins - 1))
         result.append(colors[idx])
@@ -173,9 +208,11 @@ def color_bins(
 
 
 def color_quantiles(
-    values: list[float],
+    values: Iterable[float],
     n_bins: int = 6,
     palette: list[list[int]] | None = None,
+    *,
+    missing_color: list[int] | None = None,
 ) -> list[list[int]]:
     """Map each value to a color using quantile-based bins.
 
@@ -189,16 +226,23 @@ def color_quantiles(
         Number of color bins.
     palette
         Source palette (defaults to ``PALETTE_VIRIDIS``).
+    missing_color
+        Colour for missing values (``None``, NaN, inf, ``pd.NA``); defaults
+        to transparent :data:`MISSING_COLOR`.  Bins are computed from the
+        finite values only.
 
     Returns
     -------
     list[list[int]]
         One ``[R, G, B, A]`` color per input value.
     """
-    if not values:
-        return []
+    vals = _as_finite(values)
+    missing = list(missing_color) if missing_color is not None else list(MISSING_COLOR)
+    finite = [v for v in vals if v is not None]
+    if not finite:
+        return [list(missing) for _ in vals]
     colors = color_range(n_bins, palette)
-    sorted_vals = sorted(values)
+    sorted_vals = sorted(finite)
     n = len(sorted_vals)
     # Compute quantile breakpoints
     breaks = [
@@ -215,7 +259,7 @@ def color_quantiles(
                 return i
         return n_bins - 1
 
-    return [colors[_bin(v)] for v in values]
+    return [list(missing) if v is None else colors[_bin(v)] for v in vals]
 
 
 def depth_color(

@@ -352,11 +352,17 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             input.ml_basemap(), CARTO_POSITRON,
         )
         await maplibre_widget.set_style(session, style_url)
-        # set_style removes all sources/layers; re-add ours. The legend and
-        # opacity controls stay: the legend refreshes itself on style changes.
+        # set_style removes all sources/layers; re-add ours. The legend stays
+        # (it refreshes itself on style changes).
         await _ml_add_native_layers()
         if input.v1_show_clusters():
             await _ml_add_clusters()
+        # The re-added layers are all visible again, but the opacity control
+        # would keep showing any boxes the user had unticked: re-create it
+        # so it matches. set_controls() leaves the unchanged ones alone.
+        if input.ml_opacity():
+            await maplibre_widget.remove_control(session, "opacity")
+            await maplibre_widget.set_controls(session, _build_ml_controls())
 
     # Drag marker (MapLibre tab)
     @reactive.Effect

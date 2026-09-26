@@ -930,6 +930,18 @@
   // Tear down a map instance and release its resources when its DOM node is
   // removed (e.g. a Shiny tab/UI is re-rendered). Without this, MapLibre maps,
   // deck.gl overlays, RAF loops and animation globals leak.
+  // True when `removedEl` is the container of `instance` and has left the
+  // document. Checking the id instead is wrong: Shiny's render.ui swaps in a
+  // replacement with the same id before the MutationObserver runs, so the id
+  // still resolves while the map's own node is gone. A node that was only
+  // moved is still connected and keeps its map.
+  function isDetachedMapContainer(instance, removedEl) {
+    var container = null;
+    try { container = instance.map && instance.map.getContainer(); } catch (e) { /* ignore */ }
+    if (!container) return !document.getElementById(removedEl.id);
+    return container === removedEl && !container.isConnected;
+  }
+
   function disposeMap(id) {
     var instance = mapInstances[id];
     if (!instance) return;
@@ -3769,9 +3781,19 @@
         }
         for (var m = 0; m < rmaps.length; m++) {
           var rel = rmaps[m];
-          if (rel.id && mapInstances[rel.id] && !document.getElementById(rel.id)) {
+          if (rel.id && mapInstances[rel.id] && isDetachedMapContainer(mapInstances[rel.id], rel)) {
             console.debug('[shiny_deckgl] MutationObserver: disposing removed .deckgl-map "' + rel.id + '"');
             disposeMap(rel.id);
+            // The replacement may have been inserted before the old node was
+            // removed; its add record was then skipped while the old map
+            // still held the id, so initialise it here.
+            var fresh = document.getElementById(rel.id);
+            if (fresh && fresh !== rel && fresh.classList.contains('deckgl-map') &&
+                typeof maplibregl !== 'undefined' && typeof deck !== 'undefined' &&
+                isInVisibleTab(fresh)) {
+              safeInitMap(fresh);
+              replayDeferredMessages(fresh.id);
+            }
           }
         }
       }

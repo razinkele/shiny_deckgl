@@ -852,8 +852,8 @@ def build_ui():
                             "Export the current map state to standalone HTML "
                             "or JSON format."
                         ),
-                        ui.input_action_button(
-                            "export_html", "\U0001F310 Export HTML File",
+                        ui.download_button(
+                            "export_html", "\U0001F310 Download HTML File",
                         ),
                         ui.input_action_button(
                             "export_json", "\U0001F4CB Serialise to JSON",

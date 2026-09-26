@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import random
-import tempfile
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -355,6 +355,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # set_style removes all sources/layers; re-add ours. The legend and
         # opacity controls stay: the legend refreshes itself on style changes.
         await _ml_add_native_layers()
+        if input.v1_show_clusters():
+            await _ml_add_clusters()
 
     # Drag marker (MapLibre tab)
     @reactive.Effect
@@ -373,19 +375,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         )
 
     # Clusters (merged from former Tab 10)
+    async def _ml_add_clusters():
+        await maplibre_widget.add_cluster_layer(
+            session,
+            "v1-clusters",
+            make_port_geojson(),
+            cluster_radius=input.v1_cluster_radius(),
+            cluster_color="#14919b",
+            point_color="#e65100",
+            point_radius=6,
+        )
+
     @reactive.Effect
     @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
     async def _v1_clusters():
         if input.v1_show_clusters():
-            await maplibre_widget.add_cluster_layer(
-                session,
-                "v1-clusters",
-                make_port_geojson(),
-                cluster_radius=input.v1_cluster_radius(),
-                cluster_color="#14919b",
-                point_color="#e65100",
-                point_radius=6,
-            )
+            await _ml_add_clusters()
         else:
             await maplibre_widget.remove_cluster_layer(session, "v1-clusters")
 
@@ -537,8 +542,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return color_bins(_pal_depths, n_bins=n, palette=pal)
         elif mode == "quantiles":
             return color_quantiles(_pal_depths, n_bins=n, palette=pal)
-        else:  # "range" — assign N-colour linear ramp via bins
-            return color_bins(_pal_depths, n_bins=n, palette=pal)
+        else:  # "range": continuous -- each value's own point on the ramp
+            # (it used to call color_bins, so it looked exactly like "bins")
+            return color_bins(_pal_depths, n_bins=256, palette=pal)
 
     @reactive.Calc
     def _pal_range_colors() -> list[list[int]]:
@@ -582,7 +588,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         mode_label = {
             "bins": "color_bins (equal-width)",
             "quantiles": "color_quantiles (equal-count)",
-            "range": "color_range (linear interpolation)",
+            "range": "continuous ramp (color_bins, 256 steps)",
         }.get(input.pal_mode(), input.pal_mode())
 
         lo, hi = min(_pal_depths), max(_pal_depths)
@@ -619,9 +625,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
         else:
             return (
-                f"from shiny_deckgl import color_range, {pal_const}\n\n"
-                f"colors = color_range(n={n}, palette={pal_const})\n"
-                f"# \u2192 {n} evenly-spaced [R, G, B, A] colours"
+                f"from shiny_deckgl import color_bins, color_range, {pal_const}\n\n"
+                f"# Continuous: 256 steps, so each value gets its own shade\n"
+                f"colors = color_bins(depths, n_bins=256, palette={pal_const})\n"
+                f"# Legend / swatch: {n} evenly-spaced stops\n"
+                f"stops = color_range(n={n}, palette={pal_const})"
             )
 
     # Push palette-coloured layers to the palette map
@@ -688,7 +696,14 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
         # Legend: one row per bin, labelled with the depths it really holds.
         # The heatmap ignores the palette and uses deck.gl's default ramp.
-        if layer_type == "heatmap":
+        if input.pal_mode() == "range" and layer_type != "heatmap":
+            lo, hi = min(_pal_depths), max(_pal_depths)
+            legend_entries = [{
+                "label": f"{lo:.0f} to {hi:.0f} m",
+                "colors": [c[:3] for c in _pal_range_colors()],
+                "shape": "gradient",
+            }]
+        elif layer_type == "heatmap":
             legend_entries = [{
                 "label": "Depth-weighted density",
                 "colors": [[255, 255, 178], [254, 217, 118], [254, 178, 76],
@@ -1055,24 +1070,21 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # Tab 6 — Export & Serialisation
     # =================================================================
 
-    @reactive.Effect
-    @reactive.event(input.export_html)
-    async def _do_export_html():
+    # A download, not a file on the server: a fixed temp path was shared by
+    # every session (concurrent users overwrote each other) and the path it
+    # reported was on the server's disk, not the user's.
+    @render.download_button(filename="shiny_deckgl_export.html")
+    def export_html():
         layers = _gl_build_all_layers()
-        path = os.path.join(
-            tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
+        html = gallery_widget.to_html(
+            layers, title="shiny_deckgl Export", session=session
         )
-        gallery_widget.to_html(
-            layers, path=path, title="shiny_deckgl Export", session=session
-        )
-        fsize = os.path.getsize(path)
         _export_log.set(
-            f"HTML exported successfully!\n"
-            f"Path: {path}\n"
-            f"Size: {fsize:,} bytes\n"
+            f"HTML exported for download.\n"
+            f"Size: {len(html.encode('utf-8')):,} bytes\n"
             f"Layers: {len(layers)}"
         )
-        ui.notification_show(f"Exported to {path}", type="message")
+        yield html
 
     @reactive.Effect
     @reactive.event(input.export_json)
@@ -1330,7 +1342,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.td_lighting, input.td_ambient, input.td_point_light,
         input.td_directional, input.td_dir_intensity,
         input.td_pp_brightness, input.td_brightness, input.td_contrast,
-        input.td_pitch, input.td_bearing,
     )
     async def _td_rebuild():
         layers: list[dict] = []
@@ -1428,7 +1439,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
 
         # --- Lighting ---
-        effects = None
+        effects: list = []  # [] clears effects switched off; None keeps them
         if input.td_lighting():
             amb = ambient_light(intensity=input.td_ambient())
             pl = point_light(
@@ -1456,7 +1467,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
         await three_d_widget.update(session, layers, effects=effects)
 
-        # Fly to the current pitch / bearing
+    # Camera: only the pitch / bearing sliders move it. Flying on every
+    # layer or lighting tweak snapped the user's own pan and zoom back.
+    @reactive.Effect
+    @reactive.event(input.td_pitch, input.td_bearing)
+    async def _td_camera():
         await three_d_widget.fly_to(
             session,
             longitude=19.5,
@@ -1630,9 +1645,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             for t in filtered_trips:
                 wps = [p[:2] for p in t["path"]]
                 if len(wps) >= 2:
+                    # Tracks are round trips (they end back at the haul-out),
+                    # so first-to-last was a zero-length arc: connect the
+                    # haul-out to the farthest point reached instead.
+                    home = wps[0]
+                    kx = math.cos(math.radians(home[1]))
+                    far = max(wps, key=lambda q: ((q[0] - home[0]) * kx) ** 2
+                              + (q[1] - home[1]) ** 2)
+                    if far == home:
+                        continue
                     gc_data.append({
-                        "sourcePosition": wps[0],
-                        "targetPosition": wps[-1],
+                        "sourcePosition": home,
+                        "targetPosition": far,
                         "name": t.get("name", ""),
                     })
             if gc_data:
@@ -2081,6 +2105,21 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # GeoJSON for gallery — HELCOM Marine Protected Areas
     _gl_geojson = MPA_GEOJSON
 
+    # Google's 3D Tiles endpoint needs an API key ("?key=...") and answers
+    # 403 without one. deck.gl fetches a layer's data even when
+    # visible=False, so the layer is only built when the toggle is on and a
+    # key is configured.
+    _GOOGLE_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    _gl_tile3d_sent = [False]
+
+    def _gl_tile_3d_layer() -> dict:
+        return tile_3d_layer(
+            "gl-tile-3d",
+            "https://tile.googleapis.com/v1/3dtiles/root.json?key=" + _GOOGLE_KEY,
+            pickable=True,
+            opacity=0.8,
+        )
+
     # -- Build all 33 gallery layers once (data sent at session init) ----
     # Toggle-switch ID -> (layer_id(s), display_name(s))
     _GL_TOGGLE_MAP: dict[str, list[tuple[str, str]]] = {
@@ -2414,19 +2453,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             transparent=True,
             opacity=0.6,
         ))
-        # Google's 3D Tiles endpoint needs an API key appended as
-        # "?key=YOUR_KEY"; without one it answers 403. deck.gl fetches a
-        # layer's data even when visible=False, so adding this unconditionally
-        # made every page load raise an unhandled error. Build it only while
-        # the toggle is on -- it will still 403 until a key is supplied, but
-        # nothing is requested unless the user asks for it.
-        if input.gl_tile_3d():
-            _add("gl_tile_3d", tile_3d_layer(
-                "gl-tile-3d",
-                "https://tile.googleapis.com/v1/3dtiles/root.json",
-                pickable=True,
-                opacity=0.8,
-            ))
+        # Only with a key, and only if already switched on (see _GOOGLE_KEY).
+        if input.gl_tile_3d() and _GOOGLE_KEY:
+            _add("gl_tile_3d", _gl_tile_3d_layer())
+            _gl_tile3d_sent[0] = True
 
         # -- 3-D / mesh layers ---
         _add("gl_point_cloud", point_cloud_layer(
@@ -2602,6 +2632,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # Skip toggles until initial data has been sent
         if not _gl_initialized.get():
             return
+
+        # The Tile3D layer isn't in the initial push (see _gl_tile_3d_layer),
+        # so a visibility flip alone would show nothing: add it on first use.
+        if input.gl_tile_3d() and not _gl_tile3d_sent[0]:
+            if not _GOOGLE_KEY:
+                ui.notification_show(
+                    "Tile3DLayer streams Google Photorealistic 3D Tiles, which "
+                    "need an API key: set GOOGLE_MAPS_API_KEY and restart.",
+                    type="warning", duration=8,
+                )
+                ui.update_switch("gl_tile_3d", value=False)
+                return
+            await gallery_widget.partial_update(session, [_gl_tile_3d_layer()])
+            _gl_tile3d_sent[0] = True
 
         visibility: dict[str, bool] = {}
         active_names: set[str] = set()

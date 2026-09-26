@@ -127,6 +127,21 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.11.0 — Security, Legends, Data Safety & One Animation Loop
+
+| Capability | Details |
+| --- | --- |
+| **Accessor sandbox closed** | `@@=` expressions could reach `new Function()` through `f?.(...)` plus a string-built key. Optional calls are now rejected and computed keys must be literals or `d.a.b` paths. |
+| **Sanitiser hardening** | SVG animation elements and `<math>` are stripped; output is re-sanitised until stable. |
+| **Layer legend widget** | Unticked layers stay listed; `include_hidden=True`; toggles reported via `legend_visibility_input_id`; collapse state survives updates; real colour ramps for aggregation layers. |
+| **MapLibre legend** *(changed)* | `legend_control()` without `targets` lists the app's native layers, not the basemap's; `targets={}` restores the old behaviour. `reverse_order` defaults to `True`. |
+| **Native layers & styles** | Layers added after load are no longer stranded; `set_style(diff=False)` is honoured. |
+| **Data safety** | numpy/pandas/date values no longer crash the session; projected GeoDataFrames are reprojected to EPSG:4326; SHYFEM parsers take `crs=`; colour helpers handle NaN and Series. |
+| **Per-session state** *(changed)* | `update_tooltip()` / `set_cooperative_gestures()` no longer mutate the shared widget; use `current_tooltip(session)`. |
+| **Exports** | `to_html()` / `to_json()` keep controls, controller and interaction settings. |
+| **Performance** | Layers are resolved once and reused; one animation loop per map; animation frames no longer repaint the basemap. |
+| **Removed** | The unused `_mixins` package. |
+
 ### v1.10.1 — `data:` URI Hardening & CI Repair
 
 | Capability | Details |

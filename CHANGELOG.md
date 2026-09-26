@@ -5,6 +5,93 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.11.0] — 2026-09-26
+
+From the 2026-09-26 codebase review (`docs/2026-09-26-codebase-review.md`).
+
+### Security
+
+- **Accessor expressions could run arbitrary code.** The `@@=` check missed the
+  optional call `f?.(...)`, and a key assembled from strings
+  (`d["con"+"structor"]`) slipped past the name filter; together they reached
+  `new Function()`. A `(` after `.` is now a call, and a computed `[...]` key
+  must be a number, a quoted string or a `d.a.b` path.
+- **Sanitised HTML** strips SVG `<animate>`/`<animateMotion>`/`<animateTransform>`/`<set>`
+  (which can rewrite an `href` to `javascript:` after the check) and `<math>`,
+  and is re-sanitised until the output stops changing (mutation XSS).
+- **Removed `shiny_deckgl._mixins`**, an unused copy of `MapWidget` code that
+  still contained the `</script>` injection and unescaped attributes fixed
+  earlier in `map_widget.py`.
+
+### Added
+
+- `layer_legend_widget(include_hidden=True)` lists layers the server hid.
+- `MapWidget.legend_visibility_input_id`: legend checkbox toggles are reported
+  to the server as `{"layer_id", "visible"}`.
+- `parse_shyfem_grd(..., crs=)` / `parse_shyfem_mesh(..., crs=)` (EPSG code or
+  pyproj string, e.g. `3346` for LKS94, `32634` for UTM 34N).
+- `color_bins(..., missing_color=)` / `color_quantiles(..., missing_color=)`.
+- `MapWidget.current_tooltip(session)` and `to_json(..., session=)`.
+
+### Changed
+
+- **`legend_control()` without `targets`** lists the app's own native layers
+  (and follows them as they change) instead of every basemap layer; pass
+  `targets={}` for the old behaviour. `reverse_order` now defaults to `True`
+  (top-most layer first, the plugin's own default).
+- **`update_tooltip()` and `set_cooperative_gestures()` are per session** and no
+  longer change the shared widget attributes; read them back with
+  `current_tooltip(session)`.
+- **`to_json()` always writes `controls`**, plus controller, gestures, picking
+  radius, device pixels, parameters, animate and interleaved when not default;
+  `from_json()` restores them. `to_html()` emits the same `data-*` attributes
+  as `ui()`, so an export keeps its controls and interaction settings.
+- **GeoDataFrames in a projected CRS are reprojected to EPSG:4326**; a frame
+  with no CRS whose coordinates cannot be lon/lat triggers a warning.
+- A projected SHYFEM grid without `crs=` still assumes UTM 33N, now with a
+  warning. `timeline_server(interval_ms<=0)` raises.
+- `set_controls()` keeps controls whose spec is unchanged; `add_control()`
+  waits for the style like `set_controls()`.
+
+### Fixed
+
+- **Layer legend widget:** unticked layers stay listed; toggles reach the
+  server; the collapse state survives updates; a collapsed legend without a
+  title can be opened; cleared props clear; aggregation layers show their real
+  colour ramp; colour accessors are read through their own path; GeoJSON
+  swatches follow the geometry.
+- **MapLibre legend** shows a newly added layer without waiting for a pan.
+- **Native layers added after the map loaded were queued forever**
+  (`add_maplibre_layer()` straight after `add_source()`), and `set_style()`
+  ignored `diff=False`, which removed re-added layers.
+- **Maps inside `render.ui`** are disposed and re-created on re-render instead
+  of staying blank.
+- **JSON safety:** numpy scalars/arrays, pandas `Timestamp`/`NaT`/`NA`,
+  `datetime64` and `Decimal` no longer crash the session.
+- `update(effects=[])` / `views=[]` clear what an earlier update set.
+- `on_viewport_change` really debounces and no longer blocks every session.
+- `controller` dicts and `set_controller(True)` drive MapLibre's handlers.
+- `terrain_extension()` works on deck.gl 9.4; `to_html()` loads h3-js.
+- `color_bins`/`color_quantiles` accept NaN, None, Series and arrays.
+- Updates made while icon atlases load are no longer painted over; messages
+  for maps in hidden tabs are coalesced and capped.
+
+### Performance
+
+- **Each layer is resolved once and reused across renders**, so animation
+  frames no longer rebuild accessors and binary data for every layer.
+- **One animation loop per map**: trips and `@@animate` animations no longer
+  fight, a paused animation keeps its time and head icons through re-renders,
+  a layer update no longer restarts a playing animation, and animation frames
+  no longer repaint the basemap (55 → 0 MapLibre renders/s on the seal demo).
+
+### Demo
+
+- Broken Widget Gallery scenarios, mismatched legends, lost Advanced-tab
+  columns, clusters lost on basemap swap, the Tile3D toggle, camera re-flies,
+  "range" colour mode and zero-length seal routes fixed; the seal IBM runs off
+  the event loop with capped sliders; HTML export is a download.
+
 ## [1.10.1] — 2026-09-08
 
 ### Security

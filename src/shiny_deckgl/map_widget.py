@@ -121,6 +121,19 @@ def _read_bundled_resources() -> tuple[str, str]:
     return js_src, css_src
 
 
+# (JSON key, attribute / constructor argument, default) for the widget
+# settings to_json() writes when they differ from the default.
+_JSON_WIDGET_SETTINGS = (
+    ("pickingRadius", "picking_radius", 0),
+    ("useDevicePixels", "use_device_pixels", True),
+    ("animate", "animate", False),
+    ("parameters", "parameters", None),
+    ("controller", "controller", True),
+    ("interleaved", "interleaved", False),
+    ("cooperativeGestures", "cooperative_gestures", False),
+)
+
+
 class MapWidget:
     """Reusable deck.gl map widget for Shiny for Python.
 
@@ -288,11 +301,22 @@ class MapWidget:
         height
             CSS height (default ``"400px"``).
         """
+        return ui.div(
+            id=self.id,
+            class_="deckgl-map",
+            style=f"width:{width};height:{height};",
+            **self._map_data_attrs(),
+        )
+
+    def _map_data_attrs(self, session: "Session | None" = None) -> dict:
+        """The ``data-*`` attributes the client reads to build the map.
+
+        Shared by :meth:`ui` and :meth:`to_html`, so an export configures the
+        map exactly like the live widget.  With *session*, the style, tooltip
+        and cooperative gestures that session set at run time are used.
+        """
         vs = self.view_state
         attrs: dict = {
-            "id": self.id,
-            "class_": "deckgl-map",
-            "style": f"width:{width};height:{height};",
             "data_initial_longitude": str(vs.get("longitude", 0)),
             "data_initial_latitude": str(vs.get("latitude", 0)),
             "data_initial_zoom": str(vs.get("zoom", 1)),
@@ -300,10 +324,11 @@ class MapWidget:
             "data_initial_bearing": str(vs.get("bearing", 0)),
             "data_initial_min_zoom": str(vs.get("minZoom", 0)),
             "data_initial_max_zoom": str(vs.get("maxZoom", 24)),
-            "data_style": self.style,
+            "data_style": self.current_style(session),
         }
-        if self.tooltip is not None:
-            attrs["data_tooltip"] = json.dumps(self.tooltip)
+        tooltip = self.current_tooltip(session)
+        if tooltip is not None:
+            attrs["data_tooltip"] = json.dumps(tooltip)
         if self.mapbox_api_key is not None:
             attrs["data_mapbox_api_key"] = self.mapbox_api_key
         # Always emit data-controls so JS can distinguish "no controls"
@@ -322,9 +347,9 @@ class MapWidget:
             attrs["data_controller"] = json.dumps(self.controller)
         if self.interleaved:
             attrs["data_interleaved"] = "true"
-        if self.cooperative_gestures:
+        if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
-        return ui.div(**attrs)
+        return attrs
 
     # -- Server helpers -------------------------------------------------------
 
@@ -2087,6 +2112,13 @@ class MapWidget:
             spec["tooltip"] = tooltip
         if self.mapbox_api_key is not None:
             spec["mapboxApiKey"] = self.mapbox_api_key
+        # Always written: [] (no controls) must not come back as the default.
+        spec["controls"] = self.controls
+        # Other settings only when they differ from the constructor default.
+        for key, attr, default in _JSON_WIDGET_SETTINGS:
+            value = self._recall(session, attr)
+            if value != default:
+                spec[key] = value
         if effects:
             spec["effects"] = effects
         return json.dumps(json_safe(spec), indent=2)
@@ -2112,6 +2144,8 @@ class MapWidget:
             style=spec.get("style", CARTO_POSITRON),
             tooltip=spec.get("tooltip"),
             mapbox_api_key=spec.get("mapboxApiKey"),
+            controls=spec.get("controls"),
+            **{attr: spec[key] for key, attr, _ in _JSON_WIDGET_SETTINGS if key in spec},
         )
         layers = spec.get("layers", [])
         return widget, layers
@@ -2148,25 +2182,13 @@ class MapWidget:
         """
         js_src, css_src = _read_bundled_resources()
 
-        vs = self.view_state
-
-        _style = self.current_style(session)
-
-        def _attr(key, default):
-            """HTML-escape a view_state value for attribute interpolation."""
-            return _html_mod.escape(str(vs.get(key, default)), quote=True)
-
-        tooltip_attr = ""
-        _tooltip = self.current_tooltip(session)
-        if _tooltip is not None:
-            tooltip_json = json.dumps(_tooltip)
-            tooltip_attr = f' data-tooltip="{_html_mod.escape(tooltip_json, quote=True)}"'
-
-        mapbox_attr = ""
-        if self.mapbox_api_key:
-            # Escape the API key to prevent XSS in HTML attribute context
-            escaped_key = _html_mod.escape(self.mapbox_api_key, quote=True)
-            mapbox_attr = f' data-mapbox-api-key="{escaped_key}"'
+        # Same data-* attributes as ui(); htmltools escapes every value.
+        map_div = str(ui.div(
+            id=self.id,
+            class_="deckgl-map",
+            style="width:100%;height:100vh;",
+            **self._map_data_attrs(session),
+        ))
 
         # NaN/inf → null for valid JSON, and escape "<" so a value containing
         # "</script>" cannot break out of the embedding <script> block (XSS).
@@ -2194,17 +2216,7 @@ class MapWidget:
 <style>{css_src}</style>
 </head>
 <body>
-<div id="{_html_mod.escape(self.id)}" class="deckgl-map"
-     style="width:100%;height:100vh;"
-     data-initial-longitude="{_attr('longitude', 0)}"
-     data-initial-latitude="{_attr('latitude', 0)}"
-     data-initial-zoom="{_attr('zoom', 1)}"
-     data-initial-pitch="{_attr('pitch', 0)}"
-     data-initial-bearing="{_attr('bearing', 0)}"
-     data-initial-min-zoom="{_attr('minZoom', 0)}"
-     data-initial-max-zoom="{_attr('maxZoom', 24)}"
-     data-style="{_html_mod.escape(_style)}"
-     {tooltip_attr}{mapbox_attr}></div>
+{map_div}
 <script>
 // Shim: standalone pages have no Shiny runtime
 if (typeof Shiny === 'undefined') {{

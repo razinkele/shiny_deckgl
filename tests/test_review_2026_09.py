@@ -1611,3 +1611,45 @@ class TestApplyController:
     def test_dict_starts_from_everything_enabled(self):
         s = self._state("applyController(m, false); applyController(m, {keyboard: false});")
         assert s["keyboard"] is False and s["dragPan"] is True
+
+
+class TestExportsKeepWidgetConfig:
+    """P5: to_html() and to_json()/from_json() dropped most widget settings.
+
+    The export's map div carried only view state, style and tooltip, so
+    controls=[] still got a NavigationControl (absent data-controls means
+    "defaults") and controller, gestures, picking radius... were lost; a
+    JSON round-trip returned a different widget.
+    """
+
+    def _widget(self):
+        from shiny_deckgl import MapWidget
+        return MapWidget(
+            "m", controls=[], controller={"dragRotate": False}, cooperative_gestures=True,
+            picking_radius=7, use_device_pixels=2, animate=True,
+            parameters={"depthTest": False}, interleaved=True,
+        )
+
+    def test_html_export_carries_the_same_data_attributes_as_ui(self):
+        import re
+        w = self._widget()
+        html = w.to_html([])
+        div = re.search(r'<div id="m"[^>]*>', html).group(0)
+        for attr in ('data-controls="[]"', "data-controller=", "data-cooperative-gestures",
+                     'data-picking-radius="7"', "data-use-device-pixels", "data-animate",
+                     "data-parameters=", "data-interleaved"):
+            assert attr in div, attr
+
+    def test_json_round_trip_keeps_config(self):
+        from shiny_deckgl import MapWidget
+        w = self._widget()
+        w2, _ = MapWidget.from_json(w.to_json([]))
+        for name in ("controls", "controller", "cooperative_gestures", "picking_radius",
+                     "use_device_pixels", "animate", "parameters", "interleaved"):
+            assert getattr(w2, name) == getattr(w, name), name
+
+    def test_default_widget_json_stays_minimal(self):
+        import json as _json
+        from shiny_deckgl import MapWidget
+        spec = _json.loads(MapWidget("d").to_json([]))
+        assert set(spec) == {"id", "viewState", "style", "layers", "controls"}

@@ -55,6 +55,9 @@ def page():
 
 
 def test_every_frame_has_trips_time_heads_and_the_animated_value(page):
+    """Regression guard: this also passed with the two old loops (they did
+    not collide in the sampled frames), so it is not evidence of the fix;
+    the next two tests are."""
     got = page.evaluate(_SAMPLE, 12)
     frames = got["frames"]
     assert all(f["heads"] for f in frames), frames

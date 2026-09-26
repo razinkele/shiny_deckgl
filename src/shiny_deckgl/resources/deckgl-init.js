@@ -1135,8 +1135,7 @@
   function disposeMap(id) {
     var instance = mapInstances[id];
     if (!instance) return;
-    // Stop animation loops and invalidate any pending async starts.
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
+    // Stop the frame loop.
     try {
       if (instance._frameRaf) cancelAnimationFrame(instance._frameRaf);
     } catch (e) { /* ignore */ }
@@ -2149,6 +2148,8 @@
     return ta.pausedAt || 0;
   }
 
+  // Rebuilt every frame on purpose: the head positions move each frame, so
+  // new accessors (and deck.gl recomputing their attributes) are correct.
   function headIconLayer(lp, hi, currentTime) {
     var atlas = hi._rasterAtlas || hi.iconAtlas;
     // An SVG atlas is drawn once rasterised (see startTripsAnimation).
@@ -2225,7 +2226,9 @@
       var dt = (now - instance._lastFrameTime) / 1000;
       instance._lastFrameTime = now;
       advancePropertyAnimations(instance, dt);
-      renderNow(instance, targetId);
+      // setProps alone: deck.gl redraws itself. renderNow() would also make
+      // MapLibre repaint the whole basemap on every frame.
+      instance.overlay.setProps({ layers: renderLayers(instance, targetId) });
       instance._frameRaf = requestAnimationFrame(tick);
     }
     instance._frameRaf = requestAnimationFrame(tick);
@@ -2335,7 +2338,6 @@
     if (prev && !prev.running && prev.pausedAt != null) carried = prev.pausedAt;
     else if (fromUpdate === true && prev && prev.running) carried = tripsTime(prev);
     var prevSpeed = prev ? prev.speed : null;
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
 
     var configs = scanTripsConfigs(instance.lastLayers);
     if (configs.length === 0) { instance.tripsAnimation = null; return; }
@@ -2364,7 +2366,6 @@
   }
 
   function pauseTripsAnimation(instance) {
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
     // Remember that the pause was deliberate, so a later layer update does
     // not quietly start the animation playing again.
     instance._tripsPaused = true;
@@ -2376,7 +2377,6 @@
   }
 
   function stopTripsAnimation(instance) {
-    instance._tripsAnimGen = (instance._tripsAnimGen || 0) + 1;
     // Full stop: the next start begins from 0.
     instance.tripsAnimation = null;
   }

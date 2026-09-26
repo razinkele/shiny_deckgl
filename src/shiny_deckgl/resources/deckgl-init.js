@@ -2371,9 +2371,36 @@
   // Handlers now use mapInstances[id] directly.
 
   // Queue a Shiny message for a deferred (hidden-tab) map.
+  // Layer messages a later full deck_update makes redundant.
+  var SUPERSEDED_BY_UPDATE = { deck_update: 1, deck_partial_update: 1, deck_layer_visibility: 1 };
+  var DEFERRED_QUEUE_LIMIT = 1000;
+
   function deferMessage(mapId, handler, payload) {
     if (!_deferredMessages[mapId]) _deferredMessages[mapId] = [];
-    _deferredMessages[mapId].push({handler: handler, payload: payload});
+    var queue = _deferredMessages[mapId];
+    // A full deck_update replaces every layer, so the layer messages queued
+    // right before it are redundant -- a timer-driven update() to a hidden
+    // map otherwise queued every full payload. Only the tail is merged, so
+    // the order relative to other messages is kept; props the new update
+    // doesn't set (widgets, effects, viewState, ...) are carried over from
+    // the updates it replaces.
+    if (handler === 'deck_update') {
+      var merged = payload;
+      while (queue.length && SUPERSEDED_BY_UPDATE[queue[queue.length - 1].handler]) {
+        var prev = queue.pop();
+        if (prev.handler === 'deck_update') merged = Object.assign({}, prev.payload, merged);
+      }
+      payload = merged;
+    }
+    queue.push({handler: handler, payload: payload});
+    if (queue.length > DEFERRED_QUEUE_LIMIT) {
+      queue.splice(0, queue.length - DEFERRED_QUEUE_LIMIT);
+      if (!queue._warned) {
+        queue._warned = true;
+        console.warn('[shiny_deckgl] More than ' + DEFERRED_QUEUE_LIMIT + ' messages queued for hidden map "' +
+          mapId + '"; dropping the oldest.');
+      }
+    }
   }
 
   // Registered handler functions — populated by addDeferrable() below.

@@ -1511,3 +1511,58 @@ class TestDisposeLeavesOtherMapsAnimations:
             " other: window._deckgl_anim_map_2_rot, left: Object.keys(mapInstances)};})()"
         ))
         assert got == {"mine": True, "other": 20, "left": ["map_2"]}
+
+
+@requires_node
+class TestDeferredQueueCoalescing:
+    """J7: updates for a map in a hidden tab queued without limit.
+
+    A timer-driven update() to a hidden map kept every full payload and
+    replayed them all on tab show. A full deck_update supersedes the layer
+    messages queued right before it; props it doesn't set are carried over.
+    """
+
+    _PRELUDE = "\n".join([
+        "var _deferredMessages = {};",
+        extract_var("SUPERSEDED_BY_UPDATE"),
+        extract_var("DEFERRED_QUEUE_LIMIT"),
+        extract_function("deferMessage"),
+    ])
+
+    def _queue(self, calls: str):
+        return run_js(self._PRELUDE, (
+            "(function(){" + calls +
+            "return _deferredMessages.m.map(function(q){return [q.handler, q.payload];});})()"
+        ))
+
+    def test_repeated_updates_collapse_to_one(self):
+        got = self._queue("""
+            for (var i = 0; i < 50; i++) deferMessage('m', 'deck_update', {id: 'm', layers: [i]});
+        """)
+        assert got == [["deck_update", {"id": "m", "layers": [49]}]]
+
+    def test_superseded_props_are_carried_over(self):
+        got = self._queue("""
+            deferMessage('m', 'deck_update', {id: 'm', layers: [1], widgets: ['w'], viewState: {zoom: 3}});
+            deferMessage('m', 'deck_partial_update', {id: 'm', layers: [{id: 'a'}]});
+            deferMessage('m', 'deck_layer_visibility', {id: 'm', visibility: {a: false}});
+            deferMessage('m', 'deck_update', {id: 'm', layers: [2]});
+        """)
+        assert got == [["deck_update", {"id": "m", "layers": [2], "widgets": ["w"],
+                                        "viewState": {"zoom": 3}}]]
+
+    def test_other_messages_keep_their_order(self):
+        got = self._queue("""
+            deferMessage('m', 'deck_update', {id: 'm', layers: [1], widgets: ['A']});
+            deferMessage('m', 'deck_set_widgets', {id: 'm', widgets: ['B']});
+            deferMessage('m', 'deck_update', {id: 'm', layers: [2]});
+        """)
+        assert [h for h, _ in got] == ["deck_update", "deck_set_widgets", "deck_update"]
+        assert got[2][1] == {"id": "m", "layers": [2]}
+
+    def test_queue_is_capped(self):
+        got = self._queue("""
+            for (var i = 0; i < 1200; i++) deferMessage('m', 'deck_add_source', {id: 'm', n: i});
+        """)
+        assert len(got) == 1000
+        assert got[-1][1]["n"] == 1199

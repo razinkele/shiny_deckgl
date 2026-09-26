@@ -2646,9 +2646,16 @@
       instance._styleChangeTimeout = null;
       instance._styleLoadHandler = null;
       if (instance.map._deckStyleChanging) {
-        console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
         instance.map._deckStyleChanging = false;
-        _clearStyleQueue(instance.map);
+        if (instance.map._deckStyleDrainFn && isStyleReady(instance.map)) {
+          // No 'style.load' came (e.g. a diff), but the style is usable:
+          // run the queued calls rather than throwing them away.
+          console.warn('[shiny_deckgl] No style.load within 30s; running queued calls against the current style');
+          instance.map._deckStyleDrainFn();
+        } else {
+          console.warn('[shiny_deckgl] Style load timed out after 30s, clearing guard flag');
+          _clearStyleQueue(instance.map);
+        }
       }
     }, 30000);
 
@@ -2667,10 +2674,11 @@
     // A once('error') handler was removed because MapLibre fires 'error'
     // for unrelated tile/data errors that would prematurely clear the
     // style-change guard and abandon queued callbacks.
-    const styleOpts = {};
-    if (payload.diff) {
-      styleOpts.diff = true;
-    }
+    // Always pass diff explicitly: MapLibre diffs by default, which does not
+    // match set_style(diff=False). A diff never fires 'style.load' when the
+    // style is unchanged, and when it lands after layers were re-added it
+    // diffs them away against the bare basemap JSON.
+    const styleOpts = { diff: !!payload.diff };
     instance.map.setStyle(payload.style, styleOpts);
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)

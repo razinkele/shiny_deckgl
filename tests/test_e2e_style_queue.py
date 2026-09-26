@@ -59,6 +59,18 @@ def test_layer_added_while_the_map_is_panning_appears(page):
     page.wait_for_function(_HAS_LAYER, arg="pts-circle-2", timeout=10000)
 
 
+def test_reapplying_the_current_basemap_settles_quickly(page):
+    """J4: set_style() with the style already shown must not stall 30 s.
+
+    MapLibre diffs by default; a no-op diff never fires 'style.load', so the
+    guard flag stayed up until the 30 s timeout, which then threw the queued
+    calls away. The demo's MapLibre tab lost its native layers this way at
+    start-up.
+    """
+    page.click("#same")
+    page.wait_for_function(_HAS_LAYER, arg="same-circle-1", timeout=10000)
+
+
 @pytest.mark.parametrize("n", [1, 2])
 def test_layer_readded_after_a_basemap_swap_appears(page, n):
     page.click("#restyle")

@@ -6,6 +6,7 @@ These are imported by both _app_ui.py and _app_server.py.
 
 from __future__ import annotations
 
+from .colors import CARTO_DARK
 from .map_widget import MapWidget, CARTO_POSITRON
 from ._demo_data import (
     BALTIC_VIEW,
@@ -59,6 +60,9 @@ palette_widget = MapWidget(
         "style": TOOLTIP_STYLE,
     },
     view_state={**BALTIC_VIEW, "pitch": 45, "bearing": -15},
+    # Matches the pal_basemap selector's default, which is no longer applied
+    # by a start-up set_style().
+    style=CARTO_DARK,
 )
 
 # Tab 5 — Advanced (3-D columns)

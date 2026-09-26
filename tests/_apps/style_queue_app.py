@@ -16,6 +16,7 @@ app_ui = ui.page_fluid(
     head_includes(),
     ui.input_action_button("add", "Add layer"),
     ui.input_action_button("restyle", "Swap basemap, re-add layer"),
+    ui.input_action_button("same", "Re-apply current basemap, re-add layer"),
     m.ui(height="300px"),
 )
 
@@ -33,6 +34,18 @@ def server(input, output, session):
         await m.add_maplibre_layer(session, {
             "id": f"pts-circle-{n}", "type": "circle", "source": f"pts-{n}",
             "paint": {"circle-radius": 8, "circle-color": "#e00"},
+        })
+
+    @reactive.effect
+    @reactive.event(input.same)
+    async def _same():
+        # The map starts on Positron; setting it again must still settle.
+        n = input.same()
+        await m.set_style(session, POSITRON)
+        await m.add_source(session, f"same-{n}", {"type": "geojson", "data": POINTS})
+        await m.add_maplibre_layer(session, {
+            "id": f"same-circle-{n}", "type": "circle", "source": f"same-{n}",
+            "paint": {"circle-radius": 8, "circle-color": "#0a0"},
         })
 
     @reactive.effect

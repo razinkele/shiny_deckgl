@@ -114,13 +114,16 @@ def on_viewport_change(
             # Allow construction without session for testing
             return fn
 
+        import time
+
         from shiny import reactive
 
-        _generation = [0]
         _fallback_attempts = [0]
+        # Latest viewport request: (bounds, zoom, monotonic time it arrived).
+        _latest: reactive.Value = reactive.Value(None)
 
         @reactive.Effect
-        async def _viewport_watcher():
+        def _viewport_watcher():
             # Read the view state input (creates reactive dependency).
             # On initial load, the input doesn't exist yet (no moveend
             # has fired), so Shiny raises SilentException.  We catch it
@@ -155,24 +158,25 @@ def on_viewport_change(
                 if _should_repoll(False, _fallback_attempts[0]):
                     reactive.invalidate_later(1.0)
 
-            _generation[0] += 1
-            my_gen = _generation[0]
+            _latest.set((bounds, zoom, time.monotonic()))
 
-            # Debounce: wait briefly, skip if superseded
-            if debounce_ms > 0:
-                import asyncio
-                await asyncio.sleep(debounce_ms / 1000.0)
-
-            # Last-write-wins: skip if a newer call started
-            if my_gen != _generation[0]:
+        # Debounce by rescheduling, never by sleeping: Shiny runs effects
+        # under its global reactive lock, so an awaited sleep here blocked
+        # every session for debounce_ms and no newer request could ever
+        # supersede it. A newer request re-runs this effect and restarts the
+        # wait. Reactive values fn() reads become dependencies of this effect,
+        # so it re-fires when they change, as documented.
+        @reactive.Effect
+        async def _viewport_runner():
+            req = _latest()
+            if req is None:
                 return
-
+            bounds, zoom, arrived = req
+            remaining = arrived + debounce_ms / 1000.0 - time.monotonic()
+            if remaining > 0:
+                reactive.invalidate_later(remaining)
+                return
             layers = await fn(bounds, zoom)
-
-            # Check again after fn() in case a newer call arrived
-            if my_gen != _generation[0]:
-                return
-
             if layers is not None:
                 await widget.update(session, layers)
 

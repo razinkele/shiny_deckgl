@@ -77,3 +77,23 @@ def test_layer_readded_after_a_basemap_swap_appears(page, n):
     page.wait_for_function(_HAS_LAYER, arg=f"re-circle-{n}", timeout=20000)
     # The earlier layers went with the old style, as documented.
     assert page.evaluate(_HAS_LAYER, "pts-circle-1") is False
+
+
+_LEGEND_ROWS = ("() => [...document.querySelectorAll('#smap .legend-table tr')]"
+                ".map(r => r.innerText.trim())")
+
+
+def test_default_legend_lists_only_the_apps_layers(page):
+    """M2: legend_control() without targets lists the app's native layers only.
+
+    Also covers the redraw after a layer is added: the plugin's own refresh
+    runs before the new layer is drawn, so with only_rendered it would stay
+    out of the legend until the next pan.
+    """
+    page.evaluate("() => window.__deckgl_instances.smap.map.jumpTo({center: [21.1, 55.7], zoom: 6})")
+    page.click("#add")  # adds pts-circle-<n> at the map centre
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('#smap .legend-table tr')]"
+        ".some(r => r.innerText.trim().startsWith('pts-circle'))", timeout=10000)
+    rows = page.evaluate(_LEGEND_ROWS)
+    assert all(r.startswith(("pts-circle", "re-circle", "same-circle")) for r in rows), rows

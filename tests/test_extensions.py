@@ -366,3 +366,45 @@ class TestExtensionEdgeCases:
         assert len(extensions) == 9
         for ext in extensions:
             assert ext is not None
+
+
+# ---------------------------------------------------------------------------
+# Client-side class lookup (P3, 2026-09-26 review)
+# ---------------------------------------------------------------------------
+
+import sys as _sys  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+_sys.path.insert(0, str(_Path(__file__).resolve().parent))
+from _js_harness import extract_function, requires_node, run_js  # noqa: E402
+
+
+@requires_node
+class TestResolveExtensionsUnderscoreFallback:
+    """deck.gl 9.4 exports TerrainExtension only as `_TerrainExtension`.
+
+    resolveExtensions() looked up deck[name] alone, so terrain_extension()
+    was dropped with an "Unknown extension" warning.
+    """
+
+    _PRELUDE = "\n".join([
+        "var deck = { _TerrainExtension: function (o) { this.name = 'terrain'; this.o = o; },",
+        "             BrushingExtension: function () { this.name = 'brushing'; } };",
+        extract_function("resolveWidgetClass"),
+        extract_function("resolveExtensions"),
+    ])
+
+    def test_underscored_extension_resolves(self):
+        got = run_js(self._PRELUDE, (
+            "(function(){var p={'@@extensions':['TerrainExtension',"
+            "{'@@extClass':'TerrainExtension','@@extOpts':{a:1}},'BrushingExtension']};"
+            "resolveExtensions(p);return p.extensions.map(function(e){return e.name;});})()"
+        ))
+        assert got == ["terrain", "terrain", "brushing"]
+
+    def test_unknown_extension_is_still_dropped(self):
+        got = run_js(self._PRELUDE, (
+            "(function(){var p={'@@extensions':['NoSuchExtension']};"
+            "resolveExtensions(p);return p.extensions.length;})()"
+        ))
+        assert got == 0

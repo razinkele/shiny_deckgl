@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from ._cdn import (
     MAPLIBRE_EXPORT_JS,
     MAPLIBRE_EXPORT_CSS,
+    H3_JS,
     DECKGL_JS,
     DECKGL_WIDGETS_JS,
     DECKGL_WIDGETS_CSS,
@@ -120,6 +121,19 @@ def _read_bundled_resources() -> tuple[str, str]:
     return js_src, css_src
 
 
+# (JSON key, attribute / constructor argument, default) for the widget
+# settings to_json() writes when they differ from the default.
+_JSON_WIDGET_SETTINGS = (
+    ("pickingRadius", "picking_radius", 0),
+    ("useDevicePixels", "use_device_pixels", True),
+    ("animate", "animate", False),
+    ("parameters", "parameters", None),
+    ("controller", "controller", True),
+    ("interleaved", "interleaved", False),
+    ("cooperativeGestures", "cooperative_gestures", False),
+)
+
+
 class MapWidget:
     """Reusable deck.gl map widget for Shiny for Python.
 
@@ -162,10 +176,13 @@ class MapWidget:
     parameters
         WebGL parameters dict, e.g. ``{"depthTest": False}``.
     controller
-        Map controller configuration.  ``True`` (default) enables the
-        default controller; ``False`` disables all interaction.  A dict
-        can fine-tune behaviour, e.g.
-        ``{"touchRotate": True, "doubleClickZoom": False}``.
+        Map controller configuration.  ``True`` (default) enables all
+        interaction; ``False`` disables it.  A dict enables everything
+        except the options set to ``False``: ``dragPan``, ``dragRotate``,
+        ``scrollZoom``, ``doubleClickZoom``, ``keyboard``, ``boxZoom``,
+        ``touchZoom``, ``touchRotate`` -- e.g.
+        ``{"doubleClickZoom": False, "touchRotate": False}``.  They are
+        applied to MapLibre's handlers, which do the interaction.
     cooperative_gestures
         When ``True``, requires Ctrl+scroll to zoom and two-finger drag
         on touch devices.  Useful when the map is embedded in a scrollable
@@ -206,6 +223,9 @@ class MapWidget:
         # session, so a style change must be recorded against the
         # session that made it rather than on the shared object.
         self._session_styles: "WeakKeyDictionary[Any, str]" = WeakKeyDictionary()
+        # Same for other settings a session can change at run time
+        # (tooltip, cooperative gestures): {session: {name: value}}.
+        self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -281,11 +301,22 @@ class MapWidget:
         height
             CSS height (default ``"400px"``).
         """
+        return ui.div(
+            id=self.id,
+            class_="deckgl-map",
+            style=f"width:{width};height:{height};",
+            **self._map_data_attrs(),
+        )
+
+    def _map_data_attrs(self, session: "Session | None" = None) -> dict:
+        """The ``data-*`` attributes the client reads to build the map.
+
+        Shared by :meth:`ui` and :meth:`to_html`, so an export configures the
+        map exactly like the live widget.  With *session*, the style, tooltip
+        and cooperative gestures that session set at run time are used.
+        """
         vs = self.view_state
         attrs: dict = {
-            "id": self.id,
-            "class_": "deckgl-map",
-            "style": f"width:{width};height:{height};",
             "data_initial_longitude": str(vs.get("longitude", 0)),
             "data_initial_latitude": str(vs.get("latitude", 0)),
             "data_initial_zoom": str(vs.get("zoom", 1)),
@@ -293,10 +324,11 @@ class MapWidget:
             "data_initial_bearing": str(vs.get("bearing", 0)),
             "data_initial_min_zoom": str(vs.get("minZoom", 0)),
             "data_initial_max_zoom": str(vs.get("maxZoom", 24)),
-            "data_style": self.style,
+            "data_style": self.current_style(session),
         }
-        if self.tooltip is not None:
-            attrs["data_tooltip"] = json.dumps(self.tooltip)
+        tooltip = self.current_tooltip(session)
+        if tooltip is not None:
+            attrs["data_tooltip"] = json.dumps(tooltip)
         if self.mapbox_api_key is not None:
             attrs["data_mapbox_api_key"] = self.mapbox_api_key
         # Always emit data-controls so JS can distinguish "no controls"
@@ -315,9 +347,9 @@ class MapWidget:
             attrs["data_controller"] = json.dumps(self.controller)
         if self.interleaved:
             attrs["data_interleaved"] = "true"
-        if self.cooperative_gestures:
+        if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
-        return ui.div(**attrs)
+        return attrs
 
     # -- Server helpers -------------------------------------------------------
 
@@ -352,10 +384,12 @@ class MapWidget:
         effects
             Optional list of lighting/effect dicts, e.g.
             ``[{"type": "LightingEffect", "ambientLight": {...}, "pointLights": [...]}]``.
+            ``None`` (default) keeps the current effects; ``[]`` removes them.
         views
             Optional list of view dicts (e.g. from ``map_view()``,
             ``orthographic_view()``).  When provided the JS client passes
-            them to ``overlay.setProps({views})``.
+            them to ``overlay.setProps({views})``.  ``None`` (default) keeps
+            the current views; ``[]`` restores deck.gl's default view.
         picking_radius
             Override picking radius for this update.
         use_device_pixels
@@ -390,9 +424,11 @@ class MapWidget:
             payload["viewState"] = view_state
             if transition_duration > 0:
                 payload["transitionDuration"] = transition_duration
-        if effects:
+        # `is not None`, not truthiness: an explicit [] must reach the client
+        # to clear what an earlier update set.
+        if effects is not None:
             payload["effects"] = effects
-        if views:
+        if views is not None:
             payload["views"] = views
         # Deck-level props
         if picking_radius is not None:
@@ -533,9 +569,9 @@ class MapWidget:
         session
             The active Shiny ``Session``.
         options
-            ``True`` enables the default controller.  ``False`` disables
-            all map interaction.  A dict fine-tunes behaviour, e.g.
-            ``{"touchRotate": True, "doubleClickZoom": False}``.
+            ``True`` enables all map interaction, ``False`` disables it,
+            and a dict disables only the options set to ``False`` (see the
+            ``controller`` constructor argument for the keys).
         """
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
@@ -561,7 +597,7 @@ class MapWidget:
         enabled
             ``True`` to enable cooperative gestures, ``False`` to disable.
         """
-        self.cooperative_gestures = enabled
+        self._remember(session, "cooperative_gestures", enabled)
         await session.send_custom_message("deck_set_cooperative_gestures", {
             "id": self.id,
             "enabled": enabled,
@@ -750,6 +786,30 @@ class MapWidget:
                 pass
         return self.style
 
+    def _remember(self, session: "Session", name: str, value: Any) -> None:
+        """Record a run-time setting against *session*, not the shared widget."""
+        try:
+            self._session_state.setdefault(session, {})[name] = value
+        except TypeError:
+            # Session object is not weak-referenceable; fall back to the
+            # shared attribute rather than losing the change entirely.
+            setattr(self, name, value)
+
+    def _recall(self, session: "Session | None", name: str) -> Any:
+        """A setting as *session* last set it, else the constructed value."""
+        if session is not None:
+            try:
+                state = self._session_state.get(session)
+            except TypeError:
+                state = None
+            if state is not None and name in state:
+                return state[name]
+        return getattr(self, name)
+
+    def current_tooltip(self, session: "Session | None" = None) -> dict | None:
+        """The tooltip configuration in force for *session*."""
+        return self._recall(session, "tooltip")
+
     async def update_tooltip(
         self,
         session: "Session",
@@ -766,7 +826,7 @@ class MapWidget:
             ``tooltip`` parameter), or ``None`` to disable tooltips.
         """
         _validate_tooltip(tooltip)
-        self.tooltip = tooltip
+        self._remember(session, "tooltip", tooltip)
         await session.send_custom_message("deck_update_tooltip", {
             "id": self.id,
             "tooltip": tooltip,
@@ -1308,8 +1368,9 @@ class MapWidget:
     ) -> None:
         """Check whether *image_id* is loaded and report back via input.
 
-        The result is delivered asynchronously as a boolean through
-        ``input.<map_id>_has_image``.
+        The result is delivered asynchronously through
+        ``input[widget.has_image_input_id]()`` as
+        ``{"imageId": str, "exists": bool}``.
 
         Parameters
         ----------
@@ -2014,7 +2075,13 @@ class MapWidget:
 
     # -- Serialisation --------------------------------------------------------
 
-    def to_json(self, layers: list[dict], effects: list[dict] | None = None) -> str:
+    def to_json(
+        self,
+        layers: list[dict],
+        effects: list[dict] | None = None,
+        *,
+        session: "Session | None" = None,
+    ) -> str:
         """Serialise the map spec (view state, style, layers, effects) to JSON.
 
         Parameters
@@ -2024,6 +2091,9 @@ class MapWidget:
             helpers.
         effects
             Optional list of effects dicts.
+        session
+            When given, use the style and tooltip this session set with
+            :meth:`set_style` / :meth:`update_tooltip`.
 
         Returns
         -------
@@ -2034,13 +2104,21 @@ class MapWidget:
         spec: dict = {
             "id": self._bare_id,
             "viewState": self.view_state,
-            "style": self.style,
+            "style": self.current_style(session),
             "layers": layers,
         }
-        if self.tooltip is not None:
-            spec["tooltip"] = self.tooltip
+        tooltip = self.current_tooltip(session)
+        if tooltip is not None:
+            spec["tooltip"] = tooltip
         if self.mapbox_api_key is not None:
             spec["mapboxApiKey"] = self.mapbox_api_key
+        # Always written: [] (no controls) must not come back as the default.
+        spec["controls"] = self.controls
+        # Other settings only when they differ from the constructor default.
+        for key, attr, default in _JSON_WIDGET_SETTINGS:
+            value = self._recall(session, attr)
+            if value != default:
+                spec[key] = value
         if effects:
             spec["effects"] = effects
         return json.dumps(json_safe(spec), indent=2)
@@ -2066,6 +2144,8 @@ class MapWidget:
             style=spec.get("style", CARTO_POSITRON),
             tooltip=spec.get("tooltip"),
             mapbox_api_key=spec.get("mapboxApiKey"),
+            controls=spec.get("controls"),
+            **{attr: spec[key] for key, attr, _ in _JSON_WIDGET_SETTINGS if key in spec},
         )
         layers = spec.get("layers", [])
         return widget, layers
@@ -2102,24 +2182,13 @@ class MapWidget:
         """
         js_src, css_src = _read_bundled_resources()
 
-        vs = self.view_state
-
-        _style = self.current_style(session)
-
-        def _attr(key, default):
-            """HTML-escape a view_state value for attribute interpolation."""
-            return _html_mod.escape(str(vs.get(key, default)), quote=True)
-
-        tooltip_attr = ""
-        if self.tooltip is not None:
-            tooltip_json = json.dumps(self.tooltip)
-            tooltip_attr = f' data-tooltip="{_html_mod.escape(tooltip_json, quote=True)}"'
-
-        mapbox_attr = ""
-        if self.mapbox_api_key:
-            # Escape the API key to prevent XSS in HTML attribute context
-            escaped_key = _html_mod.escape(self.mapbox_api_key, quote=True)
-            mapbox_attr = f' data-mapbox-api-key="{escaped_key}"'
+        # Same data-* attributes as ui(); htmltools escapes every value.
+        map_div = str(ui.div(
+            id=self.id,
+            class_="deckgl-map",
+            style="width:100%;height:100vh;",
+            **self._map_data_attrs(session),
+        ))
 
         # NaN/inf → null for valid JSON, and escape "<" so a value containing
         # "</script>" cannot break out of the embedding <script> block (XSS).
@@ -2132,6 +2201,7 @@ class MapWidget:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{_html_mod.escape(title)}</title>
+<script src="{H3_JS}"></script>
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
@@ -2146,17 +2216,7 @@ class MapWidget:
 <style>{css_src}</style>
 </head>
 <body>
-<div id="{_html_mod.escape(self.id)}" class="deckgl-map"
-     style="width:100%;height:100vh;"
-     data-initial-longitude="{_attr('longitude', 0)}"
-     data-initial-latitude="{_attr('latitude', 0)}"
-     data-initial-zoom="{_attr('zoom', 1)}"
-     data-initial-pitch="{_attr('pitch', 0)}"
-     data-initial-bearing="{_attr('bearing', 0)}"
-     data-initial-min-zoom="{_attr('minZoom', 0)}"
-     data-initial-max-zoom="{_attr('maxZoom', 24)}"
-     data-style="{_html_mod.escape(_style)}"
-     {tooltip_attr}{mapbox_attr}></div>
+{map_div}
 <script>
 // Shim: standalone pages have no Shiny runtime
 if (typeof Shiny === 'undefined') {{

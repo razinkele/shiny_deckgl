@@ -13,8 +13,9 @@ MapWidget
 Layer Functions
 ---------------
 Functions like ``scatterplot_layer``, ``geojson_layer``, ``heatmap_layer``,
-etc., create deck.gl layer specifications. Each returns a dict suitable for
-``MapWidget.set_layers()`` or ``MapWidget.add_layer()``.
+etc., create deck.gl layer specifications. Each returns a dict for
+``MapWidget.update()`` (all layers) or ``MapWidget.partial_update()``
+(patch some).
 
 View Functions
 --------------
@@ -48,18 +49,19 @@ like ``PALETTE_VIRIDIS`` for data-driven coloring.
 
 Example
 -------
->>> from shiny import App, ui, render
->>> from shiny_deckgl import MapWidget, scatterplot_layer
+>>> from shiny import App, reactive, ui
+>>> from shiny_deckgl import MapWidget, head_includes, scatterplot_layer
 >>>
 >>> widget = MapWidget("mymap")
 >>>
->>> app_ui = ui.page_fluid(widget.ui())
+>>> # head_includes() loads deck.gl and MapLibre; without it the map is blank.
+>>> app_ui = ui.page_fluid(head_includes(), widget.ui())
 >>>
 >>> def server(input, output, session):
-...     @render.effect
+...     @reactive.effect
 ...     async def _():
-...         await widget.set_layers(session, [
-...             scatterplot_layer("points", data=my_data)
+...         await widget.update(session, [
+...             scatterplot_layer("points", [[21.1, 55.7]], getRadius=5000)
 ...         ])
 >>>
 >>> app = App(app_ui, server)

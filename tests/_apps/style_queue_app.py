@@ -3,9 +3,12 @@ from shiny import App, reactive, ui
 
 from shiny_deckgl import CARTO_DARK as DARK
 from shiny_deckgl import CARTO_POSITRON as POSITRON
-from shiny_deckgl import MapWidget, head_includes
+from shiny_deckgl import MapWidget, head_includes, legend_control
 
-m = MapWidget("smap", view_state={"longitude": 21.1, "latitude": 55.7, "zoom": 6})
+m = MapWidget(
+    "smap", view_state={"longitude": 21.1, "latitude": 55.7, "zoom": 6},
+    controls=[legend_control(show_default=True)],
+)
 
 POINTS = {"type": "FeatureCollection", "features": [
     {"type": "Feature", "properties": {},

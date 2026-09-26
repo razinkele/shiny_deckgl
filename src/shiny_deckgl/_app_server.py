@@ -6,10 +6,11 @@ for the comprehensive shiny_deckgl demo application.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import math
 import os
 import random
-import tempfile
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -351,11 +352,17 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             input.ml_basemap(), CARTO_POSITRON,
         )
         await maplibre_widget.set_style(session, style_url)
-        # set_style removes all sources/layers; re-add ours
+        # set_style removes all sources/layers; re-add ours. The legend stays
+        # (it refreshes itself on style changes).
         await _ml_add_native_layers()
-        # Re-apply controls so legend picks up the fresh layers
-        controls = _build_ml_controls()
-        await maplibre_widget.set_controls(session, controls)
+        if input.v1_show_clusters():
+            await _ml_add_clusters()
+        # The re-added layers are all visible again, but the opacity control
+        # would keep showing any boxes the user had unticked: re-create it
+        # so it matches. set_controls() leaves the unchanged ones alone.
+        if input.ml_opacity():
+            await maplibre_widget.remove_control(session, "opacity")
+            await maplibre_widget.set_controls(session, _build_ml_controls())
 
     # Drag marker (MapLibre tab)
     @reactive.Effect
@@ -374,19 +381,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         )
 
     # Clusters (merged from former Tab 10)
+    async def _ml_add_clusters():
+        await maplibre_widget.add_cluster_layer(
+            session,
+            "v1-clusters",
+            make_port_geojson(),
+            cluster_radius=input.v1_cluster_radius(),
+            cluster_color="#14919b",
+            point_color="#e65100",
+            point_radius=6,
+        )
+
     @reactive.Effect
     @reactive.event(input.v1_show_clusters, input.v1_cluster_radius)
     async def _v1_clusters():
         if input.v1_show_clusters():
-            await maplibre_widget.add_cluster_layer(
-                session,
-                "v1-clusters",
-                make_port_geojson(),
-                cluster_radius=input.v1_cluster_radius(),
-                cluster_color="#14919b",
-                point_color="#e65100",
-                point_radius=6,
-            )
+            await _ml_add_clusters()
         else:
             await maplibre_widget.remove_cluster_layer(session, "v1-clusters")
 
@@ -538,8 +548,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return color_bins(_pal_depths, n_bins=n, palette=pal)
         elif mode == "quantiles":
             return color_quantiles(_pal_depths, n_bins=n, palette=pal)
-        else:  # "range" — assign N-colour linear ramp via bins
-            return color_bins(_pal_depths, n_bins=n, palette=pal)
+        else:  # "range": continuous -- each value's own point on the ramp
+            # (it used to call color_bins, so it looked exactly like "bins")
+            return color_bins(_pal_depths, n_bins=256, palette=pal)
 
     @reactive.Calc
     def _pal_range_colors() -> list[list[int]]:
@@ -583,7 +594,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         mode_label = {
             "bins": "color_bins (equal-width)",
             "quantiles": "color_quantiles (equal-count)",
-            "range": "color_range (linear interpolation)",
+            "range": "continuous ramp (color_bins, 256 steps)",
         }.get(input.pal_mode(), input.pal_mode())
 
         lo, hi = min(_pal_depths), max(_pal_depths)
@@ -620,9 +631,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
         else:
             return (
-                f"from shiny_deckgl import color_range, {pal_const}\n\n"
-                f"colors = color_range(n={n}, palette={pal_const})\n"
-                f"# \u2192 {n} evenly-spaced [R, G, B, A] colours"
+                f"from shiny_deckgl import color_bins, color_range, {pal_const}\n\n"
+                f"# Continuous: 256 steps, so each value gets its own shade\n"
+                f"colors = color_bins(depths, n_bins=256, palette={pal_const})\n"
+                f"# Legend / swatch: {n} evenly-spaced stops\n"
+                f"stops = color_range(n={n}, palette={pal_const})"
             )
 
     # Push palette-coloured layers to the palette map
@@ -633,18 +646,23 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     )
     async def _pal_update_map():
         colours = _pal_colors()
-        lo, hi = min(_pal_depths), max(_pal_depths)
         layer_type = input.pal_layer()
 
-        # Build coloured data
+        # Derive the bins from the colours actually assigned, so the legend
+        # and the tooltip agree with the map in every mode (equal-width bins
+        # and quantiles have different break points).
+        depth_by_colour: dict[tuple, list[float]] = {}
+        for pt, c in zip(_pal_bathy, colours):
+            depth_by_colour.setdefault(tuple(c), []).append(pt["depth_m"])
+        bins = sorted(depth_by_colour.items(), key=lambda kv: min(kv[1]))
+        bin_of = {colour: i for i, (colour, _) in enumerate(bins)}
+
         coloured_data = []
         for pt, c in zip(_pal_bathy, colours):
-            bin_idx = int((pt["depth_m"] - lo) / max(hi - lo, 1) * (input.pal_nbins() - 1))
-            bin_idx = max(0, min(bin_idx, input.pal_nbins() - 1))
             coloured_data.append({
                 **pt,
                 "color": c,
-                "bin_label": f"Bin {bin_idx + 1}/{input.pal_nbins()}",
+                "bin_label": f"Bin {bin_of[tuple(c)] + 1}/{len(bins)}",
             })
 
         layers: list[dict] = []
@@ -682,23 +700,38 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 pickable=False,
             ))
 
-        # Build legend entries from swatch colours
-        swatch = _pal_range_colors()
-        legend_entries = []
-        for i, c in enumerate(swatch):
-            # Compute approximate depth range for label
-            bin_lo = lo + (hi - lo) * i / len(swatch)
-            bin_hi = lo + (hi - lo) * (i + 1) / len(swatch)
-            legend_entries.append({
-                "layer_id": f"pal-bin-{i}",
-                "label": f"{bin_lo:.0f}\u2013{bin_hi:.0f} m",
-                "color": c[:3],
+        # Legend: one row per bin, labelled with the depths it really holds.
+        # The heatmap ignores the palette and uses deck.gl's default ramp.
+        if input.pal_mode() == "range" and layer_type != "heatmap":
+            lo, hi = min(_pal_depths), max(_pal_depths)
+            legend_entries = [{
+                "label": f"{lo:.0f} to {hi:.0f} m",
+                "colors": [c[:3] for c in _pal_range_colors()],
+                "shape": "gradient",
+            }]
+        elif layer_type == "heatmap":
+            legend_entries = [{
+                "label": "Depth-weighted density",
+                "colors": [[255, 255, 178], [254, 217, 118], [254, 178, 76],
+                           [253, 141, 60], [240, 59, 32], [189, 0, 38]],
+                "shape": "gradient",
+            }]
+        else:
+            legend_entries = [{
+                "label": f"{min(depths):.0f} to {max(depths):.0f} m",
+                "color": list(colour[:3]),
                 "shape": "rect",
-            })
+            } for colour, depths in bins]
 
         widgets = [
             zoom_widget(), compass_widget(),
             fullscreen_widget(), scale_widget(),
+            layer_legend_widget(
+                entries=legend_entries,
+                placement="bottom-right",
+                title="Depth",
+                show_checkbox=False,
+            ),
         ]
 
         await palette_widget.update(
@@ -749,7 +782,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     )
     async def _apply_lighting():
         layers = _adv_layers.get()
-        effects = None
+        effects: list = []  # [] clears the lighting; None would leave it on
         if input.enable_lighting():
             amb = ambient_light(intensity=input.ambient())
             pl = point_light(
@@ -1043,30 +1076,27 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # Tab 6 — Export & Serialisation
     # =================================================================
 
-    @reactive.Effect
-    @reactive.event(input.export_html)
-    async def _do_export_html():
+    # A download, not a file on the server: a fixed temp path was shared by
+    # every session (concurrent users overwrote each other) and the path it
+    # reported was on the server's disk, not the user's.
+    @render.download_button(filename="shiny_deckgl_export.html")
+    def export_html():
         layers = _gl_build_all_layers()
-        path = os.path.join(
-            tempfile.gettempdir(), "shiny_deckgl_demo_export.html",
+        html = gallery_widget.to_html(
+            layers, title="shiny_deckgl Export", session=session
         )
-        gallery_widget.to_html(
-            layers, path=path, title="shiny_deckgl Export", session=session
-        )
-        fsize = os.path.getsize(path)
         _export_log.set(
-            f"HTML exported successfully!\n"
-            f"Path: {path}\n"
-            f"Size: {fsize:,} bytes\n"
+            f"HTML exported for download.\n"
+            f"Size: {len(html.encode('utf-8')):,} bytes\n"
             f"Layers: {len(layers)}"
         )
-        ui.notification_show(f"Exported to {path}", type="message")
+        yield html
 
     @reactive.Effect
     @reactive.event(input.export_json)
     async def _do_export_json():
         layers = _gl_build_all_layers()
-        spec = gallery_widget.to_json(layers)
+        spec = gallery_widget.to_json(layers, session=session)
         ellip = "\u2026" if len(spec) > 2000 else ""
         _export_log.set(
             f"JSON spec ({len(spec):,} chars):\n\n{spec[:2000]}{ellip}"
@@ -1076,17 +1106,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.event(input.roundtrip_json)
     async def _do_roundtrip():
         layers = _gl_build_all_layers()
-        spec_json = gallery_widget.to_json(layers)
+        spec_json = gallery_widget.to_json(layers, session=session)
         w2, layers2 = MapWidget.from_json(spec_json)
         checks = [
             f"Original widget id:     {gallery_widget.id}",
             f"Restored widget id:     {w2.id}",
             f"IDs match:              {gallery_widget.id == w2.id}",
-            f"Style match:            {gallery_widget.style == w2.style}",
+            f"Style match:            "
+            f"{gallery_widget.current_style(session) == w2.style}",
             f"View state match:       "
             f"{gallery_widget.view_state == w2.view_state}",
             f"Tooltip match:          "
-            f"{gallery_widget.tooltip == w2.tooltip}",
+            f"{gallery_widget.current_tooltip(session) == w2.tooltip}",
             f"Layer count match:      "
             f"{len(layers)} == {len(layers2)}",
             f"Layer IDs (original):   "
@@ -1274,7 +1305,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             extra["filterRange"] = [fmin, fmax]
             extra["filterEnabled"] = True
 
-        layers = [
+        ports = [
             scatterplot_layer(
                 "v1_ports",
                 _v1_port_data,
@@ -1288,6 +1319,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 **extra,
             ),
         ]
+        # Swap only our own layer into the shared list. Replacing the list
+        # wiped the cargo columns and every brushing/filter/transition layer
+        # the other effects had added. If this runs before _adv_init has
+        # filled the list, start from the base layers.
+        current = _adv_layers.get() or _adv_base_layers()
+        layers = [lyr for lyr in current if lyr.get("id") != "v1_ports"] + ports
         # Record the pushed layers in the shared reactive value: every other
         # effect that drives adv_widget reads or writes _adv_layers, and an
         # unrecorded push is silently discarded by the next one of them.
@@ -1311,7 +1348,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.td_lighting, input.td_ambient, input.td_point_light,
         input.td_directional, input.td_dir_intensity,
         input.td_pp_brightness, input.td_brightness, input.td_contrast,
-        input.td_pitch, input.td_bearing,
     )
     async def _td_rebuild():
         layers: list[dict] = []
@@ -1409,7 +1445,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
 
         # --- Lighting ---
-        effects = None
+        effects: list = []  # [] clears effects switched off; None keeps them
         if input.td_lighting():
             amb = ambient_light(intensity=input.td_ambient())
             pl = point_light(
@@ -1437,7 +1473,11 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
         await three_d_widget.update(session, layers, effects=effects)
 
-        # Fly to the current pitch / bearing
+    # Camera: only the pitch / bearing sliders move it. Flying on every
+    # layer or lighting tweak snapped the user's own pan and zoom back.
+    @reactive.Effect
+    @reactive.event(input.td_pitch, input.td_bearing)
+    async def _td_camera():
         await three_d_widget.fly_to(
             session,
             longitude=19.5,
@@ -1460,20 +1500,30 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "seal_anim", widget=seal_widget, session=session,
     )
 
+    # The McConnell IBM is pure Python and takes seconds (about 0.3 ms per
+    # seal-hour). Run it in a worker thread so it doesn't block the event
+    # loop -- and with it every other session on the server.
+    @reactive.extended_task
+    async def _seal_ibm_task(n_seals: int, sim_hours: int):
+        return await asyncio.to_thread(
+            make_seal_trips_ibm,
+            n_seals=n_seals, sim_hours=sim_hours, loop_length=_SEAL_LOOP,
+        )
+
+    @reactive.Effect
+    def _seal_start_ibm():
+        if input.seal_model_type() == "mcconnell":
+            _seal_ibm_task.invoke(input.seal_n_individuals(), input.seal_sim_hours())
+
     @reactive.Calc
     def _seal_trips():
         """Regenerate trips when model type or parameters change."""
-        model = input.seal_model_type()
-        n = input.seal_n_individuals()
-        if model == "mcconnell":
-            sim_h = input.seal_sim_hours()
-            return make_seal_trips_ibm(
-                n_seals=n,
-                sim_hours=sim_h,
-                loop_length=_SEAL_LOOP,
-            )
+        if input.seal_model_type() == "mcconnell":
+            # Silently cancels dependants while the task runs; they re-run
+            # when the result arrives.
+            return _seal_ibm_task.result()
         return make_seal_trips(
-            n_seals=n,
+            n_seals=input.seal_n_individuals(),
             loop_length=_SEAL_LOOP,
         )
 
@@ -1492,8 +1542,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.seal_sim_hours,
         input.seal_species,
         input.seal_icon_shape,
-        seal_anim.speed,
-        seal_anim.trail,
+        _seal_trips,
         input.seal_bathymetry,
         input.seal_haulouts,
         input.seal_foraging,
@@ -1553,6 +1602,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 trips_layer(
                     "seal_trips",
                     filtered_trips,
+                    # Not event triggers: speed/trail changes are sent by
+                    # _seal_anim_params as a small patch, not a full resend.
                     trailLength=seal_anim.trail(),
                     fadeTrail=True,
                     getColor="@@d.color",
@@ -1600,9 +1651,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             for t in filtered_trips:
                 wps = [p[:2] for p in t["path"]]
                 if len(wps) >= 2:
+                    # Tracks are round trips (they end back at the haul-out),
+                    # so first-to-last was a zero-length arc: connect the
+                    # haul-out to the farthest point reached instead.
+                    home = wps[0]
+                    kx = math.cos(math.radians(home[1]))
+                    far = max(wps, key=lambda q: ((q[0] - home[0]) * kx) ** 2
+                              + (q[1] - home[1]) ** 2)
+                    if far == home:
+                        continue
                     gc_data.append({
-                        "sourcePosition": wps[0],
-                        "targetPosition": wps[-1],
+                        "sourcePosition": home,
+                        "targetPosition": far,
                         "name": t.get("name", ""),
                     })
             if gc_data:
@@ -1641,6 +1701,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             session, layers,
             widgets=[loading_widget()],
         )
+        _seal_has_trips.set(bool(filtered_trips))
+
+    _seal_has_trips: reactive.Value[bool] = reactive.Value(False)
+
+    # Speed and trail only touch two props of the trips layer, so patch those
+    # instead of resending every track (megabytes for large runs).
+    @reactive.Effect
+    @reactive.event(seal_anim.speed, seal_anim.trail, ignore_init=True)
+    async def _seal_anim_params():
+        if not _seal_has_trips.get():
+            return
+        await seal_widget.partial_update(session, [{
+            "id": "seal_trips",
+            "trailLength": seal_anim.trail(),
+            "_tripsAnimation": {"loopLength": _SEAL_LOOP, "speed": seal_anim.speed()},
+        }])
 
     # ===================================================================
     # Tab 9: Widgets Gallery
@@ -1719,12 +1795,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     },
                 ))
             else:
-                meta = _WG_LAYER_META.get(input.wg_layer_combo())
-                if meta:
-                    layer_id, label, color, shape = meta
+                entry = _WG_LEGEND_ENTRIES.get(input.wg_layer_combo())
+                if entry:
                     widgets.append(layer_legend_widget(
-                        entries=[{"layer_id": layer_id, "label": label,
-                                  "color": color, "shape": shape}],
+                        entries=[entry],
                         placement="top-left",
                         title="Active Layer",
                         show_checkbox=True,
@@ -1750,11 +1824,12 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 pickable=True,
             )]
         elif choice == "heatmap":
+            # Points are [lon, lat, weight] lists: the helper's default
+            # getPosition="@@d" takes the list as is.
             return [heatmap_layer(
                 "wg-heat",
                 _heatmap_points,
-                getPosition="@@=d.position",
-                getWeight="@@=d.weight || 1",
+                getWeight="@@=d[2]",
                 radiusPixels=40,
                 intensity=1.2,
                 threshold=0.05,
@@ -1763,8 +1838,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return [arc_layer(
                 "wg-arcs",
                 _arc_data,
-                getSourcePosition="@@=d.from",
-                getTargetPosition="@@=d.to",
                 getSourceColor=[0, 128, 255],
                 getTargetColor=[255, 100, 0],
                 getWidth=2,
@@ -1795,7 +1868,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             return [hexagon_layer(
                 "wg-hexagons",
                 _heatmap_points,
-                getPosition="@@=d.position",
                 radius=20000,
                 elevationScale=50,
                 extruded=True,
@@ -1805,13 +1877,27 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # -- Legend for active layer scenario ---------------------------------
 
-    _WG_LAYER_META: dict[str, tuple[str, str, list[int], str]] = {
-        "ports": ("wg-ports", "Ports (ScatterplotLayer)", [20, 130, 180], "circle"),
-        "heatmap": ("wg-heat", "Heatmap (HeatmapLayer)", [255, 80, 0], "gradient"),
-        "arcs": ("wg-arcs", "Arcs (ArcLayer)", [0, 128, 255], "arc"),
-        "routes": ("wg-routes", "Routes (PathLayer)", [180, 100, 60], "line"),
-        "3d_columns": ("wg-columns", "3-D Columns (ColumnLayer)", [14, 145, 155], "rect"),
-        "hexagons": ("wg-hexagons", "Hexagons (HexagonLayer)", [80, 160, 80], "rect"),
+    # deck.gl's default colorRange (YlOrRd), used by the heatmap and hexagon
+    # layers above since they don't set their own.
+    _DECK_DEFAULT_RAMP = [
+        [255, 255, 178], [254, 217, 118], [254, 178, 76],
+        [253, 141, 60], [240, 59, 32], [189, 0, 38],
+    ]
+
+    # One legend entry per scenario, with colours matching what is drawn.
+    _WG_LEGEND_ENTRIES: dict[str, dict] = {
+        "ports": {"layer_id": "wg-ports", "label": "Ports (ScatterplotLayer)",
+                  "color": [20, 130, 180], "shape": "circle"},
+        "heatmap": {"layer_id": "wg-heat", "label": "Heatmap (HeatmapLayer)",
+                    "colors": _DECK_DEFAULT_RAMP, "shape": "gradient"},
+        "arcs": {"layer_id": "wg-arcs", "label": "Arcs (ArcLayer)",
+                 "color": [0, 128, 255], "color2": [255, 100, 0], "shape": "arc"},
+        "routes": {"layer_id": "wg-routes", "label": "Routes, one colour each (PathLayer)",
+                   "colors": [p["color"][:3] for p in _path_data], "shape": "gradient"},
+        "3d_columns": {"layer_id": "wg-columns", "label": "3-D Columns (ColumnLayer)",
+                       "color": [14, 145, 155], "shape": "rect"},
+        "hexagons": {"layer_id": "wg-hexagons", "label": "Hexagons (HexagonLayer)",
+                     "colors": _DECK_DEFAULT_RAMP, "shape": "gradient"},
     }
 
     # -- Init: send default widgets + layers on first load ----------------
@@ -2025,6 +2111,21 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # GeoJSON for gallery — HELCOM Marine Protected Areas
     _gl_geojson = MPA_GEOJSON
 
+    # Google's 3D Tiles endpoint needs an API key ("?key=...") and answers
+    # 403 without one. deck.gl fetches a layer's data even when
+    # visible=False, so the layer is only built when the toggle is on and a
+    # key is configured.
+    _GOOGLE_KEY = os.environ.get("GOOGLE_MAPS_API_KEY", "")
+    _gl_tile3d_sent = [False]
+
+    def _gl_tile_3d_layer() -> dict:
+        return tile_3d_layer(
+            "gl-tile-3d",
+            "https://tile.googleapis.com/v1/3dtiles/root.json?key=" + _GOOGLE_KEY,
+            pickable=True,
+            opacity=0.8,
+        )
+
     # -- Build all 33 gallery layers once (data sent at session init) ----
     # Toggle-switch ID -> (layer_id(s), display_name(s))
     _GL_TOGGLE_MAP: dict[str, list[tuple[str, str]]] = {
@@ -2065,6 +2166,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         "gl_terrain":       [("gl-terrain", "TerrainLayer")],
         "gl_scenegraph":    [("gl-scenegraph", "ScenegraphLayer")],
     }
+
+    # Counted from the table, so the status line can't drift from it again.
+    _GL_LAYER_COUNT = sum(len(pairs) for pairs in _GL_TOGGLE_MAP.values())
 
     # 3-D layer names that need pitched view
     _GL_3D_NAMES = {
@@ -2358,19 +2462,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             transparent=True,
             opacity=0.6,
         ))
-        # Google's 3D Tiles endpoint needs an API key appended as
-        # "?key=YOUR_KEY"; without one it answers 403. deck.gl fetches a
-        # layer's data even when visible=False, so adding this unconditionally
-        # made every page load raise an unhandled error. Build it only while
-        # the toggle is on -- it will still 403 until a key is supplied, but
-        # nothing is requested unless the user asks for it.
-        if input.gl_tile_3d():
-            _add("gl_tile_3d", tile_3d_layer(
-                "gl-tile-3d",
-                "https://tile.googleapis.com/v1/3dtiles/root.json",
-                pickable=True,
-                opacity=0.8,
-            ))
+        # Only with a key, and only if already switched on (see _GOOGLE_KEY).
+        if input.gl_tile_3d() and _GOOGLE_KEY:
+            _add("gl_tile_3d", _gl_tile_3d_layer())
+            _gl_tile3d_sent[0] = True
 
         # -- 3-D / mesh layers ---
         _add("gl_point_cloud", point_cloud_layer(
@@ -2516,7 +2611,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # -- Status helper (lightweight, no layer data) ----------------------
 
     def _gl_update_status(active_names: set[str]) -> None:
-        lines = [f"Active layers: {len(active_names)} / 24", ""]
+        lines = [f"Active layers: {len(active_names)} / {_GL_LAYER_COUNT}", ""]
         if active_names:
             for n in sorted(active_names):
                 lines.append(f"  • {n}")
@@ -2546,6 +2641,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # Skip toggles until initial data has been sent
         if not _gl_initialized.get():
             return
+
+        # The Tile3D layer isn't in the initial push (see _gl_tile_3d_layer),
+        # so a visibility flip alone would show nothing: add it on first use.
+        if input.gl_tile_3d() and not _gl_tile3d_sent[0]:
+            if not _GOOGLE_KEY:
+                ui.notification_show(
+                    "Tile3DLayer streams Google Photorealistic 3D Tiles, which "
+                    "need an API key: set GOOGLE_MAPS_API_KEY and restart.",
+                    type="warning", duration=8,
+                )
+                ui.update_switch("gl_tile_3d", value=False)
+                return
+            await gallery_widget.partial_update(session, [_gl_tile_3d_layer()])
+            _gl_tile3d_sent[0] = True
 
         visibility: dict[str, bool] = {}
         active_names: set[str] = set()

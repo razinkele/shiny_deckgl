@@ -1,13 +1,13 @@
 """Individual-Based Model (IBM) movement-visualisation assets.
 
 This module provides visual assets and helpers for rendering animal
-movement tracks on a deck.gl map.  Nine Baltic Sea species are included:
-seals (3), dolphins (3), and fish (3).
+movement tracks on a deck.gl map.  Ten Baltic Sea species are included:
+seals (3), dolphins and porpoises (3), and fish (4).
 
 Visual Assets
 -------------
 * ``SPECIES_COLORS``  – RGBA look-up per species
-* ``ICON_ATLAS``      – base64 data-URI of a 192×64 SVG sprite sheet
+* ``ICON_ATLAS``      – base64 data-URI of a 640×64 PNG sprite sheet
 * ``ICON_MAPPING``    – deck.gl icon-mapping dict keyed by species
 
 Data Helpers

@@ -64,7 +64,7 @@ def build_ui():
                 ),
                 sidebar_hint(
                     "Toggle each layer type to see it on the map. "
-                    "All 24 typed helper functions from "
+                    "All 33 typed layer helpers from "
                     "shiny_deckgl.layers are demonstrated here "
                     "with Baltic Sea sample data."
                 ),
@@ -736,7 +736,7 @@ def build_ui():
                     ui.accordion_panel(
                         "\u26A1 Binary Transport",
                         sidebar_hint(
-                            "Push 2,500 random points encoded as numpy "
+                            "Push a 50 \u00d7 50 grid (2,500 points) encoded as numpy "
                             "binary arrays."
                         ),
                         ui.input_action_button(
@@ -852,8 +852,8 @@ def build_ui():
                             "Export the current map state to standalone HTML "
                             "or JSON format."
                         ),
-                        ui.input_action_button(
-                            "export_html", "\U0001F310 Export HTML File",
+                        ui.download_button(
+                            "export_html", "\U0001F310 Download HTML File",
                         ),
                         ui.input_action_button(
                             "export_json", "\U0001F4CB Serialise to JSON",
@@ -1129,12 +1129,12 @@ def build_ui():
                             ui.input_slider(
                                 "seal_sim_hours",
                                 "Simulation hours",
-                                min=24, max=720, value=168, step=24,
+                                min=24, max=336, value=168, step=24,
                             ),
                         ),
                         ui.input_slider(
                             "seal_n_individuals", "Number of seals",
-                            min=5, max=1000, value=30, step=5,
+                            min=5, max=200, value=30, step=5,
                         ),
                         ui.input_checkbox_group(
                             "seal_species", "Species to show",
@@ -1351,7 +1351,7 @@ def build_ui():
                         ),
                         ui.input_action_button(
                             "wg_preset_all",
-                            "\U0001F4A5 All 17 Widgets",
+                            "\U0001F4A5 All 17 deck.gl Widgets",
                             class_="btn-sm btn-outline-danger mb-1 w-100",
                         ),
                         ui.input_action_button(
@@ -1396,7 +1396,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F9E9 Widget Gallery - All 18 deck.gl Widgets"
+                    "\U0001F9E9 Widget Gallery - 17 deck.gl Widgets + Layer Legend"
                 ),
                 widgets_gallery_widget.ui(height="60vh"),
             ),

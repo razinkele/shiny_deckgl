@@ -1373,3 +1373,283 @@ class TestCredentialedLayersAreNotFetchedUnconditionally:
         nearby = src[max(0, idx - 600):idx]
         assert "API key" in nearby, (
             "the call site should say that this endpoint needs an API key")
+
+
+class TestToHtmlLoadsH3:
+    """P4 (2026-09-26 review): to_html() omitted h3-js.
+
+    The served page loads it (CDN_HEAD_FRAGMENT) because H3HexagonLayer and
+    H3ClusterLayer need the global `h3`; without it they draw nothing in an
+    exported file.
+    """
+
+    def test_h3_is_loaded_before_deck(self):
+        from shiny_deckgl import MapWidget
+        from shiny_deckgl._cdn import DECKGL_JS, H3_JS
+        html = MapWidget("m").to_html([])
+        assert H3_JS in html
+        assert html.index(H3_JS) < html.index(DECKGL_JS)
+
+
+class TestEffectsAndViewsCanBeCleared:
+    """J8 (2026-09-26 review): update(effects=[]) / views=[] were ignored.
+
+    Python dropped empty lists (truthiness test) and the client treated an
+    empty list like "not given", so lighting switched on could never be
+    switched off again -- the demo's Advanced tab hit this.
+    """
+
+    def _payload(self, **kw):
+        import asyncio
+        from conftest import _FakeSession
+        from shiny_deckgl import MapWidget
+        s = _FakeSession()
+        asyncio.run(MapWidget("m").update(s, [], **kw))
+        return s.messages[0][1]
+
+    def test_empty_lists_are_sent(self):
+        p = self._payload(effects=[], views=[])
+        assert p["effects"] == [] and p["views"] == []
+
+    def test_none_is_not_sent(self):
+        p = self._payload()
+        assert "effects" not in p and "views" not in p
+
+    @requires_node
+    def test_client_turns_empty_lists_into_clears(self):
+        prelude = "\n".join([
+            "var deck = {}; var luma = {};",
+            extract_function("buildEffects"),
+            extract_function("buildViews"),
+        ])
+        got = run_js(prelude, (
+            "({e: buildEffects([]), v: buildViews([]),"
+            " eu: buildEffects(undefined) === undefined, vu: buildViews(undefined) === undefined})"
+        ))
+        assert got == {"e": [], "v": None, "eu": True, "vu": True}
+
+
+class TestPerSessionWidgetState:
+    """P6 (2026-09-26 review): fix #21 only made the style per-session.
+
+    update_tooltip() and set_cooperative_gestures() still wrote to the shared
+    widget object -- the demo's widgets are module-level singletons -- so one
+    session's tooltip leaked into another session's export.
+    """
+
+    def _widget_and_sessions(self):
+        from conftest import _FakeSession
+        from shiny_deckgl import MapWidget
+        w = MapWidget("m", tooltip={"html": "ORIGINAL {name}"})
+        return w, _FakeSession(), _FakeSession()
+
+    def test_tooltip_change_stays_in_its_session(self):
+        import asyncio
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.update_tooltip(s1, {"html": "CHANGED {name}"}))
+        assert w.tooltip == {"html": "ORIGINAL {name}"}
+        assert "CHANGED" in w.to_html([], session=s1)
+        assert "ORIGINAL" in w.to_html([], session=s2)
+        assert "ORIGINAL" in w.to_html([])
+
+    def test_tooltip_can_be_disabled_per_session(self):
+        import asyncio
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.update_tooltip(s1, None))
+        assert ' data-tooltip="' not in w.to_html([], session=s1)
+        assert ' data-tooltip="' in w.to_html([], session=s2)
+
+    def test_cooperative_gestures_stay_in_their_session(self):
+        import asyncio
+        w, s1, _ = self._widget_and_sessions()
+        before = w.cooperative_gestures
+        asyncio.run(w.set_cooperative_gestures(s1, not before))
+        assert w.cooperative_gestures == before
+
+    def test_to_json_uses_the_sessions_style_and_tooltip(self):
+        import asyncio
+        import json as _json
+        from shiny_deckgl import CARTO_DARK
+        w, s1, s2 = self._widget_and_sessions()
+        asyncio.run(w.set_style(s1, CARTO_DARK))
+        asyncio.run(w.update_tooltip(s1, {"html": "CHANGED"}))
+        spec1 = _json.loads(w.to_json([], session=s1))
+        spec2 = _json.loads(w.to_json([], session=s2))
+        assert spec1["style"] == CARTO_DARK and spec1["tooltip"] == {"html": "CHANGED"}
+        assert spec2["style"] == w.style and spec2["tooltip"] == {"html": "ORIGINAL {name}"}
+
+
+class TestTimelineServerInterval:
+    """P12: timeline_server accepted interval_ms=0, a tight auto-advance loop."""
+
+    @pytest.mark.parametrize("bad", [0, -5])
+    def test_non_positive_interval_is_rejected(self, bad):
+        from shiny_deckgl._timeline import timeline_server
+        with pytest.raises(ValueError, match="interval_ms"):
+            timeline_server("tl", ["a", "b"], interval_ms=bad)
+
+
+@requires_node
+class TestDisposeLeavesOtherMapsAnimations:
+    """J6: disposeMap('map') deleted globals by the prefix '_deckgl_anim_map_',
+    which also matched map 'map_2', snapping its animations back to start."""
+
+    def test_only_the_disposed_maps_globals_go(self):
+        prelude = "\n".join([
+            "var window = globalThis;",
+            "var _deferredMessages = {};",
+            "var mapInstances = {",
+            "  map: { _animGlobals: { _deckgl_anim_map_rot: true } },",
+            "  map_2: { _animGlobals: { _deckgl_anim_map_2_rot: true } },",
+            "};",
+            "window._deckgl_anim_map_rot = 10; window._deckgl_anim_map_2_rot = 20;",
+            extract_function("disposeMap"),
+        ])
+        got = run_js(prelude, (
+            "(function(){disposeMap('map');"
+            "return {mine: window._deckgl_anim_map_rot === undefined,"
+            " other: window._deckgl_anim_map_2_rot, left: Object.keys(mapInstances)};})()"
+        ))
+        assert got == {"mine": True, "other": 20, "left": ["map_2"]}
+
+
+@requires_node
+class TestDeferredQueueCoalescing:
+    """J7: updates for a map in a hidden tab queued without limit.
+
+    A timer-driven update() to a hidden map kept every full payload and
+    replayed them all on tab show. A full deck_update supersedes the layer
+    messages queued right before it; props it doesn't set are carried over.
+    """
+
+    _PRELUDE = "\n".join([
+        "var _deferredMessages = {};",
+        extract_var("SUPERSEDED_BY_UPDATE"),
+        extract_var("DEFERRED_QUEUE_LIMIT"),
+        extract_function("deferMessage"),
+    ])
+
+    def _queue(self, calls: str):
+        return run_js(self._PRELUDE, (
+            "(function(){" + calls +
+            "return _deferredMessages.m.map(function(q){return [q.handler, q.payload];});})()"
+        ))
+
+    def test_repeated_updates_collapse_to_one(self):
+        got = self._queue("""
+            for (var i = 0; i < 50; i++) deferMessage('m', 'deck_update', {id: 'm', layers: [i]});
+        """)
+        assert got == [["deck_update", {"id": "m", "layers": [49]}]]
+
+    def test_superseded_props_are_carried_over(self):
+        got = self._queue("""
+            deferMessage('m', 'deck_update', {id: 'm', layers: [1], widgets: ['w'], viewState: {zoom: 3}});
+            deferMessage('m', 'deck_partial_update', {id: 'm', layers: [{id: 'a'}]});
+            deferMessage('m', 'deck_layer_visibility', {id: 'm', visibility: {a: false}});
+            deferMessage('m', 'deck_update', {id: 'm', layers: [2]});
+        """)
+        assert got == [["deck_update", {"id": "m", "layers": [2], "widgets": ["w"],
+                                        "viewState": {"zoom": 3}}]]
+
+    def test_other_messages_keep_their_order(self):
+        got = self._queue("""
+            deferMessage('m', 'deck_update', {id: 'm', layers: [1], widgets: ['A']});
+            deferMessage('m', 'deck_set_widgets', {id: 'm', widgets: ['B']});
+            deferMessage('m', 'deck_update', {id: 'm', layers: [2]});
+        """)
+        assert [h for h, _ in got] == ["deck_update", "deck_set_widgets", "deck_update"]
+        assert got[2][1] == {"id": "m", "layers": [2]}
+
+    def test_queue_is_capped(self):
+        got = self._queue("""
+            for (var i = 0; i < 1200; i++) deferMessage('m', 'deck_add_source', {id: 'm', n: i});
+        """)
+        assert len(got) == 1000
+        assert got[-1][1]["n"] == 1199
+
+
+@requires_node
+class TestApplyController:
+    """P8: `controller` was only half honoured.
+
+    MapLibre does the interaction under MapboxOverlay, so deck.gl's
+    `controller` prop has no effect there. At start-up only `False` was acted
+    on (a dict was ignored), and set_controller(session, True) after False
+    never re-enabled MapLibre's handlers.
+    """
+
+    _PRELUDE = "\n".join([
+        "function handler() { return { on: true, rot: true,",
+        "  enable: function () { this.on = true; }, disable: function () { this.on = false; },",
+        "  enableRotation: function () { this.rot = true; }, disableRotation: function () { this.rot = false; } }; }",
+        "function fakeMap() { var m = {}; ['dragPan','scrollZoom','boxZoom','dragRotate','keyboard',",
+        "  'doubleClickZoom','touchZoomRotate'].forEach(function (k) { m[k] = handler(); }); return m; }",
+        "function state(m) { var o = {}; Object.keys(m).forEach(function (k) { o[k] = m[k].on; });",
+        "  o.touchRotate = m.touchZoomRotate.rot; return o; }",
+        extract_var("CONTROLLER_HANDLERS"),
+        extract_function("applyController"),
+    ])
+
+    def _state(self, calls: str):
+        return run_js(self._PRELUDE, "(function(){var m = fakeMap();" + calls + "return state(m);})()")
+
+    def test_false_then_true_restores_interaction(self):
+        s = self._state("applyController(m, false); applyController(m, true);")
+        assert all(s.values()), s
+
+    def test_false_disables_everything(self):
+        s = self._state("applyController(m, false);")
+        assert not any(v for k, v in s.items() if k != "touchRotate")
+
+    def test_dict_options_map_to_maplibre_handlers(self):
+        s = self._state("applyController(m, {doubleClickZoom: false, dragRotate: false,"
+                        " touchRotate: false, scrollZoom: {speed: 0.01}});")
+        assert s["doubleClickZoom"] is False and s["dragRotate"] is False
+        assert s["touchRotate"] is False and s["touchZoomRotate"] is True
+        assert s["scrollZoom"] is True and s["dragPan"] is True
+
+    def test_dict_starts_from_everything_enabled(self):
+        s = self._state("applyController(m, false); applyController(m, {keyboard: false});")
+        assert s["keyboard"] is False and s["dragPan"] is True
+
+
+class TestExportsKeepWidgetConfig:
+    """P5: to_html() and to_json()/from_json() dropped most widget settings.
+
+    The export's map div carried only view state, style and tooltip, so
+    controls=[] still got a NavigationControl (absent data-controls means
+    "defaults") and controller, gestures, picking radius... were lost; a
+    JSON round-trip returned a different widget.
+    """
+
+    def _widget(self):
+        from shiny_deckgl import MapWidget
+        return MapWidget(
+            "m", controls=[], controller={"dragRotate": False}, cooperative_gestures=True,
+            picking_radius=7, use_device_pixels=2, animate=True,
+            parameters={"depthTest": False}, interleaved=True,
+        )
+
+    def test_html_export_carries_the_same_data_attributes_as_ui(self):
+        import re
+        w = self._widget()
+        html = w.to_html([])
+        div = re.search(r'<div id="m"[^>]*>', html).group(0)
+        for attr in ('data-controls="[]"', "data-controller=", "data-cooperative-gestures",
+                     'data-picking-radius="7"', "data-use-device-pixels", "data-animate",
+                     "data-parameters=", "data-interleaved"):
+            assert attr in div, attr
+
+    def test_json_round_trip_keeps_config(self):
+        from shiny_deckgl import MapWidget
+        w = self._widget()
+        w2, _ = MapWidget.from_json(w.to_json([]))
+        for name in ("controls", "controller", "cooperative_gestures", "picking_radius",
+                     "use_device_pixels", "animate", "parameters", "interleaved"):
+            assert getattr(w2, name) == getattr(w, name), name
+
+    def test_default_widget_json_stays_minimal(self):
+        import json as _json
+        from shiny_deckgl import MapWidget
+        spec = _json.loads(MapWidget("d").to_json([]))
+        assert set(spec) == {"id", "viewState", "style", "layers", "controls"}

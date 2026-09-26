@@ -9,17 +9,27 @@ two public functions:
   ``SimpleMeshLayer``-compatible geometry arrays (positions, normals,
   colours, and triangle indices).
 
-Coordinate system auto-detection:
-  If node X values exceed 100 000, the file is assumed to be in
-  UTM Zone 33N (EPSG:32633) and `pyproj` is used for conversion.
-  Otherwise coordinates are treated as WGS84 (lon/lat) directly.
+Coordinate system:
+  Pass ``crs=`` (an EPSG code or any pyproj CRS string, e.g. ``3346`` for
+  LKS94 or ``32634`` for UTM zone 34N) and the nodes are projected to WGS84
+  with `pyproj`.  Without it, lon/lat grids are used directly and projected
+  grids are assumed to be UTM zone 33N (EPSG:32633) -- with a warning,
+  since a wrong guess silently puts the mesh in the wrong place.
 """
 
 from __future__ import annotations
 
 import functools
 import math
+import warnings
 from pathlib import Path
+from typing import Union
+
+#: A CRS as an EPSG code or anything pyproj accepts ("EPSG:3346", ...).
+CrsLike = Union[int, str]
+
+#: What a projected grid given without ``crs=`` is assumed to be in.
+DEFAULT_PROJECTED_CRS = "EPSG:32633"
 
 __all__ = [
     "parse_shyfem_grd",
@@ -32,23 +42,27 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-@functools.lru_cache(maxsize=1)
-def _get_transformer():
-    """Lazy-load pyproj Transformer (UTM Zone 33N → WGS84).
+def _crs_key(crs: CrsLike) -> str:
+    return f"EPSG:{crs}" if isinstance(crs, int) else str(crs)
+
+
+@functools.lru_cache(maxsize=8)
+def _get_transformer(crs: str = DEFAULT_PROJECTED_CRS):
+    """Lazy-load a pyproj Transformer from *crs* to WGS84 lon/lat.
 
     Returns ``None`` if pyproj is not installed.
     """
     try:
         from pyproj import Transformer
-        return Transformer.from_crs(
-            "EPSG:32633", "EPSG:4326", always_xy=True,
-        )
+        return Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
     except ImportError:
         return None
 
 
-def _utm_to_wgs84(x: float, y: float) -> tuple[float, float]:
-    """Convert UTM Zone 33N to WGS84 lon/lat.
+def _utm_to_wgs84(
+    x: float, y: float, crs: str = DEFAULT_PROJECTED_CRS,
+) -> tuple[float, float]:
+    """Convert a projected coordinate (UTM Zone 33N by default) to WGS84 lon/lat.
 
     Raises
     ------
@@ -57,7 +71,7 @@ def _utm_to_wgs84(x: float, y: float) -> tuple[float, float]:
     ValueError
         If coordinate transformation fails (e.g., invalid coordinates).
     """
-    t = _get_transformer()
+    t = _get_transformer(crs)
     if t is None:
         raise RuntimeError("pyproj is required: micromamba install -n shiny pyproj")
     try:
@@ -92,21 +106,23 @@ def _depth_to_rgb(t: float) -> tuple[int, int, int]:
 # Internal: common .grd reader
 # ---------------------------------------------------------------------------
 
-def _read_grd(path: Path) -> tuple[
+def _read_grd(path: Path, crs: CrsLike | None = None) -> tuple[
     dict[int, tuple[float, float]],
     list[dict],
     dict[int, float],
 ]:
     """Read a SHYFEM ``.grd`` file and return (nodes, elements, node_depths).
 
-    Coordinate system is auto-detected: if node X values exceed
-    100 000, coordinates are assumed UTM Zone 33N and projected to
-    WGS84 via pyproj.  Otherwise they are taken as lon/lat directly.
+    Nodes are projected from *crs* to WGS84.  Without *crs*, lon/lat
+    grids are used as-is and projected ones (any coordinate outside the
+    lon/lat range) are assumed UTM Zone 33N, with a warning.
 
     Parameters
     ----------
     path
         Path to the ``.grd`` file.
+    crs
+        CRS of the node coordinates (EPSG code or pyproj string).
 
     Returns
     -------
@@ -162,18 +178,26 @@ def _read_grd(path: Path) -> tuple[
     if not raw_nodes:
         return {}, elements, node_depths
 
-    # Auto-detect CRS: UTM values have X > 100 000
-    sample_x = next(iter(raw_nodes.values()))[0]
-    is_utm = abs(sample_x) > 100_000
-
-    nodes: dict[int, tuple[float, float]] = {}
-    if is_utm:
-        for nid, (x, y) in raw_nodes.items():
-            lon, lat = _utm_to_wgs84(x, y)
-            nodes[nid] = (lon, lat)
+    if crs is None:
+        projected = any(abs(x) > 180 or abs(y) > 90 for x, y in raw_nodes.values())
+        if not projected:
+            return raw_nodes, elements, node_depths  # already lon/lat
+        warnings.warn(
+            f"SHYFEM grid {path.name} has projected coordinates and no crs=; "
+            f"assuming UTM zone 33N ({DEFAULT_PROJECTED_CRS}). Pass crs= to be "
+            "explicit, e.g. crs=3346 for LKS94 or crs=32634 for UTM zone 34N.",
+            UserWarning,
+            stacklevel=3,
+        )
+        crs_key = DEFAULT_PROJECTED_CRS
     else:
-        # Already WGS84 (lon, lat)
-        nodes = raw_nodes
+        crs_key = _crs_key(crs)
+        if crs_key.upper() in ("EPSG:4326", "OGC:CRS84"):
+            return raw_nodes, elements, node_depths
+
+    nodes: dict[int, tuple[float, float]] = {
+        nid: _utm_to_wgs84(x, y, crs_key) for nid, (x, y) in raw_nodes.items()
+    }
 
     return nodes, elements, node_depths
 
@@ -182,7 +206,7 @@ def _read_grd(path: Path) -> tuple[
 # Public: PolygonLayer-ready data
 # ---------------------------------------------------------------------------
 
-def parse_shyfem_grd(path: str | Path) -> list[dict]:
+def parse_shyfem_grd(path: str | Path, *, crs: CrsLike | None = None) -> list[dict]:
     """Parse a SHYFEM ``.grd`` file and return PolygonLayer-ready data.
 
     Each element (triangle or quad) is converted to a closed polygon
@@ -192,6 +216,9 @@ def parse_shyfem_grd(path: str | Path) -> list[dict]:
     ----------
     path
         Path to the ``.grd`` file.
+    crs
+        CRS of the node coordinates, e.g. ``3346`` (LKS94) or ``32634``
+        (UTM zone 34N).  See the module docstring for the default.
 
     Returns
     -------
@@ -200,7 +227,7 @@ def parse_shyfem_grd(path: str | Path) -> list[dict]:
         ``depth`` (float), ``element_id`` (int), ``color`` (``[r,g,b,a]``),
         ``layerType`` (str).
     """
-    nodes, elements, _nd = _read_grd(Path(path))
+    nodes, elements, _nd = _read_grd(Path(path), crs)
 
     if not elements:
         return []
@@ -237,12 +264,14 @@ def parse_shyfem_grd(path: str | Path) -> list[dict]:
 # Public: SimpleMeshLayer geometry arrays
 # ---------------------------------------------------------------------------
 
-def parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict:
+def parse_shyfem_mesh(
+    path: str | Path, z_scale: float = 50.0, *, crs: CrsLike | None = None,
+) -> dict:
     """Parse a SHYFEM ``.grd`` file into SimpleMeshLayer geometry.
 
     Vertex positions are in **metres** relative to the mesh centre,
     suitable for the deck.gl ``METER_OFFSETS`` coordinate system
-    (``coordinateSystem=2``).
+    (``coordinateSystem="meter-offsets"``).
 
     Parameters
     ----------
@@ -250,6 +279,8 @@ def parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict:
         Path to the ``.grd`` file.
     z_scale
         Vertical exaggeration factor for depth (default 50).
+    crs
+        CRS of the node coordinates; see :func:`parse_shyfem_grd`.
 
     Returns
     -------
@@ -260,7 +291,7 @@ def parse_shyfem_mesh(path: str | Path, z_scale: float = 50.0) -> dict:
     """
     import numpy as np
 
-    nodes, elements, node_depths = _read_grd(Path(path))
+    nodes, elements, node_depths = _read_grd(Path(path), crs)
 
     if not nodes or not elements:
         raise ValueError(f"No nodes or elements parsed from {path}")

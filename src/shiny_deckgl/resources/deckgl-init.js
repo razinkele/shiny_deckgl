@@ -1228,9 +1228,20 @@
   // Register both ways -- jQuery for Shiny, native for standalone hosts -- and
   // guard against running twice if both fire.
   var _shinyConnectedHandled = false;
+  var _reconnectCount = 0;
 
   function onShinyConnected() {
-    if (_shinyConnectedHandled) return;
+    if (_shinyConnectedHandled) {
+      // A later shiny:connected is a reconnect (session.allow_reconnect()).
+      // Shiny resends inputs and recalculates outputs, but the maps are fed
+      // by custom messages, which are not replayed: tell the server which
+      // maps are still live so it can resend_last_update().
+      _reconnectCount++;
+      Object.keys(mapInstances).forEach(function (id) {
+        Shiny.setInputValue(id + '_reconnected', { count: _reconnectCount }, { priority: 'event' });
+      });
+      return;
+    }
     _shinyConnectedHandled = true;
     var attempts = 0;
     // Start the MapLibre module fetch immediately; the poll below waits for

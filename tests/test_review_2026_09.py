@@ -1696,3 +1696,24 @@ class TestMapOptions:
         from shiny_deckgl import MapWidget
         with pytest.raises(ValueError, match="container"):
             MapWidget("m", map_options={"container": "x"})
+
+
+class TestReconnectResync:
+    """After session.allow_reconnect() (Shiny >= 1.8.0) the client reports a
+    reconnect and the server can replay the session's last update (1.12.0)."""
+
+    def test_input_id(self):
+        from shiny_deckgl import MapWidget
+        assert MapWidget("m").reconnected_input_id == "m_reconnected"
+
+    def test_resend_repeats_the_last_update_for_that_session(self):
+        import asyncio
+        from shiny_deckgl import MapWidget, scatterplot_layer
+        w, s1, s2 = MapWidget("m"), _FakeSession(), _FakeSession()
+        asyncio.run(w.update(s1, [scatterplot_layer("a", [[1, 2]])], picking_radius=5))
+        first = s1.messages[-1]
+        assert asyncio.run(w.resend_last_update(s1)) is True
+        assert s1.messages[-1] == first
+        # Review Focus 3: a reconnect before any update() is a no-op.
+        assert asyncio.run(w.resend_last_update(s2)) is False
+        assert s2.messages == []

@@ -235,6 +235,8 @@ class MapWidget:
         # Same for other settings a session can change at run time
         # (tooltip, cooperative gestures): {session: {name: value}}.
         self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
+        # Fallback for _recall("last_update") before any update() ran.
+        self.last_update: dict | None = None
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -317,6 +319,20 @@ class MapWidget:
         ``zoom`` and ``reset``, or ``None`` for ``click``.
         """
         return f"{self._bare_id}_widget_event"
+
+    @property
+    def reconnected_input_id(self) -> str:
+        """Shiny input set when the browser reconnects to its session.
+
+        Requires ``session.allow_reconnect(True)`` (Shiny >= 1.8.0) and a host
+        that keeps sessions alive. Value: ``{"count": n}``. Typical use::
+
+            @reactive.effect
+            @reactive.event(input[widget.reconnected_input_id])
+            async def _resync():
+                await widget.resend_last_update(session)
+        """
+        return f"{self._bare_id}_reconnected"
 
     # -- UI -------------------------------------------------------------------
 
@@ -472,7 +488,23 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
+        # Kept per session so resend_last_update() can replay it after a reconnect.
+        self._remember(session, "last_update", payload)
         await session.send_custom_message("deck_update", json_safe(payload))
+
+    async def resend_last_update(self, session: "Session") -> bool:
+        """Send this session's most recent :meth:`update` payload again.
+
+        Custom messages sent while the websocket was down are lost; after a
+        reconnect (:attr:`reconnected_input_id`) this restores the layers,
+        widgets and view state of the last update. Native MapLibre layers and
+        controls are not replayed. Returns ``False`` when nothing was recorded.
+        """
+        payload = self._recall(session, "last_update")
+        if payload is None:
+            return False
+        await session.send_custom_message("deck_update", json_safe(payload))
+        return True
 
     async def partial_update(
         self,

@@ -33,6 +33,12 @@ converter resolves at runtime:
 
 See `deck.gl JSON configuration docs <https://deck.gl/docs/api-reference/json/conversion-reference>`_
 for the full specification.
+
+deck.gl 9.4 props worth knowing (all pass through ``**kwargs``):
+``pickable="3d"`` (depth picking: the click/hover ``coordinate`` gains z),
+``antialiasing=True`` on Path/Line/Arc/PointCloud layers,
+``visibleMinZoom``/``visibleMaxZoom`` on ``TileLayer`` (draw range,
+separate from the load range), ``getPixelOffset`` on ``ScatterplotLayer``.
 """
 
 from __future__ import annotations
@@ -214,6 +220,10 @@ def geojson_layer(id: str, data: list | dict, **kwargs) -> dict:
 
 def tile_layer(id: str, data: str | list, **kwargs) -> dict:
     """Create a deck.gl ``TileLayer`` for XYZ or WMS raster tiles.
+
+    deck.gl 9.4 adds ``visibleMinZoom``/``visibleMaxZoom`` (the zoom range in
+    which tiles are *drawn*, separate from ``minZoom``/``maxZoom`` which set
+    the range in which they are *loaded*); pass them as keyword arguments.
 
     Parameters
     ----------
@@ -708,6 +718,8 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
 
     This is deck.gl's first-class WMS layer (added in 9.x), as an
     alternative to the ``tile_layer()`` workaround with bbox placeholders.
+    Like ``TileLayer``, it accepts deck.gl 9.4's ``visibleMinZoom`` /
+    ``visibleMaxZoom`` draw-range props as keyword arguments.
 
     Parameters
     ----------

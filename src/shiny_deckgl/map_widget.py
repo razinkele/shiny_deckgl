@@ -131,6 +131,7 @@ _JSON_WIDGET_SETTINGS = (
     ("controller", "controller", True),
     ("interleaved", "interleaved", False),
     ("cooperativeGestures", "cooperative_gestures", False),
+    ("mapOptions", "map_options", None),
 )
 
 
@@ -187,6 +188,12 @@ class MapWidget:
         When ``True``, requires Ctrl+scroll to zoom and two-finger drag
         on touch devices.  Useful when the map is embedded in a scrollable
         page.  Default ``False``.
+    map_options
+        Extra MapLibre ``Map`` constructor options, e.g.
+        ``{"maxBounds": [[20, 54], [23, 57]], "maxPitch": 60,
+        "renderWorldCopies": False, "antialias": True}``. They override the
+        view-state-derived defaults; ``container`` and ``style`` cannot be set
+        here (use ``style=``).
     """
 
     def __init__(
@@ -207,6 +214,8 @@ class MapWidget:
         interleaved: bool = False,
         # Cooperative gestures (v1.0.0)
         cooperative_gestures: bool = False,
+        # Extra MapLibre Map options (v1.12.0)
+        map_options: dict | None = None,
     ):
         # Resolve through the current Shiny module namespace so the
         # widget works identically inside and outside @module.ui /
@@ -239,6 +248,9 @@ class MapWidget:
         self.controller = controller
         self.interleaved = interleaved
         self.cooperative_gestures = cooperative_gestures
+        if map_options and ({"container", "style"} & set(map_options)):
+            raise ValueError("map_options cannot set 'container' or 'style'; use style=")
+        self.map_options = dict(map_options) if map_options else None
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -365,6 +377,8 @@ class MapWidget:
             attrs["data_controller"] = json.dumps(controller)
         if self.interleaved:
             attrs["data_interleaved"] = "true"
+        if self.map_options:
+            attrs["data_map_options"] = json.dumps(self.map_options)
         if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
         return attrs

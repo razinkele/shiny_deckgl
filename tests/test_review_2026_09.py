@@ -1678,3 +1678,21 @@ class TestControllerIsPerSession:
         assert "data-controller" not in map_div(s2)
         assert _json.loads(w.to_json([], session=s1))["controller"] is False
         assert "controller" not in _json.loads(w.to_json([], session=s2))
+
+
+class TestMapOptions:
+    """MapWidget(map_options=) passes extra MapLibre Map options through (1.12.0)."""
+
+    def test_attribute_and_json_round_trip(self):
+        from shiny_deckgl import MapWidget
+        w = MapWidget("m", map_options={"maxPitch": 60, "renderWorldCopies": False})
+        assert 'data-map-options="' in str(w.ui())
+        assert json.loads(w.to_json([]))["mapOptions"] == {"maxPitch": 60, "renderWorldCopies": False}
+        w2, _ = MapWidget.from_json(w.to_json([]))
+        assert w2.map_options == {"maxPitch": 60, "renderWorldCopies": False}
+        assert "data-map-options" not in str(MapWidget("d").ui())
+
+    def test_pinned_keys_are_rejected(self):
+        from shiny_deckgl import MapWidget
+        with pytest.raises(ValueError, match="container"):
+            MapWidget("m", map_options={"container": "x"})

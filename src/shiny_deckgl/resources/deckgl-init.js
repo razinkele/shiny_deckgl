@@ -624,6 +624,23 @@
     doubleClickZoom: 'doubleClickZoom', keyboard: 'keyboard', boxZoom: 'boxZoom',
   };
 
+  // data-map-options: extra MapLibre Map constructor options (maxBounds,
+  // maxPitch, renderWorldCopies, antialias, ...). They win over the
+  // view-state-derived defaults; container and style stay pinned.
+  function mergeMapOptions(base, el) {
+    var raw = el && el.dataset ? el.dataset.mapOptions : undefined;
+    if (!raw) return Object.assign({}, base);
+    var extra;
+    try { extra = JSON.parse(raw); } catch (e) {
+      console.warn('[shiny_deckgl] Ignoring malformed data-map-options:', e.message);
+      return Object.assign({}, base);
+    }
+    var out = Object.assign({}, base, extra);
+    out.container = base.container;
+    out.style = base.style;
+    return out;
+  }
+
   function applyController(map, value) {
     var opts = (value && typeof value === 'object') ? value : null;
     var on = value !== false;
@@ -927,7 +944,7 @@
         }
       };
     }
-    const map = new maplibregl.Map(mapOpts);
+    const map = new maplibregl.Map(mergeMapOptions(mapOpts, el));
 
     // Apply initial controller setting from data attribute
     if (el.dataset.controller !== undefined) {
@@ -1857,7 +1874,8 @@
 
       // Set up pick handling for non-raster layers
       if (!RASTER_TYPES.has(layerProps.type) && layerProps.pickable !== false) {
-        layerProps.pickable = true;
+        // Keep '3d' (depth picking, deck.gl >= 9.3); only fill in the default.
+        if (layerProps.pickable !== '3d') layerProps.pickable = true;
 
         // Click → Shiny input
         if (!layerProps.onClick) {

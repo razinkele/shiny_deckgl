@@ -128,3 +128,38 @@ def test_beforeId_reaches_the_deck_layer_props():
         return buildDeckLayers(src, 'm')[0].props.beforeId;
     })()""")
     assert got == "waterway-label"
+
+
+@requires_node
+class TestPickable3d:
+    """deck.gl 9.3+: pickable may be '3d' (depth picking); keep it, do not flatten to true."""
+
+    def test_3d_is_kept_and_handlers_attached(self):
+        got = run_js(_prelude(), """(function(){
+            var l = buildDeckLayers([{ type: 'ScatterplotLayer', id: 'p', data: [], pickable: '3d' }], 'm')[0];
+            return { pickable: l.props.pickable, click: typeof l.props.onClick, hover: typeof l.props.onHover };
+        })()""")
+        assert got == {"pickable": "3d", "click": "function", "hover": "function"}
+
+    def test_raster_layer_with_3d_gets_no_handlers(self):
+        # Review Focus 2: raster layers skip the pick-handler setup either way.
+        got = run_js(_prelude() + "\ndeck.TileLayer = FakeLayer;", """(function(){
+            var l = buildDeckLayers([{ type: 'TileLayer', id: 't', data: 'https://x/{z}/{x}/{y}.png', pickable: '3d' }], 'm')[0];
+            return { pickable: l.props.pickable, click: typeof l.props.onClick };
+        })()""")
+        assert got == {"pickable": "3d", "click": "undefined"}
+
+
+@requires_node
+def test_map_options_merge_keeps_container_and_style():
+    got = run_js("var console = { warn: function () {} };\n" + extract_function("mergeMapOptions"), """(function(){
+        var base = { container: 'm', style: 'S', zoom: 3, maxZoom: 24 };
+        return [
+          mergeMapOptions(base, { dataset: {} }),
+          mergeMapOptions(base, { dataset: { mapOptions: JSON.stringify({ maxZoom: 12, maxBounds: [[20,54],[23,57]], container: 'evil', style: 'evil' }) } }),
+          mergeMapOptions(base, { dataset: { mapOptions: '{not json' } }),
+        ];
+    })()""")
+    assert got[0] == {"container": "m", "style": "S", "zoom": 3, "maxZoom": 24}
+    assert got[1] == {"container": "m", "style": "S", "zoom": 3, "maxZoom": 12, "maxBounds": [[20, 54], [23, 57]]}
+    assert got[2] == got[0]

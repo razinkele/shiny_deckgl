@@ -40,6 +40,7 @@ test = [
     "numpy",
     "pandas",
     "pillow",            # tests/test_basic.py checks the icon atlas dimensions
+    "shiny>=1.8.0",      # shiny.testserver for tests/test_demo_headless.py
 ]
 # The full contributor environment: the test extra plus the geospatial tests and
 # the linter. CI installs this one, so no test is skipped for a missing import.
@@ -53,6 +54,7 @@ dev = [
     "pillow",
     "geopandas",
     "ruff",
+    "shiny>=1.8.0",      # shiny.testserver for tests/test_demo_headless.py
 ]
 
 [project.urls]

@@ -26,7 +26,6 @@ from .widgets import (
     gimbal_widget,
     reset_view_widget,
     screenshot_widget,
-    fps_widget,
     loading_widget,
     theme_widget,
     timeline_widget,
@@ -35,7 +34,6 @@ from .widgets import (
     info_widget,
     splitter_widget,
     stats_widget,
-    view_selector_widget,
     layer_legend_widget,
 )
 from ._transitions import transition
@@ -1751,7 +1749,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         if input.wg_screenshot():
             widgets.append(screenshot_widget(filename="shiny-deckgl-capture"))
         if input.wg_fps():
-            widgets.append(fps_widget())
+            # deck.gl 9.3 merged FpsWidget into StatsWidget
+            widgets.append(stats_widget(placement="bottom-left", framesPerUpdate=60))
         if input.wg_loading():
             widgets.append(loading_widget(label="Loading layers\u2026"))
         if input.wg_theme():
@@ -1779,8 +1778,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 placement="bottom-left",
                 framesPerUpdate=60,
             ))
-        if input.wg_view_selector():
-            widgets.append(view_selector_widget(initialViewMode="map"))
         # Layer legend widget
         if input.wg_layer_legend():
             if input.wg_auto_legend():
@@ -1932,7 +1929,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.wg_screenshot, input.wg_fps, input.wg_loading,
         input.wg_theme, input.wg_timeline, input.wg_geocoder,
         input.wg_context_menu, input.wg_info, input.wg_splitter,
-        input.wg_stats, input.wg_view_selector,
+        input.wg_stats,
         input.wg_layer_combo, input.wg_layer_legend,
         input.wg_auto_legend,
     )
@@ -1945,16 +1942,16 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # Update status console
         names = [w["@@widgetClass"] for w in widgets]
         standard = [n for n in names if not n.startswith("_") or n in (
-            "_ScaleWidget", "_FpsWidget", "_LoadingWidget",
+            "_ScaleWidget", "_LoadingWidget",
             "_TimelineWidget", "_GeocoderWidget", "_ThemeWidget",
             "_DeckLayerLegendWidget",
         )]
         experimental = [n for n in names if n in (
             "_ContextMenuWidget", "_InfoWidget", "_SplitterWidget",
-            "_StatsWidget", "_ViewSelectorWidget",
+            "_StatsWidget",
         )]
         status_lines = [
-            f"Active widgets: {len(widgets)} / 18",
+            f"Active widgets: {len(widgets)} / 17",
             f"Layer: {input.wg_layer_combo()}",
             "",
         ]
@@ -2011,7 +2008,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             fullscreen=True, scale=True, screenshot=True, fps=True,
             loading=True, theme=True, timeline=True, geocoder=True,
             context_menu=True, info=True, splitter=True, stats=True,
-            view_selector=True,
         )
 
     @reactive.Effect
@@ -2025,7 +2021,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         fullscreen=False, scale=False, screenshot=False, fps=False,
         loading=False, theme=False, timeline=False, geocoder=False,
         context_menu=False, info=False, splitter=False, stats=False,
-        view_selector=False,
     ):
         """Set all widget toggles to the given preset values."""
         ui.update_switch("wg_zoom", value=zoom)
@@ -2044,7 +2039,6 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         ui.update_switch("wg_info", value=info)
         ui.update_switch("wg_splitter", value=splitter)
         ui.update_switch("wg_stats", value=stats)
-        ui.update_switch("wg_view_selector", value=view_selector)
 
     # ===================================================================
     # Tab 1: Layer Gallery — all 33 layer helpers

@@ -90,11 +90,11 @@ class TestWidgetStructure:
         assert w["@@widgetClass"] == "ScreenshotWidget"
 
     def test_fps_widget_structure(self):
-        """fps_widget should return dict with @@widgetClass."""
-        w = fps_widget()
+        """fps_widget is deprecated and now returns a StatsWidget spec."""
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget()
         assert isinstance(w, dict)
-        assert "@@widgetClass" in w
-        assert w["@@widgetClass"] == "_FpsWidget"
+        assert w["@@widgetClass"] == "_StatsWidget"
 
     def test_loading_widget_structure(self):
         """loading_widget should return dict with @@widgetClass."""
@@ -156,12 +156,9 @@ class TestExperimentalWidgetStructure:
         assert "@@widgetClass" in w
         assert w["@@widgetClass"] == "_StatsWidget"
 
-    def test_view_selector_widget_structure(self):
-        """view_selector_widget should return dict with @@widgetClass."""
-        w = view_selector_widget()
-        assert isinstance(w, dict)
-        assert "@@widgetClass" in w
-        assert w["@@widgetClass"] == "_ViewSelectorWidget"
+    def test_view_selector_widget_is_deprecated_and_empty(self):
+        with pytest.warns(DeprecationWarning, match="no ViewSelectorWidget"):
+            assert view_selector_widget() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +205,8 @@ class TestDefaultPlacements:
 
     def test_fps_widget_default_placement(self):
         """fps_widget should default to top-left."""
-        w = fps_widget()
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget()
         assert w["placement"] == "top-left"
 
     def test_timeline_widget_default_placement(self):
@@ -229,11 +227,6 @@ class TestDefaultPlacements:
     def test_stats_widget_default_placement(self):
         """stats_widget should default to top-left."""
         w = stats_widget()
-        assert w["placement"] == "top-left"
-
-    def test_view_selector_widget_default_placement(self):
-        """view_selector_widget should default to top-left."""
-        w = view_selector_widget()
         assert w["placement"] == "top-left"
 
 
@@ -297,7 +290,8 @@ class TestCustomPlacements:
     ])
     def test_fps_widget_custom_placement(self, placement):
         """fps_widget should accept custom placement."""
-        w = fps_widget(placement=placement)
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget(placement=placement)
         assert w["placement"] == placement
 
 
@@ -337,7 +331,8 @@ class TestKwargsForwarding:
 
     def test_fps_widget_kwargs(self):
         """fps_widget should forward kwargs."""
-        w = fps_widget(style={"color": "red"})
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget(style={"color": "red"})
         assert w["style"] == {"color": "red"}
 
     def test_loading_widget_kwargs(self):
@@ -392,11 +387,6 @@ class TestKwargsForwarding:
         assert w["type"] == "memory"
         assert w["framesPerUpdate"] == 30
 
-    def test_view_selector_widget_kwargs(self):
-        """view_selector_widget should forward kwargs."""
-        w = view_selector_widget(initialViewMode="globe")
-        assert w["initialViewMode"] == "globe"
-
 
 # ---------------------------------------------------------------------------
 # Test widget collections
@@ -431,10 +421,10 @@ class TestWidgetCollections:
     def test_developer_debug_widgets(self):
         """Developer/debug widget combination."""
         widgets = [
-            fps_widget("top-left"),
+            stats_widget("top-left", type="fps"),
             stats_widget("bottom-left"),
         ]
-        assert widgets[0]["@@widgetClass"] == "_FpsWidget"
+        assert widgets[0]["@@widgetClass"] == "_StatsWidget"
         assert widgets[1]["@@widgetClass"] == "_StatsWidget"
 
     def test_all_widgets_unique_class_or_placement(self):
@@ -447,7 +437,6 @@ class TestWidgetCollections:
             gimbal_widget(),
             reset_view_widget(),
             screenshot_widget(),
-            fps_widget(),
             loading_widget(),
             timeline_widget(),
             geocoder_widget(),
@@ -456,9 +445,8 @@ class TestWidgetCollections:
             info_widget(),
             splitter_widget(),
             stats_widget(),
-            view_selector_widget(),
         ]
-        assert len(widgets) == 17
+        assert len(widgets) == 15
         # All should have @@widgetClass
         for w in widgets:
             assert "@@widgetClass" in w
@@ -505,3 +493,21 @@ class TestWidgetEdgeCases:
         """Widgets should accept className kwarg."""
         w = compass_widget(className="custom-compass")
         assert w["className"] == "custom-compass"
+
+
+# ---------------------------------------------------------------------------
+# Deprecated helpers (1.12.0): warn, and emit what deck.gl 9.4 can render
+# ---------------------------------------------------------------------------
+
+class TestDeprecatedWidgetHelpers:
+    def test_fps_widget_warns_and_becomes_a_stats_widget(self):
+        with pytest.warns(DeprecationWarning, match="StatsWidget"):
+            spec = fps_widget(placement="bottom-left")
+        assert spec == stats_widget(placement="bottom-left")
+
+    def test_other_helpers_do_not_warn(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            zoom_widget()
+            stats_widget()

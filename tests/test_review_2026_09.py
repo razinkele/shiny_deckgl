@@ -1320,13 +1320,15 @@ class TestUnavailableWidgetsAreDocumented:
 
     See tests/test_widgets_resolve.py: deck.gl 9.3.6/9.3.11/9.4.0 all export the
     same widget set, and neither FpsWidget nor ViewSelectorWidget is in it.
+    Since 1.12.0 both helpers are deprecated (see tests/test_widgets.py for the
+    warning and the replacement); the docstrings must say so.
     """
 
-    def test_docstrings_warn_that_the_widget_is_unavailable(self):
+    def test_docstrings_say_the_helper_is_deprecated(self):
         from shiny_deckgl.widgets import fps_widget, view_selector_widget
         for fn in (fps_widget, view_selector_widget):
-            assert "not available" in (fn.__doc__ or "").lower(), (
-                f"{fn.__name__} resolves to nothing; its docstring must say so")
+            assert "deprecated" in (fn.__doc__ or "").lower(), (
+                f"{fn.__name__} is deprecated; its docstring must say so")
 
 
 class TestCredentialedLayersAreNotFetchedUnconditionally:

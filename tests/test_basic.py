@@ -3750,9 +3750,10 @@ class TestScreenshotWidget:
 
 
 class TestFpsWidget:
-    def test_class_and_placement(self):
-        w = fps_widget()
-        assert w["@@widgetClass"] == "_FpsWidget"
+    def test_deprecated_and_becomes_a_stats_widget(self):
+        with pytest.warns(DeprecationWarning, match="StatsWidget"):
+            w = fps_widget()
+        assert w["@@widgetClass"] == "_StatsWidget"
         assert w["placement"] == "top-left"
 
 
@@ -4070,18 +4071,11 @@ class TestStatsWidget:
 
 
 class TestViewSelectorWidget:
-    def test_class_and_placement(self):
-        w = view_selector_widget()
-        assert w["@@widgetClass"] == "_ViewSelectorWidget"
-        assert w["placement"] == "top-left"
-
-    def test_custom_placement(self):
-        w = view_selector_widget(placement="top-right")
-        assert w["placement"] == "top-right"
-
-    def test_extra_kwargs(self):
-        w = view_selector_widget(initialViewMode="globe")
-        assert w["initialViewMode"] == "globe"
+    def test_deprecated_and_empty(self):
+        # deck.gl 9.x has no ViewSelectorWidget; the empty spec is dropped client-side.
+        with pytest.warns(DeprecationWarning, match="no ViewSelectorWidget"):
+            w = view_selector_widget(placement="top-right", initialViewMode="globe")
+        assert w == {}
 
 
 # ---------------------------------------------------------------------------
@@ -5809,12 +5803,10 @@ _PLACED_WIDGETS = [
     ("gimbal_widget", gimbal_widget, "GimbalWidget", "top-right"),
     ("reset_view_widget", reset_view_widget, "ResetViewWidget", "top-right"),
     ("screenshot_widget", screenshot_widget, "ScreenshotWidget", "top-right"),
-    ("fps_widget", fps_widget, "_FpsWidget", "top-left"),
     ("timeline_widget", timeline_widget, "_TimelineWidget", "bottom-left"),
     ("geocoder_widget", geocoder_widget, "_GeocoderWidget", "top-left"),
     ("info_widget", info_widget, "_InfoWidget", "top-left"),
     ("stats_widget", stats_widget, "_StatsWidget", "top-left"),
-    ("view_selector_widget", view_selector_widget, "_ViewSelectorWidget", "top-left"),
 ]
 
 _NO_PLACEMENT_WIDGETS = [
@@ -6041,12 +6033,14 @@ class TestScreenshotWidgetRealistic:
 
 
 class TestFpsWidgetRealistic:
-    def test_samples(self):
-        w = fps_widget(samples=120)
+    def test_kwargs_still_forwarded(self):
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget(samples=120)
         assert w["samples"] == 120
 
     def test_placement_override(self):
-        w = fps_widget(placement="bottom-right")
+        with pytest.warns(DeprecationWarning):
+            w = fps_widget(placement="bottom-right")
         assert w["placement"] == "bottom-right"
 
 
@@ -6165,17 +6159,10 @@ class TestStatsWidgetRealistic:
 
 
 class TestViewSelectorWidgetRealistic:
-    def test_globe_mode(self):
-        w = view_selector_widget(initialViewMode="globe")
-        assert w["initialViewMode"] == "globe"
-
-    def test_map_mode(self):
-        w = view_selector_widget(initialViewMode="map")
-        assert w["initialViewMode"] == "map"
-
-    def test_orbit_mode(self):
-        w = view_selector_widget(initialViewMode="orbit")
-        assert w["initialViewMode"] == "orbit"
+    @pytest.mark.parametrize("mode", ["globe", "map", "orbit"])
+    def test_every_mode_is_dropped(self, mode):
+        with pytest.warns(DeprecationWarning):
+            assert view_selector_widget(initialViewMode=mode) == {}
 
 
 # ---------------------------------------------------------------------------
@@ -6193,7 +6180,7 @@ class TestWidgetSetWidgetsComprehensive:
         asyncio.run(m.set_widgets(fake, all_w))
         handler, payload = fake.messages[0]
         assert handler == "deck_set_widgets"
-        assert len(payload["widgets"]) == 13
+        assert len(payload["widgets"]) == 11
 
     def test_set_all_no_placement_widgets(self):
         """set_widgets handles all 4 no-placement widgets."""
@@ -6205,9 +6192,9 @@ class TestWidgetSetWidgetsComprehensive:
         assert handler == "deck_set_widgets"
         assert len(payload["widgets"]) == 4
 
-    def test_set_all_17_widgets(self):
-        """set_widgets handles the full set of 17 widgets."""
-        m = MapWidget("w_17")
+    def test_set_all_15_widgets(self):
+        """set_widgets handles the full set of 15 widgets (fps and view selector are deprecated)."""
+        m = MapWidget("w_15")
         fake = _FakeSession()
         all_w = (
             [fn() for _, fn, _, _ in _PLACED_WIDGETS]
@@ -6216,7 +6203,7 @@ class TestWidgetSetWidgetsComprehensive:
         asyncio.run(m.set_widgets(fake, all_w))
         handler, payload = fake.messages[0]
         assert handler == "deck_set_widgets"
-        assert len(payload["widgets"]) == 17
+        assert len(payload["widgets"]) == 15
 
     def test_widget_classes_preserved(self):
         """All @@widgetClass values survive through set_widgets."""
@@ -6240,7 +6227,7 @@ class TestWidgetSetWidgetsComprehensive:
         """Custom kwargs on widgets are preserved through set_widgets."""
         m = MapWidget("w_kw")
         fake = _FakeSession()
-        widgets = [zoom_widget(transitionDuration=250), fps_widget(samples=100)]
+        widgets = [zoom_widget(transitionDuration=250), stats_widget(samples=100)]
         asyncio.run(m.set_widgets(fake, widgets))
         w_list = fake.messages[0][1]["widgets"]
         assert w_list[0]["transitionDuration"] == 250
@@ -6251,7 +6238,7 @@ class TestWidgetUpdatePayloadComprehensive:
     """Tests for widgets passed through MapWidget.update(widgets=...)."""
 
     def test_update_with_all_widgets(self):
-        """All 17 widgets pass through update()."""
+        """All 15 widgets pass through update()."""
         m = MapWidget("u_all")
         fake = _FakeSession()
         all_w = (
@@ -6261,7 +6248,7 @@ class TestWidgetUpdatePayloadComprehensive:
         asyncio.run(m.update(fake, [], widgets=all_w))
         payload = fake.messages[0][1]
         assert "widgets" in payload
-        assert len(payload["widgets"]) == 17
+        assert len(payload["widgets"]) == 15
 
     def test_update_widgets_and_layers(self):
         """Widgets and layers coexist in update payload."""
@@ -6403,7 +6390,7 @@ class TestWidgetCdnInclusion:
 # ---------------------------------------------------------------------------
 
 class TestWidgetExports:
-    """All 17 widget helpers are exported from the package."""
+    """All widget helpers (including the two deprecated ones) are exported from the package."""
 
     def test_widgets_in_package_all(self):
         import shiny_deckgl
@@ -6492,19 +6479,18 @@ class TestLayerWidgetCombined:
         assert p["layers"][0]["type"] == "HeatmapLayer"
         assert len(p["widgets"]) == 2
 
-    def test_geojson_with_stats_and_fps(self):
-        """GeoJSON layer with performance monitoring widgets."""
+    def test_geojson_with_gpu_and_fps_stats(self):
+        """GeoJSON layer with two StatsWidgets (deck.gl 9.3 merged FPS into stats)."""
         m = MapWidget("lw4")
         fake = _FakeSession()
         geojson = {"type": "FeatureCollection", "features": []}
         layers = [geojson_layer("geo", geojson)]
-        widgets = [stats_widget(type="gpu"), fps_widget()]
+        widgets = [stats_widget(type="gpu"), stats_widget(type="fps", placement="bottom-left")]
         asyncio.run(m.update(fake, layers, widgets=widgets))
         p = fake.messages[0][1]
         assert p["layers"][0]["type"] == "GeoJsonLayer"
         classes = [w["@@widgetClass"] for w in p["widgets"]]
-        assert "_StatsWidget" in classes
-        assert "_FpsWidget" in classes
+        assert classes == ["_StatsWidget", "_StatsWidget"]
 
     def test_hexagon_with_compass_and_gimbal(self):
         """3D HexagonLayer with navigation widgets."""
@@ -6585,17 +6571,17 @@ class TestLayerWidgetCombined:
         cm = p["widgets"][0]
         assert len(cm["items"]) == 2
 
-    def test_grid_layer_with_view_selector(self):
-        """GridLayer with ViewSelectorWidget for map/globe switching."""
+    def test_grid_layer_with_gimbal(self):
+        """GridLayer with a GimbalWidget for 3-D orientation."""
         m = MapWidget("lw11")
         fake = _FakeSession()
         layers = [grid_layer("grid", [{"position": [21, 55]}], cellSize=10000)]
-        widgets = [view_selector_widget(initialViewMode="map")]
+        widgets = [gimbal_widget(placement="bottom-right")]
         asyncio.run(m.update(fake, layers, widgets=widgets))
         p = fake.messages[0][1]
         assert p["layers"][0]["type"] == "GridLayer"
-        vs_w = p["widgets"][0]
-        assert vs_w["initialViewMode"] == "map"
+        assert p["widgets"][0]["@@widgetClass"] == "GimbalWidget"
+        assert p["widgets"][0]["placement"] == "bottom-right"
 
     def test_set_widgets_then_update_layers(self):
         """set_widgets and update are independent operations."""
@@ -6612,7 +6598,7 @@ class TestLayerWidgetCombined:
         m = MapWidget("lw13")
         fake = _FakeSession()
         asyncio.run(m.set_widgets(fake, [zoom_widget()]))
-        asyncio.run(m.set_widgets(fake, [compass_widget(), fps_widget()]))
+        asyncio.run(m.set_widgets(fake, [compass_widget(), stats_widget()]))
         first_set = fake.messages[0][1]["widgets"]
         second_set = fake.messages[1][1]["widgets"]
         assert len(first_set) == 1

@@ -23,9 +23,11 @@ pytestmark = pytest.mark.browser
 ROOT = Path(__file__).resolve().parents[1]
 WIDGETS_PY = ROOT / "src" / "shiny_deckgl" / "widgets.py"
 
-#: Helpers deck.gl provides no class for, in any supported version.
-#: Asserted explicitly so that a future deck.gl release adding them is noticed.
-KNOWN_UNAVAILABLE = {"_FpsWidget", "_ViewSelectorWidget"}
+#: Helpers deck.gl provides no class for, in any supported version. Empty
+#: since 1.12.0: fps_widget()/view_selector_widget() are deprecated and no
+#: longer emit ``_FpsWidget``/``_ViewSelectorWidget``. Kept so a future helper
+#: without a class is noticed here.
+KNOWN_UNAVAILABLE: set[str] = set()
 
 #: Resolved by shiny_deckgl itself, not by deck.gl.
 CUSTOM = {"_DeckLayerLegendWidget"}
@@ -134,4 +136,4 @@ class TestEveryHelperResolvesInDeckGL:
             "KNOWN_UNAVAILABLE and update the docstrings")
 
     def test_the_helper_set_is_what_we_think_it_is(self):
-        assert len(emitted_widget_classes()) == 18
+        assert len(emitted_widget_classes()) == 16

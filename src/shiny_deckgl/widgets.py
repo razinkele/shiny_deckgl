@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import warnings
+
 __all__ = [
     "zoom_widget",
     "compass_widget",
@@ -64,14 +66,16 @@ def screenshot_widget(placement: str = "top-right", **kwargs) -> dict:
 
 
 def fps_widget(placement: str = "top-left", **kwargs) -> dict:
-    """Create an ``FpsWidget`` spec (frames-per-second counter).
+    """Deprecated: deck.gl 9.3 merged ``FpsWidget`` into ``StatsWidget``.
 
-    .. warning::
-       **Not available in deck.gl 9.** No ``FpsWidget`` class is exported by
-       deck.gl 9.3.x or 9.4.x, so this widget is dropped at build time with a
-       console warning and nothing is rendered. Kept for forward compatibility.
+    Returns :func:`stats_widget` with the same arguments and warns. Removed in 2.0.
     """
-    return {"@@widgetClass": "_FpsWidget", "placement": placement, **kwargs}
+    warnings.warn(
+        "fps_widget() is deprecated: deck.gl 9.3 merged FpsWidget into "
+        "StatsWidget. Use stats_widget() instead.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return stats_widget(placement=placement, **kwargs)
 
 
 def loading_widget(**kwargs) -> dict:
@@ -159,22 +163,16 @@ def stats_widget(placement: str = "top-left", **kwargs) -> dict:
 
 
 def view_selector_widget(placement: str = "top-left", **kwargs) -> dict:
-    """Create a ``ViewSelectorWidget`` spec (switch between view modes).
+    """Deprecated: deck.gl 9.x exports no ``ViewSelectorWidget``.
 
-    .. warning::
-       **Not available in deck.gl 9.** No ``ViewSelectorWidget`` class is
-       exported by deck.gl 9.3.x or 9.4.x, so this widget is dropped at build
-       time with a console warning and nothing is rendered. Kept for forward
-       compatibility.
-
-    Parameters
-    ----------
-    placement
-        Widget placement (default ``"top-left"``).
-    **kwargs
-        Widget properties, e.g. ``initialViewMode``.
+    Returns an empty spec, which the client drops, and warns. Removed in 2.0.
     """
-    return {"@@widgetClass": "_ViewSelectorWidget", "placement": placement, **kwargs}
+    warnings.warn(
+        "view_selector_widget() is deprecated: deck.gl 9.4 exports no "
+        "ViewSelectorWidget, so it never rendered. It will be removed in 2.0.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return {}
 
 
 # ---------------------------------------------------------------------------

@@ -1323,9 +1323,6 @@ def build_ui():
                         ui.input_switch(
                             "wg_stats", "Stats (GPU/CPU)", value=False,
                         ),
-                        ui.input_switch(
-                            "wg_view_selector", "View selector", value=False,
-                        ),
                     ),
                     # -- Preset bundles ------------------------------------
                     ui.accordion_panel(
@@ -1351,7 +1348,7 @@ def build_ui():
                         ),
                         ui.input_action_button(
                             "wg_preset_all",
-                            "\U0001F4A5 All 17 deck.gl Widgets",
+                            "\U0001F4A5 All 16 deck.gl Widgets",
                             class_="btn-sm btn-outline-danger mb-1 w-100",
                         ),
                         ui.input_action_button(
@@ -1396,7 +1393,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F9E9 Widget Gallery - 17 deck.gl Widgets + Layer Legend"
+                    "\U0001F9E9 Widget Gallery - 16 deck.gl Widgets + Layer Legend"
                 ),
                 widgets_gallery_widget.ui(height="60vh"),
             ),

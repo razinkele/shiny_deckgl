@@ -136,4 +136,4 @@ class TestEveryHelperResolvesInDeckGL:
             "KNOWN_UNAVAILABLE and update the docstrings")
 
     def test_the_helper_set_is_what_we_think_it_is(self):
-        assert len(emitted_widget_classes()) == 16
+        assert len(emitted_widget_classes()) == 21

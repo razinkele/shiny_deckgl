@@ -23,6 +23,12 @@ __all__ = [
     "stats_widget",
     "view_selector_widget",
     "layer_legend_widget",
+    # deck.gl 9.3/9.4 additions (1.12.0)
+    "popup_widget",
+    "icon_widget",
+    "toggle_widget",
+    "selector_widget",
+    "scrollbar_widget",
 ]
 
 
@@ -30,9 +36,16 @@ __all__ = [
 # deck.gl Widget helpers (v0.8.0)
 # ---------------------------------------------------------------------------
 
-def zoom_widget(placement: str = "top-right", **kwargs) -> dict:
-    """Create a ``ZoomWidget`` spec (zoom-in / zoom-out buttons)."""
-    return {"@@widgetClass": "ZoomWidget", "placement": placement, **kwargs}
+def zoom_widget(placement: str = "top-right", *, zoom_step: float | None = None, **kwargs) -> dict:
+    """Create a ``ZoomWidget`` spec (zoom-in / zoom-out buttons).
+
+    zoom_step
+        Zoom levels per click (deck.gl 9.4; deck.gl's default is 1).
+    """
+    spec = {"@@widgetClass": "ZoomWidget", "placement": placement, **kwargs}
+    if zoom_step is not None:
+        spec["zoomStep"] = zoom_step
+    return spec
 
 
 def compass_widget(placement: str = "top-right", **kwargs) -> dict:
@@ -63,6 +76,113 @@ def reset_view_widget(placement: str = "top-right", **kwargs) -> dict:
 def screenshot_widget(placement: str = "top-right", **kwargs) -> dict:
     """Create a ``ScreenshotWidget`` spec (take a screenshot button)."""
     return {"@@widgetClass": "ScreenshotWidget", "placement": placement, **kwargs}
+
+
+def popup_widget(
+    position: list[float],
+    content: str | dict,
+    *,
+    placement: str | None = None,
+    **kwargs,
+) -> dict:
+    """Create a ``PopupWidget`` spec: a popup anchored at a map coordinate.
+
+    Requires deck.gl >= 9.3.
+
+    Parameters
+    ----------
+    position
+        ``[longitude, latitude]`` (or ``[x, y]`` in a non-geospatial view).
+    content
+        Text, or ``{"text": ...}`` / ``{"html": ...}``.
+    placement
+        Where the popup sits relative to the anchor: a popover placement such
+        as ``"top"`` or ``"bottom-start"`` (not a widget corner).
+
+    Open/close changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
+    spec = {"@@widgetClass": "PopupWidget", "position": list(position), "content": content, **kwargs}
+    if placement is not None:
+        spec["placement"] = placement
+    return spec
+
+
+def icon_widget(icon: str, label: str | None = None, *, placement: str = "top-left", **kwargs) -> dict:
+    """Create an ``IconWidget`` spec: a single button with a Material Symbols icon.
+
+    Requires deck.gl >= 9.3. Clicks are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
+    spec = {"@@widgetClass": "IconWidget", "placement": placement, "icon": icon, **kwargs}
+    if label is not None:
+        spec["label"] = label
+    return spec
+
+
+def toggle_widget(
+    icon: str,
+    *,
+    initial_checked: bool = False,
+    on_icon: str | None = None,
+    label: str | None = None,
+    on_label: str | None = None,
+    on_color: str | None = None,
+    placement: str = "top-left",
+    **kwargs,
+) -> dict:
+    """Create a ``ToggleWidget`` spec: an on/off button.
+
+    Requires deck.gl >= 9.3. ``on_icon``/``on_label``/``on_color`` apply while
+    the toggle is checked. The checked state is reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
+    spec = {"@@widgetClass": "ToggleWidget", "placement": placement, "icon": icon,
+            "initialChecked": initial_checked, **kwargs}
+    for key, value in (("onIcon", on_icon), ("label", label), ("onLabel", on_label), ("onColor", on_color)):
+        if value is not None:
+            spec[key] = value
+    return spec
+
+
+def selector_widget(
+    options: list[dict],
+    *,
+    initial_value=None,
+    tooltip: str | None = None,
+    placement: str = "top-left",
+    **kwargs,
+) -> dict:
+    """Create a ``SelectorWidget`` spec: a dropdown of options.
+
+    Requires deck.gl >= 9.3.
+
+    Parameters
+    ----------
+    options
+        Each ``{"value": ..., "icon": "<Material Symbols name>", "label": ...}``;
+        ``value`` and ``icon`` are required by deck.gl.
+
+    The chosen value is reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
+    for opt in options:
+        if not isinstance(opt, dict) or "value" not in opt or "icon" not in opt:
+            raise ValueError("each selector option needs 'value' and 'icon' keys")
+    spec = {"@@widgetClass": "SelectorWidget", "placement": placement, "options": list(options), **kwargs}
+    if initial_value is not None:
+        spec["initialValue"] = initial_value
+    if tooltip is not None:
+        spec["tooltip"] = tooltip
+    return spec
+
+
+def scrollbar_widget(orientation: str = "vertical", *, placement: str = "bottom-right", **kwargs) -> dict:
+    """Create a ``ScrollbarWidget`` spec for large orthographic canvases.
+
+    Requires deck.gl >= 9.4. ``orientation`` is ``"vertical"`` or ``"horizontal"``.
+    """
+    return {"@@widgetClass": "ScrollbarWidget", "placement": placement, "orientation": orientation, **kwargs}
 
 
 def fps_widget(placement: str = "top-left", **kwargs) -> dict:

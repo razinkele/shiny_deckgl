@@ -6,7 +6,7 @@ split into focused modules for maintainability:
 - `colors`        -- basemap constants, palettes, color_range/bins/quantiles
 - `_data_utils`   -- _serialise_data, encode_binary_attribute
 - `views`         -- map_view, orthographic_view, first_person_view, globe_view
-- `widgets`       -- zoom_widget, compass_widget, ... (17 widget helpers)
+- `widgets`       -- zoom_widget, compass_widget, ... (22 widget helpers)
 - `controls`      -- geolocate_control, legend_control, ... + constants
 - `_transitions`  -- transition()
 - `layers`        -- layer() + 22 typed *_layer helpers
@@ -64,6 +64,11 @@ from .widgets import (  # noqa: F401
     splitter_widget,
     stats_widget,
     view_selector_widget,
+    popup_widget,
+    icon_widget,
+    toggle_widget,
+    selector_widget,
+    scrollbar_widget,
 )
 
 # --- controls ---

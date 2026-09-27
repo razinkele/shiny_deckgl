@@ -6408,7 +6408,8 @@ class TestWidgetExports:
 
     def test_widgets_module_all(self):
         from shiny_deckgl.widgets import __all__ as widgets_all
-        assert len(widgets_all) == 18
+        # 17 originals + layer_legend_widget + the five 1.12.0 helpers
+        assert len(widgets_all) == 23
 
     def test_widgets_importable_from_components(self):
         """Backward-compat: widgets importable from components shim."""

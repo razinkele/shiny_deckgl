@@ -511,3 +511,57 @@ class TestDeprecatedWidgetHelpers:
             warnings.simplefilter("error")
             zoom_widget()
             stats_widget()
+
+
+# ---------------------------------------------------------------------------
+# Helpers for the widgets deck.gl 9.3/9.4 added (1.12.0)
+# ---------------------------------------------------------------------------
+
+class TestNewWidgetHelpers:
+    def test_popup_widget(self):
+        from shiny_deckgl import popup_widget
+        spec = popup_widget([21.1, 55.7], "Klaipėda")
+        assert spec == {"@@widgetClass": "PopupWidget", "position": [21.1, 55.7], "content": "Klaipėda"}
+        rich = popup_widget([0, 0], {"html": "<b>x</b>"}, placement="bottom-start")
+        assert rich["content"] == {"html": "<b>x</b>"} and rich["placement"] == "bottom-start"
+
+    def test_icon_widget(self):
+        from shiny_deckgl import icon_widget
+        spec = icon_widget("info", "About")
+        assert spec["@@widgetClass"] == "IconWidget" and spec["icon"] == "info" and spec["label"] == "About"
+
+    def test_toggle_widget_snake_case_maps_to_deck_props(self):
+        from shiny_deckgl import toggle_widget
+        spec = toggle_widget("layers", initial_checked=True, on_icon="layers_clear", label="Layers",
+                             on_label="Hide", on_color="#0a0")
+        assert spec["@@widgetClass"] == "ToggleWidget"
+        assert spec["initialChecked"] is True and spec["onIcon"] == "layers_clear"
+        assert spec["onLabel"] == "Hide" and spec["onColor"] == "#0a0"
+        assert "initial_checked" not in spec
+
+    def test_selector_widget(self):
+        from shiny_deckgl import selector_widget
+        opts = [{"value": "a", "icon": "palette", "label": "A"}, {"value": "b", "icon": "brush"}]
+        spec = selector_widget(opts, initial_value="a", tooltip="Palette")
+        assert spec["@@widgetClass"] == "SelectorWidget"
+        assert spec["options"] == opts and spec["initialValue"] == "a" and spec["tooltip"] == "Palette"
+
+    def test_selector_widget_requires_an_icon_per_option(self):
+        from shiny_deckgl import selector_widget
+        with pytest.raises(ValueError, match="icon"):
+            selector_widget([{"value": "a"}])
+
+    def test_scrollbar_widget(self):
+        from shiny_deckgl import scrollbar_widget
+        assert scrollbar_widget("horizontal")["orientation"] == "horizontal"
+        assert scrollbar_widget()["@@widgetClass"] == "ScrollbarWidget"
+
+    def test_zoom_step_and_unchanged_default(self):
+        assert zoom_widget(zoom_step=0.5)["zoomStep"] == 0.5
+        assert "zoomStep" not in zoom_widget()
+        assert zoom_widget()["placement"] == "top-right"
+
+    def test_all_new_helpers_are_exported(self):
+        import shiny_deckgl as m
+        for name in ("popup_widget", "icon_widget", "toggle_widget", "selector_widget", "scrollbar_widget"):
+            assert name in m.__all__ and callable(getattr(m, name))

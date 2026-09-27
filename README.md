@@ -127,6 +127,12 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.12.2 — Legend Fix
+
+| Capability | Details |
+| --- | --- |
+| **Layer legend clickable again** | Checkboxes and the collapse header were unresponsive under `MapLibreOverlay` (1.12.0/1.12.1); fixed with a real-click regression test. |
+
 ### v1.12.1 — Packaging
 
 | Capability | Details |

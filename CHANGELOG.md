@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.12.2] — 2026-09-27
+
+### Fixed
+
+- **Layer legend checkboxes did nothing** (regression in 1.12.0). The
+  `MapLibreOverlay` switch mounts deck.gl's widget container inside
+  MapLibre's control corner, which MapLibre styles `pointer-events: none`;
+  deck.gl's own widgets opt back in, the custom legend did not, so every
+  click on a checkbox or the collapse header fell through to the map. The
+  legend root now sets `pointer-events: auto`. A real-click browser test
+  (`tests/test_e2e_legend_click.py`) guards it.
+
 ## [1.12.1] — 2026-09-27
 
 Packaging only; no code changes.

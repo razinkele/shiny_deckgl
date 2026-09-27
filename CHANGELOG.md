@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.12.1] — 2026-09-27
+
+Packaging only; no code changes.
+
+### Added
+
+- **PyPI publishing workflow** (`.github/workflows/pypi-publish.yml`): a
+  published GitHub Release builds sdist and wheel, checks them, refuses a
+  wheel without the browser runtime, and uploads through PyPI trusted
+  publishing. Versions already on PyPI are skipped, as the conda workflow
+  does for anaconda.org.
+
+### Fixed
+
+- **Classifiers:** `Framework :: Shiny` is not a trove classifier and made
+  PyPI reject the 1.12.0 upload; removed.
+
 ## [1.12.0] — 2026-09-27
 
 From `docs/2026-09-27-dependency-review.md`; plan in

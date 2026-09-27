@@ -13,7 +13,7 @@ authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
 keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
-    "Framework :: Shiny",
+    # No "Framework :: Shiny" trove classifier exists; PyPI rejects it (400).
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

@@ -210,8 +210,9 @@ def test_app_returns_shiny_app():
 
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
+    from shiny_deckgl._cdn import MAPLIBRE_VERSION
     assert "deck.gl@9.4.0" in html
-    assert "maplibre-gl@6.7.0" in html
+    assert f"maplibre-gl@{MAPLIBRE_VERSION}" in html
 
 
 def test_head_includes_contains_local_assets():
@@ -1017,8 +1018,9 @@ class TestCooperativeGestures:
 
 class TestMapLibreVersion:
     def test_head_includes_maplibre_v6(self):
+        from shiny_deckgl._cdn import MAPLIBRE_VERSION
         dep = head_includes()
-        assert "maplibre-gl@6.7.0" in str(dep)
+        assert f"maplibre-gl@{MAPLIBRE_VERSION}" in str(dep)
 
     def test_head_includes_no_old_maplibre(self):
         dep = head_includes()

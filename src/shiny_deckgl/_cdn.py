@@ -1,7 +1,7 @@
 """CDN URL constants — single source of truth for all external assets."""
 
 DECKGL_VERSION = "9.4.0"
-MAPLIBRE_VERSION = "6.7.0"
+MAPLIBRE_VERSION = "6.11.2"
 # Standalone to_html() exports are opened straight from disk (file://), where
 # MapLibre 6 cannot run: it spawns its tile worker as a *module* worker from a
 # blob URL, and a module worker on an opaque (null) origin fails to resolve its

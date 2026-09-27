@@ -127,6 +127,19 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.12.0 — MapLibre 6.11, MapLibreOverlay, Widget Events & Reconnect
+
+| Capability | Details |
+| --- | --- |
+| **MapLibre 6.11.2** | Served apps get 6.11.2 (worker-tile leak, `setStyle` terrain crash and `Map#once` fixes); exports stay on 5.24.0. |
+| **MapLibreOverlay** | The deck.gl integration is now the one deck.gl recommends for MapLibre. `before_id=` on any layer orders it under a basemap layer in interleaved mode. |
+| **Widget events** | `input[widget.widget_event_input_id]` reports timeline, toggle, selector, icon, popup, stats, theme, geocoder, zoom, fullscreen, loading and reset-view changes as `{"id", "widget", "event", "value"}`. |
+| **New widgets** | `popup_widget()`, `icon_widget()`, `toggle_widget()`, `selector_widget()`, `scrollbar_widget()`; `zoom_widget(zoom_step=)`. `fps_widget()` / `view_selector_widget()` are deprecated. |
+| **Map options** | `MapWidget(map_options={...})` passes `maxBounds`, `maxPitch`, `renderWorldCopies`, `antialias`, ... to MapLibre. |
+| **Reconnect** | With `session.allow_reconnect()` (Shiny 1.8), `input[widget.reconnected_input_id]` fires and `resend_last_update(session)` restores the map. |
+| **3-D picking** | `pickable="3d"` reaches deck.gl; the click/hover coordinate gains a z value. |
+| **Headless demo test** | `tests/test_demo_headless.py` runs two demo tabs under `shiny.testserver`. |
+
 ### v1.11.1 — Follow-ups
 
 | Capability | Details |

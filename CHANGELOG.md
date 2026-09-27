@@ -5,6 +5,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.12.0] — 2026-09-27
+
+From `docs/2026-09-27-dependency-review.md`; plan in
+`docs/superpowers/plans/2026-09-27-dependency-roadmap.md`.
+
+### Added
+
+- **`before_id=`** on every layer helper: interleaved ordering under a
+  basemap layer (deck.gl's `beforeId`).
+- **Widget helpers** `popup_widget()`, `icon_widget()`, `toggle_widget()`,
+  `selector_widget()`, `scrollbar_widget()`; `zoom_widget(zoom_step=)`.
+- **`MapWidget.widget_event_input_id`**: widget state changes (timeline,
+  toggle, selector, icon, popup, stats, theme, geocoder, zoom, fullscreen,
+  loading, reset view) arrive as `{"id", "widget", "event", "value"}`.
+- **`MapWidget(map_options=)`**: extra MapLibre map options (`maxBounds`,
+  `maxPitch`, `renderWorldCopies`, `antialias`, ...); exported as
+  `mapOptions`.
+- **`MapWidget.reconnected_input_id`** and **`resend_last_update()`** for
+  `session.allow_reconnect()` (Shiny >= 1.8.0).
+- **`pickable="3d"`** (depth picking) is passed through to deck.gl.
+- **`tests/test_demo_headless.py`**: the demo's Colour Scales and Advanced
+  tabs run under `shiny.testserver` (Shiny >= 1.8.0, `test`/`dev` extras).
+
+### Changed
+
+- **MapLibre GL JS 6.7.0 → 6.11.2** (served); exports stay on 5.24.0.
+- **deck.gl integration is `MapLibreOverlay`**, the integration deck.gl
+  recommends for MapLibre (was `MapboxOverlay`).
+- **Demo** uses `ui.output_code()` (Shiny 1.8.0 deprecates
+  `output_text_verbatim`); the Widget Gallery's View selector switch is gone
+  (no such deck.gl class) and its FPS switch adds a `StatsWidget` (16 widgets).
+
+### Deprecated
+
+- **`fps_widget()`** returns a `StatsWidget` spec (deck.gl 9.3 merged the
+  two) and **`view_selector_widget()`** returns an empty spec; both warn and
+  go in 2.0.
+
+### Not done
+
+- **WebGPU opt-in**: the pinned umbrella bundle ships no WebGPU adapter, so
+  it cannot be enabled without an extra `@luma.gl/webgpu` bundle. Deferred.
+
 ## [1.11.1] — 2026-09-27
 
 Follow-ups from the review of the 1.11.0 pull requests.

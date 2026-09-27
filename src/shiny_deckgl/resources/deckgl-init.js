@@ -1628,6 +1628,51 @@
     return undefined;
   }
 
+  // Widget callbacks (deck.gl >= 9.3) forwarded to Shiny as one input per
+  // map: <mapId>_widget_event = {id, widget, event, value}. Keyed by the
+  // class name without the experimental "_" prefix.
+  var WIDGET_EVENTS = {
+    TimelineWidget: ['onTimeChange', 'onPlayingChange'],
+    ToggleWidget: ['onChange'],
+    SelectorWidget: ['onChange'],
+    IconWidget: ['onClick'],
+    PopupWidget: ['onOpenChange'],
+    StatsWidget: ['onExpandedChange'],
+    ThemeWidget: ['onThemeModeChange'],
+    GeocoderWidget: ['onGeocode'],
+    ZoomWidget: ['onZoom'],
+    FullscreenWidget: ['onFullscreenChange'],
+    LoadingWidget: ['onLoadingChange'],
+    ResetViewWidget: ['onReset'],
+  };
+
+  // Patches the constructed widget's props: widgets read callbacks from
+  // this.props at event time, the instance carries the real id (its class
+  // default when the spec set none), and Widget.setProps merges, so the
+  // shim survives later set_widgets() calls.
+  function attachWidgetEvents(widget, className, targetId) {
+    var name = className.replace(/^_/, '');
+    var events = WIDGET_EVENTS[name];
+    if (!events || !widget || !widget.props) return widget;
+    // props.id is the spec's id merged over the class default. Some classes
+    // (TimelineWidget 9.4) also declare a class field `id = '...'` that runs
+    // after super(props) and clobbers widget.id, so props.id is the one to trust.
+    var widgetId = widget.props.id != null ? widget.props.id
+      : (widget.id != null ? widget.id : name);
+    events.forEach(function (prop) {
+      var own = typeof widget.props[prop] === 'function' ? widget.props[prop] : null;
+      var event = prop.charAt(2).toLowerCase() + prop.slice(3);   // onTimeChange -> timeChange
+      widget.props[prop] = function (value) {
+        if (own) own.apply(this, arguments);
+        Shiny.setInputValue(targetId + '_widget_event', {
+          id: widgetId, widget: name, event: event,
+          value: arguments.length ? value : null,
+        }, { priority: 'event' });
+      };
+    });
+    return widget;
+  }
+
   function buildWidgets(widgetSpecs, targetId) {
     if (!widgetSpecs) return undefined;
     // An explicit empty list must reach overlay.setProps so deck.gl removes
@@ -1654,7 +1699,7 @@
           ' (no such class in this deck.gl build)');
         return null;
       }
-      return new Cls(props);
+      return attachWidgetEvents(new Cls(props), className, targetId);
     }).filter(Boolean);
   }
 

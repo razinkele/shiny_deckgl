@@ -289,6 +289,23 @@ class MapWidget:
         """
         return f"{self._bare_id}_legend_visibility"
 
+    @property
+    def widget_event_input_id(self) -> str:
+        """Shiny input for state changes made in deck.gl widgets.
+
+        Set (with event priority) each time a widget fires one of its
+        callbacks, as ``{"id", "widget", "event", "value"}``: the widget's
+        ``id`` (deck.gl's default is the class's own id, e.g. ``"timeline"``,
+        so set ``id=`` when you add two of a kind), its class name
+        (``"TimelineWidget"``), the event (``"timeChange"``,
+        ``"playingChange"``, ``"change"``, ``"click"``, ``"openChange"``,
+        ``"expandedChange"``, ``"themeModeChange"``, ``"geocode"``,
+        ``"zoom"``, ``"fullscreenChange"``, ``"loadingChange"``, ``"reset"``)
+        and the callback's argument: a value, an object for ``geocode``,
+        ``zoom`` and ``reset``, or ``None`` for ``click``.
+        """
+        return f"{self._bare_id}_widget_event"
+
     # -- UI -------------------------------------------------------------------
 
     def ui(self, width: str = "100%", height: str = "400px") -> ui.Tag:

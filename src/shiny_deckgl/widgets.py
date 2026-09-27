@@ -54,7 +54,11 @@ def compass_widget(placement: str = "top-right", **kwargs) -> dict:
 
 
 def fullscreen_widget(placement: str = "top-right", **kwargs) -> dict:
-    """Create a ``FullscreenWidget`` spec (toggle fullscreen)."""
+    """Create a ``FullscreenWidget`` spec (toggle fullscreen).
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "FullscreenWidget", "placement": placement, **kwargs}
 
 
@@ -69,7 +73,11 @@ def gimbal_widget(placement: str = "top-right", **kwargs) -> dict:
 
 
 def reset_view_widget(placement: str = "top-right", **kwargs) -> dict:
-    """Create a ``ResetViewWidget`` spec (reset camera to initial state)."""
+    """Create a ``ResetViewWidget`` spec (reset camera to initial state).
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "ResetViewWidget", "placement": placement, **kwargs}
 
 
@@ -199,22 +207,42 @@ def fps_widget(placement: str = "top-left", **kwargs) -> dict:
 
 
 def loading_widget(**kwargs) -> dict:
-    """Create a ``LoadingWidget`` spec (spinner during layer loading)."""
+    """Create a ``LoadingWidget`` spec (spinner during layer loading).
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "_LoadingWidget", **kwargs}
 
 
 def timeline_widget(placement: str = "bottom-left", **kwargs) -> dict:
-    """Create a ``TimelineWidget`` spec (time scrubber for animated layers)."""
+    """Create a ``TimelineWidget`` spec (time scrubber for animated layers).
+
+    Pass ``initialTime`` for an uncontrolled timeline; passing ``time`` /
+    ``playing`` makes it controlled, i.e. it only moves when the server
+    sends new values with :meth:`~shiny_deckgl.MapWidget.set_widgets`.
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "_TimelineWidget", "placement": placement, **kwargs}
 
 
 def geocoder_widget(placement: str = "top-left", **kwargs) -> dict:
-    """Create a ``GeocoderWidget`` spec (address search)."""
+    """Create a ``GeocoderWidget`` spec (address search).
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "_GeocoderWidget", "placement": placement, **kwargs}
 
 
 def theme_widget(**kwargs) -> dict:
-    """Create a ``ThemeWidget`` spec (light/dark theme toggle)."""
+    """Create a ``ThemeWidget`` spec (light/dark theme toggle).
+
+    State changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
+    """
     return {"@@widgetClass": "_ThemeWidget", **kwargs}
 
 
@@ -278,6 +306,9 @@ def stats_widget(placement: str = "top-left", **kwargs) -> dict:
     **kwargs
         Widget properties, e.g. ``type``, ``title``,
         ``framesPerUpdate``.
+
+    Expand/collapse changes are reported through
+    :attr:`~shiny_deckgl.MapWidget.widget_event_input_id`.
     """
     return {"@@widgetClass": "_StatsWidget", "placement": placement, **kwargs}
 

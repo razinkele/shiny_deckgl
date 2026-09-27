@@ -565,3 +565,8 @@ class TestNewWidgetHelpers:
         import shiny_deckgl as m
         for name in ("popup_widget", "icon_widget", "toggle_widget", "selector_widget", "scrollbar_widget"):
             assert name in m.__all__ and callable(getattr(m, name))
+
+
+def test_widget_event_input_id():
+    from shiny_deckgl import MapWidget
+    assert MapWidget("m1").widget_event_input_id == "m1_widget_event"

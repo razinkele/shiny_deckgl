@@ -1401,6 +1401,12 @@ def build_ui():
                 ui.card_header("\U0001F4DF Active Widgets"),
                 ui.output_code("wg_status"),
             ),
+            ui.card(
+                ui.card_header(
+                    "\U0001F4E1 Widget events \u2014 input[widget_event_input_id]"
+                ),
+                ui.output_code("wg_events"),
+            ),
         ),
     ),
 

@@ -64,3 +64,37 @@ def test_advanced_tab_effects_survive_their_inputs():
         s.set_inputs(enable_lighting=False)
         assert s.is_ok, s.error
         assert "Lighting OFF" in s.get_output("advanced_status").value
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-28 review: outputs before the first browser event, spatial query
+# ---------------------------------------------------------------------------
+
+READBACK_PLACEHOLDERS = {
+    "click_info": "Click a port or arc",
+    "hover_info": "Hover over a feature",
+    "viewport_info": "Pan or zoom the map",
+    "events_drag": "Place a marker",
+    "ml_drag_info": "Place a marker first",
+}
+
+
+@pytest.mark.parametrize("output_id,placeholder", sorted(READBACK_PLACEHOLDERS.items()))
+def test_readback_outputs_show_placeholder_before_first_event(output_id, placeholder):
+    # Reading a never-set input raises SilentException, which left these
+    # cards blank; the demo now checks is_set() first.
+    with test_server(app, timeout_secs=60) as s:
+        out = s.get_output(output_id)
+        assert out.status == "ok", (output_id, out.status)
+        assert placeholder in out.value
+
+
+def test_spatial_query_counts_features_from_the_dict_payload():
+    with test_server(app, timeout_secs=60) as s:
+        s.set_inputs(**{"draw_map_query_result": {
+            "requestId": 1,
+            "features": [{"layer": {"id": "ports-circle"}}, {"layer": {"id": "mpa-fill"}}],
+        }})
+        assert s.is_ok, s.error
+        log = s.get_output("draw_log").value
+        assert "Query returned 2 feature(s): mpa-fill, ports-circle" in log

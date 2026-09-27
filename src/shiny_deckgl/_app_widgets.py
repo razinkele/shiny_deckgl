@@ -39,6 +39,12 @@ maplibre_widget = MapWidget(
     tooltip={"html": "<b>{name}</b><br/>{country}", "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
     controls=[],
+    # Extra MapLibre Map options (v1.12.0): fence the map to the Baltic.
+    map_options={
+        "maxBounds": [[-5.0, 48.0], [45.0, 72.0]],
+        "maxPitch": 70,
+        "renderWorldCopies": False,
+    },
 )
 
 # Tab 3 — Events & Tooltips

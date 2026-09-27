@@ -6486,7 +6486,7 @@ class TestLayerWidgetCombined:
         fake = _FakeSession()
         geojson = {"type": "FeatureCollection", "features": []}
         layers = [geojson_layer("geo", geojson)]
-        widgets = [stats_widget(type="gpu"), stats_widget(type="fps", placement="bottom-left")]
+        widgets = [stats_widget(id="gpu", type="gpu"), stats_widget(id="fps", placement="bottom-left")]
         asyncio.run(m.update(fake, layers, widgets=widgets))
         p = fake.messages[0][1]
         assert p["layers"][0]["type"] == "GeoJsonLayer"

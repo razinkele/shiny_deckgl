@@ -104,7 +104,7 @@ browser, all without Java dependencies.
 
 | Capability | Details |
 | --- | --- |
-| **deck.gl widgets** | `set_widgets()` with 18 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `fps_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()`, `layer_legend_widget()` + 5 experimental. |
+| **deck.gl widgets** | `set_widgets()` with 21 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()`, `popup_widget()`, `icon_widget()`, `toggle_widget()`, `selector_widget()`, `scrollbar_widget()`, `layer_legend_widget()` + 4 experimental; widget state changes arrive as `input[widget.widget_event_input_id]`. |
 | **Camera transitions** | `fly_to(longitude, latitude, zoom, speed)` — smooth MapLibre flyTo animation. |
 | | `ease_to(longitude, latitude, zoom, duration)` — linear easeTo animation. |
 | **Transition helper** | `transition(duration, easing, type)` — animate layer property changes on data update. |
@@ -513,7 +513,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/layers.py` | Generic `layer()` + 33 typed layer helpers (scatter, arc, trips, grid, point cloud, mesh, terrain, scenegraph, tile3d, …). |
 | `src/shiny_deckgl/colors.py` | Color scales (`color_range`, `color_bins`, `color_quantiles`), palettes, basemap constants. |
 | `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`, `orbit_view`). |
-| `src/shiny_deckgl/widgets.py` | 17 deck.gl widget helpers (zoom, compass, fullscreen, timeline, …). |
+| `src/shiny_deckgl/widgets.py` | 21 deck.gl widget helpers (zoom, compass, fullscreen, timeline, toggle, selector, …) plus two deprecated ones. |
 | `src/shiny_deckgl/controls.py` | MapLibre control helpers, legend, opacity, deck.gl legend. |
 | `src/shiny_deckgl/extensions.py` | 9 extension helpers (brushing, collision filter, data filter, mask, fp64, …). |
 | `src/shiny_deckgl/_data_utils.py` | DataFrame/GeoDataFrame serialisation, binary transport. |

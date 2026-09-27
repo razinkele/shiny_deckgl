@@ -1749,8 +1749,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         if input.wg_screenshot():
             widgets.append(screenshot_widget(filename="shiny-deckgl-capture"))
         if input.wg_fps():
-            # deck.gl 9.3 merged FpsWidget into StatsWidget
-            widgets.append(stats_widget(placement="bottom-left", framesPerUpdate=60))
+            # deck.gl 9.3 merged FpsWidget into StatsWidget. Its own id: the
+            # "Stats" switch adds a second StatsWidget, and deck.gl keys
+            # widgets (and widget_event reports) by id.
+            widgets.append(stats_widget(id="fps", placement="bottom-left", framesPerUpdate=60))
         if input.wg_loading():
             widgets.append(loading_widget(label="Loading layers\u2026"))
         if input.wg_theme():

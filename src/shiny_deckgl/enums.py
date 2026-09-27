@@ -138,8 +138,11 @@ class CoordinateSystem(str, Enum):
     """Positions as ``[longitude_offset, latitude_offset]``."""
     IDENTITY = "default"
     """Auto-detect based on data."""
-    DEFAULT = -1
-    """Alias for IDENTITY (auto-detect based on data)."""
+    DEFAULT = "default"
+    """Alias for IDENTITY (auto-detect based on data). Same value, so Enum
+    makes ``CoordinateSystem.DEFAULT is CoordinateSystem.IDENTITY`` true;
+    it used to be ``-1``, which ``str.__new__`` turned into the string
+    ``"-1"`` -- a value deck.gl 9 rejects at draw time."""
 
 
 # ---------------------------------------------------------------------------

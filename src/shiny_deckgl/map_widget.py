@@ -488,22 +488,77 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
-        # Kept per session so resend_last_update() can replay it after a reconnect.
-        self._remember(session, "last_update", payload)
+        self._record_full_update(session, payload)
         await session.send_custom_message("deck_update", json_safe(payload))
+
+    # -- Reconnect snapshot ---------------------------------------------------
+    # resend_last_update() must replay the session's *state*, not the last
+    # update() call's delta: effects/views/widgets sent by an earlier call
+    # (None means "keep" on the client), later partial_update() patches,
+    # set_layer_visibility() toggles and set_widgets() all have to survive a
+    # reconnect. Each state-changing call merges into one per-session
+    # snapshot; viewState/transitionDuration are left out so a replay never
+    # moves the user's camera.
+
+    _SNAPSHOT_DECK_KEYS = (
+        "effects", "views", "widgets", "pickingRadius", "useDevicePixels", "_animate",
+    )
+
+    def _snapshot(self, session: "Session") -> dict:
+        snap = self._recall(session, "last_update")
+        snap = dict(snap) if snap else {"id": self.id, "layers": []}
+        # Copy the layer dicts so a caller's later in-place edits, or our own
+        # patch merging, never change what was recorded.
+        snap["layers"] = [dict(lyr) for lyr in snap.get("layers", [])]
+        return snap
+
+    def _record_full_update(self, session: "Session", payload: dict) -> None:
+        snap = self._snapshot(session)
+        snap["layers"] = [dict(lyr) for lyr in payload["layers"]]
+        for key in self._SNAPSHOT_DECK_KEYS:
+            if key in payload:
+                snap[key] = payload[key]
+        self._remember(session, "last_update", snap)
+
+    def _record_layer_patches(self, session: "Session", patches: list[dict]) -> None:
+        snap = self._snapshot(session)
+        index = {lyr.get("id"): i for i, lyr in enumerate(snap["layers"])}
+        for patch in patches:
+            i = index.get(patch.get("id"))
+            if i is None:                      # new id: the client appends it
+                index[patch.get("id")] = len(snap["layers"])
+                snap["layers"].append(dict(patch))
+            else:
+                snap["layers"][i].update(patch)
+        self._remember(session, "last_update", snap)
+
+    def _record_visibility(self, session: "Session", visibility: dict[str, bool]) -> None:
+        snap = self._snapshot(session)
+        for lyr in snap["layers"]:
+            if lyr.get("id") in visibility:
+                lyr["visible"] = bool(visibility[lyr["id"]])
+        self._remember(session, "last_update", snap)
+
+    def _record_widgets(self, session: "Session", widgets: list[dict]) -> None:
+        snap = self._snapshot(session)
+        snap["widgets"] = list(widgets)
+        self._remember(session, "last_update", snap)
 
     async def resend_last_update(self, session: "Session") -> bool:
-        """Send this session's most recent :meth:`update` payload again.
+        """Send this session's current deck.gl state again as one ``update``.
 
         Custom messages sent while the websocket was down are lost; after a
-        reconnect (:attr:`reconnected_input_id`) this restores the layers,
-        widgets and view state of the last update. Native MapLibre layers and
-        controls are not replayed. Returns ``False`` when nothing was recorded.
+        reconnect (:attr:`reconnected_input_id`) this restores the layers
+        (including later :meth:`partial_update` patches and
+        :meth:`set_layer_visibility` toggles), the widgets, effects, views
+        and deck-level props the session has set, without touching the
+        camera. Native MapLibre layers, controls and styles are not
+        replayed. Returns ``False`` when nothing was recorded yet.
         """
-        payload = self._recall(session, "last_update")
-        if payload is None:
+        snap = self._recall(session, "last_update")
+        if not snap:
             return False
-        await session.send_custom_message("deck_update", json_safe(payload))
+        await session.send_custom_message("deck_update", json_safe(snap))
         return True
 
     async def partial_update(
@@ -544,6 +599,7 @@ class MapWidget:
             if "data" in lyr:
                 lyr = {**lyr, "data": _serialise_data(lyr["data"])}
             serialised.append(lyr)
+        self._record_layer_patches(session, serialised)
         await session.send_custom_message("deck_partial_update", json_safe({
             "id": self.id,
             "layers": serialised,
@@ -616,6 +672,7 @@ class MapWidget:
         visibility
             Mapping of ``{layer_id: True/False}``.
         """
+        self._record_visibility(session, visibility)
         await session.send_custom_message("deck_layer_visibility", {
             "id": self.id,
             "visibility": visibility,
@@ -684,6 +741,7 @@ class MapWidget:
         widgets
             List of widget dicts (use the ``*_widget()`` helpers).
         """
+        self._record_widgets(session, widgets)
         await session.send_custom_message("deck_set_widgets", {
             "id": self.id,
             "widgets": widgets,

@@ -21,6 +21,11 @@ html, body { height: 100%; margin: 0; }
    Layer legend widget (layer_legend_widget / _DeckLayerLegendWidget)
    =================================================================== */
 .deck-legend-ctrl {
+  /* MapLibreOverlay mounts deck.gl's widget container inside MapLibre's
+     control corner, which MapLibre styles `pointer-events: none` (its own
+     controls and deck.gl's widgets opt back in). Without this the legend's
+     checkboxes are unclickable: every click falls through to the canvas. */
+  pointer-events: auto;
   background: #fff;
   border-radius: 4px;
   box-shadow: 0 0 0 2px rgba(0,0,0,.1);

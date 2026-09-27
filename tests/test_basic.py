@@ -7568,3 +7568,22 @@ class TestSeaTemperatureGrid:
         for mo in range(12):
             data = make_sea_temperature_grid(month=mo)
             assert len(data) > 0
+
+
+class TestLayerBeforeId:
+    """before_id places a deck.gl layer under a MapLibre style layer (interleaved)."""
+
+    def test_before_id_is_emitted_as_beforeId(self):
+        from shiny_deckgl import scatterplot_layer
+        lyr = scatterplot_layer("pts", [], before_id="waterway-label")
+        assert lyr["beforeId"] == "waterway-label"
+        assert "before_id" not in lyr
+
+    def test_absent_before_id_emits_nothing(self):
+        from shiny_deckgl import scatterplot_layer
+        assert "beforeId" not in scatterplot_layer("pts", [])
+
+    def test_extensions_still_work_alongside_before_id(self):
+        from shiny_deckgl import brushing_extension, scatterplot_layer
+        lyr = scatterplot_layer("pts", [], extensions=[brushing_extension()], before_id="x")
+        assert lyr["beforeId"] == "x" and "@@extensions" in lyr

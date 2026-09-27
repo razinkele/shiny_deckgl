@@ -117,3 +117,14 @@ class TestResolvedLayerCache:
             return [typeof a[0].props.iconAtlas, b[0].props.iconAtlas];
         })()""")
         assert got == ["string", {"raster": True}]
+
+
+@requires_node
+def test_beforeId_reaches_the_deck_layer_props():
+    # Review Focus 5: deck.gl ignores beforeId when overlaid, so it must pass
+    # through unchanged for the same spec to work in both modes.
+    got = run_js(_prelude(), """(function(){
+        var src = [{ type: 'ScatterplotLayer', id: 'p', data: [], beforeId: 'waterway-label' }];
+        return buildDeckLayers(src, 'm')[0].props.beforeId;
+    })()""")
+    assert got == "waterway-label"

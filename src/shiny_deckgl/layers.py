@@ -91,7 +91,15 @@ __all__ = [
 # Generic layer helper
 # ---------------------------------------------------------------------------
 
-def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None = None, **kwargs) -> dict:
+def layer(
+    type: str,
+    id: str,
+    data=None,
+    *,
+    extensions: list[str | list] | None = None,
+    before_id: str | None = None,
+    **kwargs,
+) -> dict:
     """Create an arbitrary deck.gl layer definition.
 
     Works for *any* deck.gl layer class (e.g. ``"HeatmapLayer"``,
@@ -122,6 +130,10 @@ def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None 
 
               extensions=["ClipExtension",
                           ["DataFilterExtension", {"filterSize": 2}]]
+    before_id
+        In interleaved mode (``MapWidget(interleaved=True)``), the id of the
+        MapLibre style layer to draw this layer *beneath*, e.g. a label layer.
+        Ignored in overlaid mode. Emitted as deck.gl's ``beforeId`` prop.
     **kwargs
         Any additional deck.gl properties.  ``visible=False`` hides the
         layer without removing it from the stack.
@@ -130,6 +142,8 @@ def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None 
     # stray type= or id= in **kwargs can never silently clobber the
     # positional arguments.
     lyr: dict = {**kwargs, "type": type, "id": id}
+    if before_id is not None:
+        lyr["beforeId"] = before_id
     if data is not None:
         lyr["data"] = _serialise_data(data)
     if extensions:

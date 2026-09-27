@@ -614,7 +614,7 @@
   // -----------------------------------------------------------------------
   // Map interaction ("controller").
   //
-  // Under MapboxOverlay, MapLibre does the panning and zooming, so deck.gl's
+  // Under MapLibreOverlay, MapLibre does the panning and zooming, so deck.gl's
   // `controller` prop has no effect: map the value onto MapLibre's handlers.
   // true = everything on, false = everything off, a dict (deck.gl controller
   // option names) = everything on except the options set to false.
@@ -1001,7 +1001,7 @@
     });
 
     const interleavedMode = el.dataset.interleaved === 'true';
-    const overlay = new deck.MapboxOverlay({
+    const overlay = new deck.MapLibreOverlay({
       interleaved: interleavedMode,
       layers: [],
       // Forward widget-initiated view state changes (e.g. CompassWidget

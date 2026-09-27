@@ -379,3 +379,10 @@ class TestModuleIntegration:
         assert app is not None
         assert callable(_build_ui)
         assert callable(_get_server)
+
+
+def test_demo_ui_uses_no_deprecated_output_text_verbatim():
+    """Shiny 1.8.0 deprecates ui.output_text_verbatim() in favour of ui.output_code()."""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / "src" / "shiny_deckgl" / "_app_ui.py"
+    assert "output_text_verbatim" not in src.read_text(encoding="utf-8")

@@ -127,6 +127,12 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.12.1 — Packaging
+
+| Capability | Details |
+| --- | --- |
+| **PyPI** | `pip install shiny-deckgl`; releases publish to PyPI and conda automatically via trusted publishing. |
+
 ### v1.12.0 — MapLibre 6.11, MapLibreOverlay, Widget Events & Reconnect
 
 | Capability | Details |

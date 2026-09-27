@@ -32,6 +32,9 @@ geopandas = ["geopandas"]
 # Everything needed to run the suite without the geospatial stack. pandas is
 # listed explicitly because it otherwise arrives only as a geopandas dependency,
 # and the pandas-guarded tests would silently skip.
+# The browser (Playwright/Chromium) tests: 12 test_e2e_* / browser modules.
+# CI installs this and runs them with SHINY_DECKGL_REQUIRE_BROWSER=1.
+browser = ["playwright"]
 test = [
     "pytest",
     "pytest-asyncio",
@@ -42,9 +45,11 @@ test = [
     "pillow",            # tests/test_basic.py checks the icon atlas dimensions
     "shiny>=1.8.0",      # shiny.testserver for tests/test_demo_headless.py
 ]
-# The full contributor environment: the test extra plus the geospatial tests and
-# the linter. CI installs this one, so no test is skipped for a missing import.
+# The full contributor environment: the test extra plus the geospatial tests,
+# the browser tests and the linter. CI installs this one (plus
+# `playwright install chromium`), so no test is skipped for a missing import.
 dev = [
+    "playwright",
     "pytest",
     "pytest-asyncio",
     "pytest-benchmark",
@@ -71,6 +76,8 @@ testpaths = ["tests"]
 markers = [
     "browser: end-to-end tests that drive a real Chromium via Playwright",
 ]
+# -ra: list skips, so a silently skipped browser suite is visible in CI logs.
+addopts = "-ra --strict-markers"
 # Test the working tree in src/, never a stale copy installed in site-packages.
 pythonpath = ["src"]
 

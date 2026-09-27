@@ -17,14 +17,33 @@ jobs:
           channels: razinka,conda-forge
           conda-remove-defaults: "true"
           miniforge-version: latest
-      - shell: bash -l {0}
+      # A published GitHub Release re-runs this workflow for a version that a
+      # workflow_dispatch may already have uploaded; anaconda.org rejects the
+      # duplicate and the run goes red. Skip the build when the version is
+      # already on the channel.
+      - name: Check whether this version is already published
+        id: published
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^__version__ = "\([^"]*\)"/\1/p' src/shiny_deckgl/_version.py)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://api.anaconda.org/release/razinka/shiny-deckgl/$VERSION")
+          if [ "$CODE" = "200" ]; then
+            echo "shiny-deckgl $VERSION is already on anaconda.org/razinka; nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build
+        if: steps.published.outputs.exists != 'true'
+        shell: bash -l {0}
         run: |
           conda install -n base -y -c conda-forge conda-build anaconda-client pip
           conda build conda.recipe -c razinka -c conda-forge
           OUT=$(conda build conda.recipe -c razinka -c conda-forge --output)
           echo "CONDA_OUT=$OUT" >> $GITHUB_ENV
       - name: Upload to Anaconda.org
-        if: env.CONDA_OUT != ''
+        if: steps.published.outputs.exists != 'true' && env.CONDA_OUT != ''
         shell: bash -l {0}
         env:
           ANACONDA_API_TOKEN: ${{ secrets.ANACONDA_TOKEN }}

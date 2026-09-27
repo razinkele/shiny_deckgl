@@ -3,7 +3,7 @@
 ## Shiny for Python → deck.gl bridge (Java-free)
 
 A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.4.0) and
-[MapLibre GL JS](https://maplibre.org/) (v6.7.0) into
+[MapLibre GL JS](https://maplibre.org/) (v6.11.2) into
 [Shiny for Python](https://shiny.posit.co/py/) applications.
 Built for marine science and GIS visualisation — WMS layers, EMODnet,
 HELCOM, food web modelling — the package handles CDN asset injection, layer
@@ -36,7 +36,7 @@ browser, all without Java dependencies.
 | **HTML export** | `widget.to_html(layers, path="map.html")` — standalone HTML file viewable in any browser. |
 | **JSON spec** | `to_json()` / `from_json()` for serialising and restoring map configurations. |
 | **`@@` accessor convention** | Python strings like `"@@d"` or `"@@d.position"` are resolved to JS arrow functions on the client. |
-| **CDN-pinned assets** | deck.gl 9.4.0, MapLibre GL 6.7.0 — deterministic builds. Standalone `to_html()` exports pin MapLibre 5.24.0 (see below). |
+| **CDN-pinned assets** | deck.gl 9.4.0, MapLibre GL 6.11.2 — deterministic builds. Standalone `to_html()` exports pin MapLibre 5.24.0 (see below). |
 | **Conda recipe** | Bundled `conda.recipe/meta.yaml` for micromamba / conda-build. |
 
 ### Phase 1 — Controls & Navigation (v0.2)
@@ -104,7 +104,7 @@ browser, all without Java dependencies.
 
 | Capability | Details |
 | --- | --- |
-| **deck.gl widgets** | `set_widgets()` with 18 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `fps_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()`, `layer_legend_widget()` + 5 experimental. |
+| **deck.gl widgets** | `set_widgets()` with 21 helpers: `zoom_widget()`, `compass_widget()`, `fullscreen_widget()`, `scale_widget()`, `gimbal_widget()`, `reset_view_widget()`, `screenshot_widget()`, `loading_widget()`, `timeline_widget()`, `geocoder_widget()`, `theme_widget()`, `popup_widget()`, `icon_widget()`, `toggle_widget()`, `selector_widget()`, `scrollbar_widget()`, `layer_legend_widget()` + 4 experimental; widget state changes arrive as `input[widget.widget_event_input_id]`. |
 | **Camera transitions** | `fly_to(longitude, latitude, zoom, speed)` — smooth MapLibre flyTo animation. |
 | | `ease_to(longitude, latitude, zoom, duration)` — linear easeTo animation. |
 | **Transition helper** | `transition(duration, easing, type)` — animate layer property changes on data update. |
@@ -126,6 +126,19 @@ browser, all without Java dependencies.
 | **Client-side animation** | `requestAnimationFrame`-based TripsLayer animation loop — no server polling. |
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
+
+### v1.12.0 — MapLibre 6.11, MapLibreOverlay, Widget Events & Reconnect
+
+| Capability | Details |
+| --- | --- |
+| **MapLibre 6.11.2** | Served apps get 6.11.2 (worker-tile leak, `setStyle` terrain crash and `Map#once` fixes); exports stay on 5.24.0. |
+| **MapLibreOverlay** | The deck.gl integration is now the one deck.gl recommends for MapLibre. `before_id=` on any layer orders it under a basemap layer in interleaved mode. |
+| **Widget events** | `input[widget.widget_event_input_id]` reports timeline, toggle, selector, icon, popup, stats, theme, geocoder, zoom, fullscreen, loading and reset-view changes as `{"id", "widget", "event", "value"}`. |
+| **New widgets** | `popup_widget()`, `icon_widget()`, `toggle_widget()`, `selector_widget()`, `scrollbar_widget()`; `zoom_widget(zoom_step=)`. `fps_widget()` / `view_selector_widget()` are deprecated. |
+| **Map options** | `MapWidget(map_options={...})` passes `maxBounds`, `maxPitch`, `renderWorldCopies`, `antialias`, ... to MapLibre. |
+| **Reconnect** | With `session.allow_reconnect()` (Shiny 1.8), `input[widget.reconnected_input_id]` fires and `resend_last_update(session)` restores the map. |
+| **3-D picking** | `pickable="3d"` reaches deck.gl; the click/hover coordinate gains a z value. |
+| **Headless demo test** | `tests/test_demo_headless.py` runs two demo tabs under `shiny.testserver`. |
 
 ### v1.11.1 — Follow-ups
 
@@ -313,9 +326,9 @@ browser, all without Java dependencies.
 
 ## Environment & Prerequisites
 
-### MapLibre versions: 6.7.0 served, 5.24.0 exported
+### MapLibre versions: 6.11.2 served, 5.24.0 exported
 
-Shiny apps load **MapLibre GL JS 6.7.0**. v6 is ESM-only — it ships no
+Shiny apps load **MapLibre GL JS 6.11.2**. v6 is ESM-only — it ships no
 UMD/IIFE build — so it is loaded with a dynamic `import()` rather than a
 `<script src>` tag. The module URL is published in an inert
 `<script type="application/json" id="shiny-deckgl-cdn">` block, which a strict
@@ -500,7 +513,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `src/shiny_deckgl/layers.py` | Generic `layer()` + 33 typed layer helpers (scatter, arc, trips, grid, point cloud, mesh, terrain, scenegraph, tile3d, …). |
 | `src/shiny_deckgl/colors.py` | Color scales (`color_range`, `color_bins`, `color_quantiles`), palettes, basemap constants. |
 | `src/shiny_deckgl/views.py` | View helpers (`map_view`, `orthographic_view`, `first_person_view`, `globe_view`, `orbit_view`). |
-| `src/shiny_deckgl/widgets.py` | 17 deck.gl widget helpers (zoom, compass, fullscreen, timeline, …). |
+| `src/shiny_deckgl/widgets.py` | 21 deck.gl widget helpers (zoom, compass, fullscreen, timeline, toggle, selector, …) plus two deprecated ones. |
 | `src/shiny_deckgl/controls.py` | MapLibre control helpers, legend, opacity, deck.gl legend. |
 | `src/shiny_deckgl/extensions.py` | 9 extension helpers (brushing, collision filter, data filter, mask, fp64, …). |
 | `src/shiny_deckgl/_data_utils.py` | DataFrame/GeoDataFrame serialisation, binary transport. |

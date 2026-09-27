@@ -2,7 +2,7 @@
 
 A pure-Python bridge from [Shiny for Python](https://shiny.posit.co/py/) to
 [deck.gl](https://deck.gl/) (v9.4.0) + [MapLibre GL JS](https://maplibre.org/)
-(v6.7.0), with **no Java dependency**. The Python side builds layer/config
+(v6.11.2), with **no Java dependency**. The Python side builds layer/config
 dicts and pushes them to a browser-side JS runtime over Shiny custom messages.
 Targeted at marine science / GIS (Baltic Sea, WMS/EMODnet/HELCOM, food-web and
 individual-based models).

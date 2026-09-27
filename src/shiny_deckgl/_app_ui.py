@@ -447,7 +447,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header("\U0001F4CB Active Layers"),
-                ui.output_text_verbatim("gl_status"),
+                ui.output_code("gl_status"),
             ),
         ),
     ),
@@ -521,7 +521,7 @@ def build_ui():
                         "\U0001F4CD Drag Marker",
                         ui.input_action_button("ml_place_marker",
                                                "\U0001F4CD Place drag marker"),
-                        ui.output_text_verbatim("ml_drag_info"),
+                        ui.output_code("ml_drag_info"),
                     ),
                     ui.accordion_panel(
                         "\U0001F4CD Clusters",
@@ -588,7 +588,7 @@ def build_ui():
                         "\U0001F4CD Drag Marker",
                         ui.input_action_button("events_marker",
                                                "\U0001F4CD Place drag marker"),
-                        ui.output_text_verbatim("events_drag"),
+                        ui.output_code("events_drag"),
                     ),
                     id="tab3_accordion",
                     open=False,
@@ -600,19 +600,19 @@ def build_ui():
             ui.layout_columns(
                 ui.card(
                     ui.card_header("\U0001F5B1\uFE0F Click Event"),
-                    ui.output_text_verbatim("click_info"),
+                    ui.output_code("click_info"),
                 ),
                 ui.card(
                     ui.card_header("\U0001F50D Hover Event"),
-                    ui.output_text_verbatim("hover_info"),
+                    ui.output_code("hover_info"),
                 ),
                 ui.card(
                     ui.card_header("\U0001F30D Current Viewport"),
-                    ui.output_text_verbatim("viewport_info"),
+                    ui.output_code("viewport_info"),
                 ),
                 ui.card(
                     ui.card_header("\U0001F4CD Drag Marker"),
-                    ui.output_text_verbatim("events_drag2"),
+                    ui.output_code("events_drag2"),
                 ),
                 col_widths=[6, 6, 6, 6],
             ),
@@ -698,11 +698,11 @@ def build_ui():
             ui.layout_columns(
                 ui.card(
                     ui.card_header("\U0001F4CB Colour Statistics"),
-                    ui.output_text_verbatim("pal_stats"),
+                    ui.output_code("pal_stats"),
                 ),
                 ui.card(
                     ui.card_header("\U0001F4DD Code Example"),
-                    ui.output_text_verbatim("pal_code"),
+                    ui.output_code("pal_code"),
                 ),
                 col_widths=[6, 6],
             ),
@@ -834,7 +834,7 @@ def build_ui():
             adv_widget.ui(height="55vh"),
             ui.card(
                 ui.card_header("\U0001F4DF Status Console"),
-                ui.output_text_verbatim("advanced_status"),
+                ui.output_code("advanced_status"),
             ),
         ),
     ),
@@ -871,7 +871,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header("\U0001F4C4 Output"),
-                ui.output_text_verbatim("export_output"),
+                ui.output_code("export_output"),
             ),
         ),
     ),
@@ -941,7 +941,7 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header("\U0001F4CB Interaction Log"),
-                ui.output_text_verbatim("draw_log"),
+                ui.output_code("draw_log"),
             ),
         ),
     ),
@@ -1323,9 +1323,6 @@ def build_ui():
                         ui.input_switch(
                             "wg_stats", "Stats (GPU/CPU)", value=False,
                         ),
-                        ui.input_switch(
-                            "wg_view_selector", "View selector", value=False,
-                        ),
                     ),
                     # -- Preset bundles ------------------------------------
                     ui.accordion_panel(
@@ -1351,7 +1348,7 @@ def build_ui():
                         ),
                         ui.input_action_button(
                             "wg_preset_all",
-                            "\U0001F4A5 All 17 deck.gl Widgets",
+                            "\U0001F4A5 All 16 deck.gl Widgets",
                             class_="btn-sm btn-outline-danger mb-1 w-100",
                         ),
                         ui.input_action_button(
@@ -1396,13 +1393,13 @@ def build_ui():
             ),
             ui.card(
                 ui.card_header(
-                    "\U0001F9E9 Widget Gallery - 17 deck.gl Widgets + Layer Legend"
+                    "\U0001F9E9 Widget Gallery - 16 deck.gl Widgets + Layer Legend"
                 ),
                 widgets_gallery_widget.ui(height="60vh"),
             ),
             ui.card(
                 ui.card_header("\U0001F4DF Active Widgets"),
-                ui.output_text_verbatim("wg_status"),
+                ui.output_code("wg_status"),
             ),
         ),
     ),
@@ -1440,7 +1437,7 @@ def build_ui():
                     ),
                     ui.accordion_panel(
                         "\U0001F4CA Info",
-                        ui.output_text_verbatim("ts_info"),
+                        ui.output_code("ts_info"),
                     ),
                     id="tab_timespace_accordion",
                     open=["\U0001F4C5 Timeline"],
@@ -1451,7 +1448,7 @@ def build_ui():
             timespace_widget.ui(height="60vh"),
             ui.card(
                 ui.card_header("\U0001F321\uFE0F Temperature Status"),
-                ui.output_text_verbatim("ts_status"),
+                ui.output_code("ts_status"),
             ),
         ),
     ),

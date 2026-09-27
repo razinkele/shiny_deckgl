@@ -1320,13 +1320,15 @@ class TestUnavailableWidgetsAreDocumented:
 
     See tests/test_widgets_resolve.py: deck.gl 9.3.6/9.3.11/9.4.0 all export the
     same widget set, and neither FpsWidget nor ViewSelectorWidget is in it.
+    Since 1.12.0 both helpers are deprecated (see tests/test_widgets.py for the
+    warning and the replacement); the docstrings must say so.
     """
 
-    def test_docstrings_warn_that_the_widget_is_unavailable(self):
+    def test_docstrings_say_the_helper_is_deprecated(self):
         from shiny_deckgl.widgets import fps_widget, view_selector_widget
         for fn in (fps_widget, view_selector_widget):
-            assert "not available" in (fn.__doc__ or "").lower(), (
-                f"{fn.__name__} resolves to nothing; its docstring must say so")
+            assert "deprecated" in (fn.__doc__ or "").lower(), (
+                f"{fn.__name__} is deprecated; its docstring must say so")
 
 
 class TestCredentialedLayersAreNotFetchedUnconditionally:
@@ -1676,3 +1678,42 @@ class TestControllerIsPerSession:
         assert "data-controller" not in map_div(s2)
         assert _json.loads(w.to_json([], session=s1))["controller"] is False
         assert "controller" not in _json.loads(w.to_json([], session=s2))
+
+
+class TestMapOptions:
+    """MapWidget(map_options=) passes extra MapLibre Map options through (1.12.0)."""
+
+    def test_attribute_and_json_round_trip(self):
+        from shiny_deckgl import MapWidget
+        w = MapWidget("m", map_options={"maxPitch": 60, "renderWorldCopies": False})
+        assert 'data-map-options="' in str(w.ui())
+        assert json.loads(w.to_json([]))["mapOptions"] == {"maxPitch": 60, "renderWorldCopies": False}
+        w2, _ = MapWidget.from_json(w.to_json([]))
+        assert w2.map_options == {"maxPitch": 60, "renderWorldCopies": False}
+        assert "data-map-options" not in str(MapWidget("d").ui())
+
+    def test_pinned_keys_are_rejected(self):
+        from shiny_deckgl import MapWidget
+        with pytest.raises(ValueError, match="container"):
+            MapWidget("m", map_options={"container": "x"})
+
+
+class TestReconnectResync:
+    """After session.allow_reconnect() (Shiny >= 1.8.0) the client reports a
+    reconnect and the server can replay the session's last update (1.12.0)."""
+
+    def test_input_id(self):
+        from shiny_deckgl import MapWidget
+        assert MapWidget("m").reconnected_input_id == "m_reconnected"
+
+    def test_resend_repeats_the_last_update_for_that_session(self):
+        import asyncio
+        from shiny_deckgl import MapWidget, scatterplot_layer
+        w, s1, s2 = MapWidget("m"), _FakeSession(), _FakeSession()
+        asyncio.run(w.update(s1, [scatterplot_layer("a", [[1, 2]])], picking_radius=5))
+        first = s1.messages[-1]
+        assert asyncio.run(w.resend_last_update(s1)) is True
+        assert s1.messages[-1] == first
+        # Review Focus 3: a reconnect before any update() is a no-op.
+        assert asyncio.run(w.resend_last_update(s2)) is False
+        assert s2.messages == []

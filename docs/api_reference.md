@@ -2793,11 +2793,17 @@ All helpers return a plain `dict` with a `"@@widgetClass"` key consumed by the J
 | `gimbal_widget()` | `GimbalWidget` | `"top-right"` | 3D camera gimbal control |
 | `reset_view_widget()` | `ResetViewWidget` | `"top-right"` | Reset camera to initial state |
 | `screenshot_widget()` | `ScreenshotWidget` | `"top-right"` | Take a screenshot |
-| `fps_widget()` | `FpsWidget` | `"top-left"` | Frames-per-second counter |
 | `loading_widget()` | `LoadingWidget` | — | Spinner during layer loading |
 | `timeline_widget()` | `TimelineWidget` | `"bottom-left"` | Time scrubber for animated layers |
 | `geocoder_widget()` | `GeocoderWidget` | `"top-left"` | Address search |
 | `theme_widget()` | `ThemeWidget` | — | Light/dark theme toggle |
+| `popup_widget(position, content)` | `PopupWidget` | — (anchored at `position`) | Popup at a map coordinate (v1.12.0) |
+| `icon_widget(icon, label=None)` | `IconWidget` | `"top-left"` | Single Material Symbols button (v1.12.0) |
+| `toggle_widget(icon, *, initial_checked=False, ...)` | `ToggleWidget` | `"top-left"` | On/off button (v1.12.0) |
+| `selector_widget(options, *, initial_value=None, tooltip=None)` | `SelectorWidget` | `"top-left"` | Dropdown; each option needs `value` and `icon` (v1.12.0) |
+| `scrollbar_widget(orientation="vertical")` | `ScrollbarWidget` | `"bottom-right"` | Scrollbar for large orthographic canvases (v1.12.0) |
+
+`zoom_widget(zoom_step=0.5)` sets the zoom levels per click (deck.gl 9.4).
 
 **Experimental widgets** (deck.gl ≥ 9.2):
 
@@ -2806,26 +2812,49 @@ All helpers return a plain `dict` with a `"@@widgetClass"` key consumed by the J
 | `context_menu_widget()` | `ContextMenuWidget` | — | Right-click context menu |
 | `info_widget()` | `InfoWidget` | `"top-left"` | Layer hover/pick information |
 | `splitter_widget()` | `SplitterWidget` | — | Split-screen view divider |
-| `stats_widget()` | `StatsWidget` | `"top-left"` | GPU/CPU performance statistics |
-| `view_selector_widget()` | `ViewSelectorWidget` | `"top-left"` | Switch between view modes |
+| `stats_widget()` | `StatsWidget` | `"top-left"` | GPU/CPU/FPS performance statistics |
+
+**Deprecated** (warn; removed in 2.0): `fps_widget()` returns a `StatsWidget` spec
+(deck.gl 9.3 merged the two); `view_selector_widget()` returns an empty spec, because
+deck.gl 9.x exports no `ViewSelectorWidget`.
 
 Every helper accepts `placement` (where supported) and `**kwargs` passed directly as widget properties.
+deck.gl's default widget `id` is per class (`"timeline"`, `"toggle"`, ...), so pass `id=` when you add
+two of a kind.
 
 ```python
 from shiny_deckgl import (
     zoom_widget, compass_widget, fullscreen_widget,
-    scale_widget, fps_widget, loading_widget,
+    scale_widget, stats_widget, loading_widget, toggle_widget,
 )
 
 await widget.set_widgets(session, [
-    zoom_widget(),
+    zoom_widget(zoom_step=0.5),
     compass_widget(),
     fullscreen_widget(),
     scale_widget(placement="bottom-left"),
-    fps_widget(placement="top-left"),
+    stats_widget(placement="top-left"),
     loading_widget(),
+    toggle_widget("layers", id="show_layers", label="Layers"),
 ])
 ```
+
+#### Widget events
+
+Widgets that change state (timeline, toggle, selector, icon, popup, stats, theme, geocoder,
+zoom, fullscreen, loading, reset view) report it through one Shiny input per map:
+
+```python
+@reactive.effect
+@reactive.event(input[widget.widget_event_input_id])
+def _on_widget():
+    ev = input[widget.widget_event_input_id]()   # {"id", "widget", "event", "value"}
+    if ev["id"] == "show_layers":                 # ToggleWidget: event "change", value bool
+        ...
+```
+
+`value` is the callback's argument: a number/bool/string, an object for `geocode`,
+`zoom` and `reset`, or `None` for an icon `click`.
 
 ### `layer_legend_widget()`
 

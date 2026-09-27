@@ -131,6 +131,7 @@ _JSON_WIDGET_SETTINGS = (
     ("controller", "controller", True),
     ("interleaved", "interleaved", False),
     ("cooperativeGestures", "cooperative_gestures", False),
+    ("mapOptions", "map_options", None),
 )
 
 
@@ -187,6 +188,12 @@ class MapWidget:
         When ``True``, requires Ctrl+scroll to zoom and two-finger drag
         on touch devices.  Useful when the map is embedded in a scrollable
         page.  Default ``False``.
+    map_options
+        Extra MapLibre ``Map`` constructor options, e.g.
+        ``{"maxBounds": [[20, 54], [23, 57]], "maxPitch": 60,
+        "renderWorldCopies": False, "antialias": True}``. They override the
+        view-state-derived defaults; ``container`` and ``style`` cannot be set
+        here (use ``style=``).
     """
 
     def __init__(
@@ -207,6 +214,8 @@ class MapWidget:
         interleaved: bool = False,
         # Cooperative gestures (v1.0.0)
         cooperative_gestures: bool = False,
+        # Extra MapLibre Map options (v1.12.0)
+        map_options: dict | None = None,
     ):
         # Resolve through the current Shiny module namespace so the
         # widget works identically inside and outside @module.ui /
@@ -226,6 +235,8 @@ class MapWidget:
         # Same for other settings a session can change at run time
         # (tooltip, cooperative gestures): {session: {name: value}}.
         self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
+        # Fallback for _recall("last_update") before any update() ran.
+        self.last_update: dict | None = None
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -239,6 +250,9 @@ class MapWidget:
         self.controller = controller
         self.interleaved = interleaved
         self.cooperative_gestures = cooperative_gestures
+        if map_options and ({"container", "style"} & set(map_options)):
+            raise ValueError("map_options cannot set 'container' or 'style'; use style=")
+        self.map_options = dict(map_options) if map_options else None
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -288,6 +302,37 @@ class MapWidget:
         a legend checkbox.
         """
         return f"{self._bare_id}_legend_visibility"
+
+    @property
+    def widget_event_input_id(self) -> str:
+        """Shiny input for state changes made in deck.gl widgets.
+
+        Set (with event priority) each time a widget fires one of its
+        callbacks, as ``{"id", "widget", "event", "value"}``: the widget's
+        ``id`` (deck.gl's default is the class's own id, e.g. ``"timeline"``,
+        so set ``id=`` when you add two of a kind), its class name
+        (``"TimelineWidget"``), the event (``"timeChange"``,
+        ``"playingChange"``, ``"change"``, ``"click"``, ``"openChange"``,
+        ``"expandedChange"``, ``"themeModeChange"``, ``"geocode"``,
+        ``"zoom"``, ``"fullscreenChange"``, ``"loadingChange"``, ``"reset"``)
+        and the callback's argument: a value, an object for ``geocode``,
+        ``zoom`` and ``reset``, or ``None`` for ``click``.
+        """
+        return f"{self._bare_id}_widget_event"
+
+    @property
+    def reconnected_input_id(self) -> str:
+        """Shiny input set when the browser reconnects to its session.
+
+        Requires ``session.allow_reconnect(True)`` (Shiny >= 1.8.0) and a host
+        that keeps sessions alive. Value: ``{"count": n}``. Typical use::
+
+            @reactive.effect
+            @reactive.event(input[widget.reconnected_input_id])
+            async def _resync():
+                await widget.resend_last_update(session)
+        """
+        return f"{self._bare_id}_reconnected"
 
     # -- UI -------------------------------------------------------------------
 
@@ -348,6 +393,8 @@ class MapWidget:
             attrs["data_controller"] = json.dumps(controller)
         if self.interleaved:
             attrs["data_interleaved"] = "true"
+        if self.map_options:
+            attrs["data_map_options"] = json.dumps(self.map_options)
         if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
         return attrs
@@ -441,7 +488,23 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
+        # Kept per session so resend_last_update() can replay it after a reconnect.
+        self._remember(session, "last_update", payload)
         await session.send_custom_message("deck_update", json_safe(payload))
+
+    async def resend_last_update(self, session: "Session") -> bool:
+        """Send this session's most recent :meth:`update` payload again.
+
+        Custom messages sent while the websocket was down are lost; after a
+        reconnect (:attr:`reconnected_input_id`) this restores the layers,
+        widgets and view state of the last update. Native MapLibre layers and
+        controls are not replayed. Returns ``False`` when nothing was recorded.
+        """
+        payload = self._recall(session, "last_update")
+        if payload is None:
+            return False
+        await session.send_custom_message("deck_update", json_safe(payload))
+        return True
 
     async def partial_update(
         self,

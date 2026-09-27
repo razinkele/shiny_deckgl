@@ -33,6 +33,12 @@ converter resolves at runtime:
 
 See `deck.gl JSON configuration docs <https://deck.gl/docs/api-reference/json/conversion-reference>`_
 for the full specification.
+
+deck.gl 9.4 props worth knowing (all pass through ``**kwargs``):
+``pickable="3d"`` (depth picking: the click/hover ``coordinate`` gains z),
+``antialiasing=True`` on Path/Line/Arc/PointCloud layers,
+``visibleMinZoom``/``visibleMaxZoom`` on ``TileLayer`` (draw range,
+separate from the load range), ``getPixelOffset`` on ``ScatterplotLayer``.
 """
 
 from __future__ import annotations
@@ -91,7 +97,15 @@ __all__ = [
 # Generic layer helper
 # ---------------------------------------------------------------------------
 
-def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None = None, **kwargs) -> dict:
+def layer(
+    type: str,
+    id: str,
+    data=None,
+    *,
+    extensions: list[str | list] | None = None,
+    before_id: str | None = None,
+    **kwargs,
+) -> dict:
     """Create an arbitrary deck.gl layer definition.
 
     Works for *any* deck.gl layer class (e.g. ``"HeatmapLayer"``,
@@ -122,6 +136,10 @@ def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None 
 
               extensions=["ClipExtension",
                           ["DataFilterExtension", {"filterSize": 2}]]
+    before_id
+        In interleaved mode (``MapWidget(interleaved=True)``), the id of the
+        MapLibre style layer to draw this layer *beneath*, e.g. a label layer.
+        Ignored in overlaid mode. Emitted as deck.gl's ``beforeId`` prop.
     **kwargs
         Any additional deck.gl properties.  ``visible=False`` hides the
         layer without removing it from the stack.
@@ -130,6 +148,8 @@ def layer(type: str, id: str, data=None, *, extensions: list[str | list] | None 
     # stray type= or id= in **kwargs can never silently clobber the
     # positional arguments.
     lyr: dict = {**kwargs, "type": type, "id": id}
+    if before_id is not None:
+        lyr["beforeId"] = before_id
     if data is not None:
         lyr["data"] = _serialise_data(data)
     if extensions:
@@ -200,6 +220,10 @@ def geojson_layer(id: str, data: list | dict, **kwargs) -> dict:
 
 def tile_layer(id: str, data: str | list, **kwargs) -> dict:
     """Create a deck.gl ``TileLayer`` for XYZ or WMS raster tiles.
+
+    deck.gl 9.4 adds ``visibleMinZoom``/``visibleMaxZoom`` (the zoom range in
+    which tiles are *drawn*, separate from ``minZoom``/``maxZoom`` which set
+    the range in which they are *loaded*); pass them as keyword arguments.
 
     Parameters
     ----------
@@ -694,6 +718,8 @@ def wms_layer(id: str, data: str, **kwargs) -> dict:
 
     This is deck.gl's first-class WMS layer (added in 9.x), as an
     alternative to the ``tile_layer()`` workaround with bbox placeholders.
+    Like ``TileLayer``, it accepts deck.gl 9.4's ``visibleMinZoom`` /
+    ``visibleMaxZoom`` draw-range props as keyword arguments.
 
     Parameters
     ----------

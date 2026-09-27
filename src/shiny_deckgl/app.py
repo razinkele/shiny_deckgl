@@ -26,7 +26,7 @@ Tabs (10):
   9. Seal IBM           - Individual-Based Model of Baltic seal movement,
                           animated foraging trips from haul-out colonies,
                           TripsLayer animation, GreatCircleLayer, GridLayer
- 10. Widgets Gallery    - Interactive showcase of all 17 deck.gl widgets,
+ 10. Widgets Gallery    - Interactive showcase of all 16 deck.gl widgets,
                           layer-widget combinations, preset bundles
 
 Module Organization (v1.4.0+):

@@ -182,6 +182,11 @@ from .widgets import (  # noqa: F401
     stats_widget,
     view_selector_widget,
     layer_legend_widget,
+    popup_widget,
+    icon_widget,
+    toggle_widget,
+    selector_widget,
+    scrollbar_widget,
 )
 
 # --- controls ---
@@ -386,6 +391,11 @@ __all__ = [
     "splitter_widget",
     "stats_widget",
     "view_selector_widget",
+    "popup_widget",
+    "icon_widget",
+    "toggle_widget",
+    "selector_widget",
+    "scrollbar_widget",
     # Controls
     "geolocate_control",
     "globe_control",

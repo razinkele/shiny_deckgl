@@ -614,7 +614,7 @@
   // -----------------------------------------------------------------------
   // Map interaction ("controller").
   //
-  // Under MapboxOverlay, MapLibre does the panning and zooming, so deck.gl's
+  // Under MapLibreOverlay, MapLibre does the panning and zooming, so deck.gl's
   // `controller` prop has no effect: map the value onto MapLibre's handlers.
   // true = everything on, false = everything off, a dict (deck.gl controller
   // option names) = everything on except the options set to false.
@@ -623,6 +623,23 @@
     dragPan: 'dragPan', scrollZoom: 'scrollZoom', dragRotate: 'dragRotate',
     doubleClickZoom: 'doubleClickZoom', keyboard: 'keyboard', boxZoom: 'boxZoom',
   };
+
+  // data-map-options: extra MapLibre Map constructor options (maxBounds,
+  // maxPitch, renderWorldCopies, antialias, ...). They win over the
+  // view-state-derived defaults; container and style stay pinned.
+  function mergeMapOptions(base, el) {
+    var raw = el && el.dataset ? el.dataset.mapOptions : undefined;
+    if (!raw) return Object.assign({}, base);
+    var extra;
+    try { extra = JSON.parse(raw); } catch (e) {
+      console.warn('[shiny_deckgl] Ignoring malformed data-map-options:', e.message);
+      return Object.assign({}, base);
+    }
+    var out = Object.assign({}, base, extra);
+    out.container = base.container;
+    out.style = base.style;
+    return out;
+  }
 
   function applyController(map, value) {
     var opts = (value && typeof value === 'object') ? value : null;
@@ -927,7 +944,7 @@
         }
       };
     }
-    const map = new maplibregl.Map(mapOpts);
+    const map = new maplibregl.Map(mergeMapOptions(mapOpts, el));
 
     // Apply initial controller setting from data attribute
     if (el.dataset.controller !== undefined) {
@@ -1001,7 +1018,7 @@
     });
 
     const interleavedMode = el.dataset.interleaved === 'true';
-    const overlay = new deck.MapboxOverlay({
+    const overlay = new deck.MapLibreOverlay({
       interleaved: interleavedMode,
       layers: [],
       // Forward widget-initiated view state changes (e.g. CompassWidget
@@ -1211,9 +1228,20 @@
   // Register both ways -- jQuery for Shiny, native for standalone hosts -- and
   // guard against running twice if both fire.
   var _shinyConnectedHandled = false;
+  var _reconnectCount = 0;
 
   function onShinyConnected() {
-    if (_shinyConnectedHandled) return;
+    if (_shinyConnectedHandled) {
+      // A later shiny:connected is a reconnect (session.allow_reconnect()).
+      // Shiny resends inputs and recalculates outputs, but the maps are fed
+      // by custom messages, which are not replayed: tell the server which
+      // maps are still live so it can resend_last_update().
+      _reconnectCount++;
+      Object.keys(mapInstances).forEach(function (id) {
+        Shiny.setInputValue(id + '_reconnected', { count: _reconnectCount }, { priority: 'event' });
+      });
+      return;
+    }
     _shinyConnectedHandled = true;
     var attempts = 0;
     // Start the MapLibre module fetch immediately; the poll below waits for
@@ -1628,6 +1656,51 @@
     return undefined;
   }
 
+  // Widget callbacks (deck.gl >= 9.3) forwarded to Shiny as one input per
+  // map: <mapId>_widget_event = {id, widget, event, value}. Keyed by the
+  // class name without the experimental "_" prefix.
+  var WIDGET_EVENTS = {
+    TimelineWidget: ['onTimeChange', 'onPlayingChange'],
+    ToggleWidget: ['onChange'],
+    SelectorWidget: ['onChange'],
+    IconWidget: ['onClick'],
+    PopupWidget: ['onOpenChange'],
+    StatsWidget: ['onExpandedChange'],
+    ThemeWidget: ['onThemeModeChange'],
+    GeocoderWidget: ['onGeocode'],
+    ZoomWidget: ['onZoom'],
+    FullscreenWidget: ['onFullscreenChange'],
+    LoadingWidget: ['onLoadingChange'],
+    ResetViewWidget: ['onReset'],
+  };
+
+  // Patches the constructed widget's props: widgets read callbacks from
+  // this.props at event time, the instance carries the real id (its class
+  // default when the spec set none), and Widget.setProps merges, so the
+  // shim survives later set_widgets() calls.
+  function attachWidgetEvents(widget, className, targetId) {
+    var name = className.replace(/^_/, '');
+    var events = WIDGET_EVENTS[name];
+    if (!events || !widget || !widget.props) return widget;
+    // props.id is the spec's id merged over the class default. Some classes
+    // (TimelineWidget 9.4) also declare a class field `id = '...'` that runs
+    // after super(props) and clobbers widget.id, so props.id is the one to trust.
+    var widgetId = widget.props.id != null ? widget.props.id
+      : (widget.id != null ? widget.id : name);
+    events.forEach(function (prop) {
+      var own = typeof widget.props[prop] === 'function' ? widget.props[prop] : null;
+      var event = prop.charAt(2).toLowerCase() + prop.slice(3);   // onTimeChange -> timeChange
+      widget.props[prop] = function (value) {
+        if (own) own.apply(this, arguments);
+        Shiny.setInputValue(targetId + '_widget_event', {
+          id: widgetId, widget: name, event: event,
+          value: arguments.length ? value : null,
+        }, { priority: 'event' });
+      };
+    });
+    return widget;
+  }
+
   function buildWidgets(widgetSpecs, targetId) {
     if (!widgetSpecs) return undefined;
     // An explicit empty list must reach overlay.setProps so deck.gl removes
@@ -1654,7 +1727,7 @@
           ' (no such class in this deck.gl build)');
         return null;
       }
-      return new Cls(props);
+      return attachWidgetEvents(new Cls(props), className, targetId);
     }).filter(Boolean);
   }
 
@@ -1812,7 +1885,8 @@
 
       // Set up pick handling for non-raster layers
       if (!RASTER_TYPES.has(layerProps.type) && layerProps.pickable !== false) {
-        layerProps.pickable = true;
+        // Keep '3d' (depth picking, deck.gl >= 9.3); only fill in the default.
+        if (layerProps.pickable !== '3d') layerProps.pickable = true;
 
         // Click → Shiny input
         if (!layerProps.onClick) {

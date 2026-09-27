@@ -135,6 +135,10 @@ def fill_style_extension(pattern: bool = True) -> Extension:
     pattern
         Whether to enable pattern fills (default ``True``).
 
+    deck.gl 9.4 generates hatch, cross-hatch and dot patterns in the shader
+    and adds the ``fillPatternSizeUnits`` and ``getFillPatternBackgroundColor``
+    layer props.
+
     Layer props enabled:
 
     * ``fillPatternAtlas`` — URL/image of the pattern atlas
@@ -156,6 +160,10 @@ def path_style_extension(dash: bool = False, high_precision: bool = False) -> Ex
         Enable dash patterns.
     high_precision
         Use high-precision dash rendering (slower but pixel-perfect).
+
+    deck.gl 9.4 adds ``dashMode`` (``"restart"`` per segment or
+    ``"continuous"``) and ``dashUnits`` (``"strokeWidth"``, ``"pixels"``,
+    ``"meters"``, ``"common"``), passed as layer props.
 
     Layer props enabled:
 

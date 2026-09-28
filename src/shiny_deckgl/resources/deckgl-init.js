@@ -1161,6 +1161,18 @@
       tripsAnimation: null     // see startTripsAnimation()
     };
     watchBootstrapTheme(mapInstances[mapId], mapId);
+    // Both contexts can be dropped by the browser: MapLibre's now, deck.gl's
+    // once the overlay has created its canvas.
+    watchContextLoss(mapInstances[mapId], mapId, map.getCanvas());
+    (function watchDeckCanvas(tries) {
+      var inst = mapInstances[mapId];
+      if (!inst || inst.map !== map) return;
+      var dk = inst.overlay && (inst.overlay._deck || inst.overlay.deck);
+      var dc = null;
+      try { dc = dk && (typeof dk.getCanvas === 'function' ? dk.getCanvas() : dk.canvas); } catch (e) { dc = null; }
+      if (dc) watchContextLoss(inst, mapId, dc);
+      else if (tries < 50) setTimeout(function () { watchDeckCanvas(tries + 1); }, 200);
+    })(0);
 
     // Dismiss tooltip when the cursor is over empty map space.
     // Per-layer onHover only fires while the pointer is near that layer's
@@ -1225,6 +1237,70 @@
     try { container = instance.map && instance.map.getContainer(); } catch (e) { /* ignore */ }
     if (!container) return !document.getElementById(removedEl.id);
     return container === removedEl && !container.isConnected;
+  }
+
+  // -----------------------------------------------------------------------
+  // WebGL context loss (v1.13.1)
+  //
+  // Browsers keep a bounded number of live WebGL contexts (Chrome: 16) and
+  // drop the oldest silently; each map holds two (MapLibre + deck.gl), so a
+  // page with many maps sees one go blank. Rebuild such a map from what the
+  // runtime recorded -- layers, widgets, effects, style, dark mode, camera --
+  // at once when it is visible, otherwise when its tab is next shown. The
+  // app hears about it through <id>_reconnected (reason 'webgl-context-lost')
+  // so it can re-add native MapLibre layers, which are not recorded.
+  // -----------------------------------------------------------------------
+  var DECK_SPEC_KEYS = ['widgets', 'effects', 'views', 'pickingRadius', 'useDevicePixels', '_animate'];
+
+  function rememberDeckSpecs(instance, payload) {
+    if (!instance || !payload) return;
+    var specs = instance.lastDeckSpecs || (instance.lastDeckSpecs = {});
+    DECK_SPEC_KEYS.forEach(function (k) { if (payload[k] !== undefined) specs[k] = payload[k]; });
+  }
+
+  function watchContextLoss(instance, mapId, canvas) {
+    if (!canvas || !canvas.addEventListener || canvas._deckglLossWatched) return;
+    canvas._deckglLossWatched = true;
+    canvas.addEventListener('webglcontextlost', function () {
+      if (mapInstances[mapId] !== instance || instance._contextLost) return;
+      instance._contextLost = true;
+      var visible = instance.el ? isInVisibleTab(instance.el) : true;
+      console.warn('[shiny_deckgl] WebGL context lost for map "' + mapId + '"' +
+        (visible ? '; rebuilding' : '; rebuilding when its tab is shown'));
+      if (visible) setTimeout(function () { rebuildMap(mapId); }, 0);
+    });
+  }
+
+  function rebuildMap(mapId) {
+    var instance = mapInstances[mapId];
+    if (!instance || !instance._contextLost) return false;
+    var el = instance.el || document.getElementById(mapId);
+    if (!el || !el.isConnected) return false;
+    var state = {
+      layers: instance.lastLayers || [],
+      specs: instance.lastDeckSpecs || {},
+      style: instance.currentStyle,
+      dark: !!instance.dark,
+      camera: null
+    };
+    try {
+      var c = instance.map.getCenter();
+      state.camera = { center: [c.lng, c.lat], zoom: instance.map.getZoom(),
+                       pitch: instance.map.getPitch(), bearing: instance.map.getBearing() };
+    } catch (e) { /* the map may be too far gone to ask */ }
+    disposeMap(mapId);
+    safeInitMap(el);
+    var fresh = mapInstances[mapId];
+    if (!fresh) return false;
+    fresh._rebuilds = (instance._rebuilds || 0) + 1;
+    if (state.camera) { try { fresh.map.jumpTo(state.camera); } catch (e) { /* ignore */ } }
+    if (state.style && state.style !== fresh.currentStyle) applyStyle(fresh, state.style, false);
+    if (state.dark) applyDarkMode(fresh, mapId, true);
+    onDeckUpdate(Object.assign({ id: mapId, layers: state.layers }, state.specs));
+    _reconnectCount++;
+    Shiny.setInputValue(mapId + '_reconnected',
+      { count: _reconnectCount, reason: 'webgl-context-lost' }, { priority: 'event' });
+    return true;
   }
 
   function disposeMap(id) {
@@ -2740,6 +2816,7 @@
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
     const overlayProps = { layers: renderLayers(instance, targetId) };
+    rememberDeckSpecs(instance, payload);
 
     // Effects (lighting, post-processing)
     const effects = buildEffects(payload.effects);
@@ -2887,6 +2964,7 @@
     if (!payload || !payload.id) return;
     const instance = mapInstances[payload.id];
     if (!instance) return;
+    rememberDeckSpecs(instance, { widgets: payload.widgets });
     dropImplicitNavigation(instance, payload.widgets);
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
@@ -4215,7 +4293,9 @@
     if (!panel) return;
     panel.querySelectorAll('.deckgl-map').forEach(function (el) {
       const inst = mapInstances[el.id];
-      if (inst && inst.map) {
+      if (inst && inst._contextLost) {
+        setTimeout(function () { rebuildMap(el.id); }, 50);
+      } else if (inst && inst.map) {
         // Already initialised — just resize and re-render
         setTimeout(function () {
           inst.map.resize();

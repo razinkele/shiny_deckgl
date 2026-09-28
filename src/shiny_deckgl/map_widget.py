@@ -305,6 +305,11 @@ class MapWidget:
         # Fallbacks for _recall() before a session recorded anything.
         self.last_update: dict | None = None
         self.rpc_state: dict | None = None
+        self.http_state: dict | None = None
+        #: Serialised update() payloads at least this many bytes go over HTTP
+        #: (session.dynamic_route + fetch) instead of the websocket when
+        #: ``transport="auto"`` (v1.13.0).
+        self.http_transport_threshold: int = 2_000_000
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -501,6 +506,8 @@ class MapWidget:
         animate: bool | None = None,
         # Widgets (v0.8.0)
         widgets: list[dict] | None = None,
+        # Transport (v1.13.0)
+        transport: str = "auto",
     ) -> None:
         """Push a new set of deck.gl layers to this map.
 
@@ -534,6 +541,14 @@ class MapWidget:
             Optional list of deck.gl widget dicts (e.g. from
             ``zoom_widget()``, ``compass_widget()``).  When provided the
             JS client passes them to ``overlay.setProps({widgets})``.
+        transport
+            ``"auto"`` (default) sends payloads of at least
+            :attr:`http_transport_threshold` bytes over HTTP -- the message
+            carries a session URL (``session.dynamic_route``) that the client
+            fetches -- and smaller ones over the websocket; ``"ws"`` and
+            ``"http"`` force one or the other. HTTP keeps multi-MB layer
+            data out of the websocket frames and lets the browser fetch it
+            while rendering.
 
         .. tip::
            ``update()`` serialises **every** layer to JSON on each call.
@@ -575,7 +590,42 @@ class MapWidget:
         if widgets is not None:
             payload["widgets"] = widgets
         self._record_full_update(session, payload)
-        await session.send_custom_message("deck_update", json_safe(payload))
+        await self._send_update(session, payload, transport)
+
+    # -- Transport (v1.13.0) -----------------------------------------------------
+
+    async def _send_update(self, session: "Session", payload: dict, transport: str = "auto") -> None:
+        """Send a ``deck_update`` inline or as a URL the client fetches."""
+        if transport not in ("auto", "ws", "http"):
+            raise ValueError(f"transport must be 'auto', 'ws' or 'http', got {transport!r}")
+        body = json_safe(payload)
+        if transport == "ws" or not hasattr(session, "dynamic_route"):
+            await session.send_custom_message("deck_update", body)
+            return
+        data = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        if transport == "auto" and len(data) < self.http_transport_threshold:
+            await session.send_custom_message("deck_update", body)
+            return
+        state = self._recall(session, "http_state")
+        if state is None:
+            state = {"route": None, "seq": 0, "data": b""}
+            self._remember(session, "http_state", state)
+        state["seq"] += 1
+        state["data"] = data
+        if state["route"] is None:
+            # One route per map and session; it always serves the latest payload.
+            def _serve(request: Any) -> Any:
+                from starlette.responses import Response
+
+                return Response(content=state["data"], media_type="application/json")
+
+            state["route"] = session.dynamic_route(f"{self._bare_id}_payload", _serve)
+        await session.send_custom_message("deck_update", {
+            "id": self.id,
+            "url": f"{state['route']}&v={state['seq']}",
+            "seq": state["seq"],
+            "bytes": len(data),
+        })
 
     # -- Reconnect snapshot ---------------------------------------------------
     # resend_last_update() must replay the session's *state*, not the last
@@ -644,7 +694,7 @@ class MapWidget:
         snap = self._recall(session, "last_update")
         if not snap:
             return False
-        await session.send_custom_message("deck_update", json_safe(snap))
+        await self._send_update(session, snap)
         return True
 
     # -- Bookmarking (v1.13.0) -----------------------------------------------

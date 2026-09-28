@@ -2563,7 +2563,11 @@
       var merged = payload;
       while (queue.length && SUPERSEDED_BY_UPDATE[queue[queue.length - 1].handler]) {
         var prev = queue.pop();
-        if (prev.handler === 'deck_update') merged = Object.assign({}, prev.payload, merged);
+        if (prev.handler === 'deck_update') {
+          merged = Object.assign({}, prev.payload, merged);
+          // The newest update decides the transport: drop the other form.
+          if (payload.url) delete merged.layers; else delete merged.url;
+        }
       }
       payload = merged;
     }
@@ -2611,15 +2615,50 @@
 
   // Wrap a Shiny message handler to defer messages for maps in hidden tabs.
   // Messages are queued and replayed when the tab becomes visible.
+  // HTTP transport (v1.13.0): update(transport="http"/"auto") sends
+  // {id, url, seq, bytes}; the JSON is fetched here and applied through
+  // onDeckUpdate. The fetch is remembered on the instance so that layer
+  // messages arriving meanwhile (partial_update, layer_visibility,
+  // set_widgets, another update) run after it, in order.
+  var FETCH_ORDERED = { deck_update: 1, deck_partial_update: 1, deck_layer_visibility: 1, deck_set_widgets: 1 };
+
+  function fetchPayload(instance, payload) {
+    var p = (instance._pendingFetch || Promise.resolve()).then(function () {
+      return fetch(payload.url, { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (full) { onDeckUpdate(full); });
+    }).catch(function (e) {
+      console.error('[shiny_deckgl] deck_update: fetching ' + payload.url + ' failed:', e);
+    }).then(function () {
+      if (instance._pendingFetch === p) instance._pendingFetch = null;
+    });
+    instance._pendingFetch = p;
+    return p;
+  }
+
   function addDeferrable(name, fn) {
     // Guard live handler execution so a throw in one handler cannot abort the
     // whole Shiny custom-message callback (mirrors replayDeferredMessages).
-    function runFn(payload) {
+    function runNow(payload) {
       try {
         fn(payload);
       } catch (e) {
         console.error('[shiny_deckgl] Handler "' + name + '" failed:', e);
       }
+    }
+    function runFn(payload) {
+      var inst = payload && payload.id ? mapInstances[payload.id] : null;
+      if (inst && inst._pendingFetch && FETCH_ORDERED[name]) {
+        // A fetched deck_update is still in flight: keep the order, and clear
+        // the chain once this (last) link has run so later messages run at once.
+        var next = inst._pendingFetch.then(function () { runNow(payload); }).then(function () {
+          if (inst._pendingFetch === next) inst._pendingFetch = null;
+        });
+        inst._pendingFetch = next;
+        return;
+      }
+      runNow(payload);
     }
     _handlerFns[name] = fn;
     Shiny.addCustomMessageHandler(name, function (payload) {
@@ -2649,7 +2688,7 @@
   // -----------------------------------------------------------------------
   // deck_update — main layer push
   // -----------------------------------------------------------------------
-  addDeferrable("deck_update", function (payload) {
+  function onDeckUpdate(payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = mapInstances[targetId];
@@ -2657,6 +2696,8 @@
       console.warn('[shiny_deckgl] deck_update: map "' + targetId + '" not found');
       return;
     }
+    // HTTP transport (v1.13.0): the message is only a pointer to the payload.
+    if (payload.url) { fetchPayload(instance, payload); return; }
 
     const { map, overlay } = instance;
 
@@ -2733,7 +2774,8 @@
     }).catch(function (err) {
       console.error('[shiny_deckgl] deck_update rendering failed for "' + targetId + '":', err);
     }); // end SVG atlas preload .then()
-  });
+  }
+  addDeferrable("deck_update", onDeckUpdate);
 
   // -----------------------------------------------------------------------
   // deck_partial_update — lightweight layer patch (merge into cached layers)

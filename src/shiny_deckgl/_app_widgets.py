@@ -39,6 +39,7 @@ maplibre_widget = MapWidget(
     tooltip={"html": "<b>{name}</b><br/>{country}", "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
     controls=[],
+    dark_style=CARTO_DARK,   # follows ui.input_dark_mode(id="mode") in the navbar
     # Extra MapLibre Map options (v1.12.0): fence the map to the Baltic.
     map_options={
         "maxBounds": [[-5.0, 48.0], [45.0, 72.0]],
@@ -50,6 +51,7 @@ maplibre_widget = MapWidget(
 # Tab 3 — Events & Tooltips
 events_widget = MapWidget(
     "events_map",
+    dark_style=CARTO_DARK,
     tooltip={"html": DEFAULT_TOOLTIP_HTML, "style": TOOLTIP_STYLE},
     view_state=BALTIC_VIEW,
 )

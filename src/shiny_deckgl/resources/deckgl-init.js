@@ -947,6 +947,12 @@
     const initMaxZoom = isNaN(parseFloat(el.dataset.initialMaxZoom)) ? 24 : parseFloat(el.dataset.initialMaxZoom);
     const mapStyle = el.dataset.style ||
       'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json';
+    // Dark from the first frame when the page already is (no double load).
+    const darkStyle = el.dataset.darkStyle || null;
+    const startDark = !!darkStyle && el.dataset.followDarkMode !== 'false' &&
+      document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const startStyle = startDark ? darkStyle : mapStyle;
+    if (startDark) el.classList.toggle('deckgl-dark', true);
 
     // Optional Mapbox API key — enables mapbox:// style URLs
     const mapboxApiKey = el.dataset.mapboxApiKey || null;
@@ -968,7 +974,7 @@
 
     const mapOpts = {
       container: mapId,
-      style: mapStyle,
+      style: startStyle,
       center: [initLon, initLat],
       zoom: initZoom,
       pitch: initPitch,
@@ -1141,6 +1147,11 @@
       tooltipConfig: tooltipConfig,
       dragMarker: null,
       lastLayers: [],          // cache for visibility toggling
+      el: el,
+      lightStyle: mapStyle,    // dark mode (v1.13.0): the pair to swap between
+      darkStyle: darkStyle,
+      currentStyle: startStyle,
+      dark: startDark,
       controls: initialControls,
       // true when the navigation control is our default, not the app's choice
       _implicitNavigation: el.dataset.controls === undefined,
@@ -1149,6 +1160,7 @@
       // TripsLayer animation state (v0.9.0)
       tripsAnimation: null     // see startTripsAnimation()
     };
+    watchBootstrapTheme(mapInstances[mapId], mapId);
 
     // Dismiss tooltip when the cursor is over empty map space.
     // Per-layer onHover only fires while the pointer is near that layer's
@@ -1223,6 +1235,7 @@
       if (instance._frameRaf) cancelAnimationFrame(instance._frameRaf);
     } catch (e) { /* ignore */ }
     instance._frameRaf = null;
+    try { if (instance._themeObserver) instance._themeObserver.disconnect(); } catch (e) { /* ignore */ }
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
@@ -2973,10 +2986,12 @@
   // -----------------------------------------------------------------------
   // deck_set_style — change the basemap style dynamically
   // -----------------------------------------------------------------------
-  addDeferrable("deck_set_style", function (payload) {
-    if (!payload || !payload.id) return;
-    const instance = mapInstances[payload.id];
-    if (!instance) return;
+  // Swap the basemap style. Shared by deck_set_style and the dark-mode
+  // switch, so both get the native-layer warning, the style-change guard
+  // and the tracker reset.
+  function applyStyle(instance, style, diff) {
+    if (!instance || !style) return;
+    instance.currentStyle = style;
     if (instance.nativeLayers && Object.keys(instance.nativeLayers).length > 0) {
       console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
         + 'Re-add them after the style loads.');
@@ -3033,15 +3048,58 @@
     // match set_style(diff=False). A diff never fires 'style.load' when the
     // style is unchanged, and when it lands after layers were re-added it
     // diffs them away against the bare basemap JSON.
-    const styleOpts = { diff: !!payload.diff };
-    instance.map.setStyle(payload.style, styleOpts);
-    if (payload.diff) settleDiffStyle(instance, payload.style);
+    const styleOpts = { diff: !!diff };
+    instance.map.setStyle(style, styleOpts);
+    if (diff) settleDiffStyle(instance, style);
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)
-    if (!payload.diff) {
+    if (!diff) {
       resetNativeLayers(instance);
     }
+  }
+
+  addDeferrable("deck_set_style", function (payload) {
+    if (!payload || !payload.id) return;
+    applyStyle(mapInstances[payload.id], payload.style, !!payload.diff);
   });
+
+  // -----------------------------------------------------------------------
+  // deck_set_dark_mode -- dark basemap + dark widgets (v1.13.0)
+  // -----------------------------------------------------------------------
+  // A Bootstrap dark app sets data-bs-theme="dark" on <html>. With a
+  // dark_style= the map swaps its basemap through applyStyle(); with or
+  // without one, the map div gets .deckgl-dark (dark deck widgets and
+  // legend, see styles.css) and the server hears about it through
+  // <id>_dark_mode = {dark, style}.
+  function applyDarkMode(instance, mapId, dark) {
+    if (!instance) return;
+    dark = !!dark;
+    var target = dark ? instance.darkStyle : instance.lightStyle;
+    if (target && target !== instance.currentStyle) applyStyle(instance, target, false);
+    if (instance.el && instance.el.classList) instance.el.classList.toggle('deckgl-dark', dark);
+    instance.dark = dark;
+    Shiny.setInputValue(mapId + '_dark_mode', { dark: dark, style: instance.currentStyle || null });
+  }
+
+  function handleSetDarkMode(payload) {
+    if (!payload || !payload.id) return;
+    applyDarkMode(mapInstances[payload.id], payload.id, payload.dark);
+  }
+  addDeferrable("deck_set_dark_mode", handleSetDarkMode);
+
+  // Follow data-bs-theme on <html> (ui.input_dark_mode, or a fixed theme)
+  // unless data-follow-dark-mode="false". Returns the observer, or null.
+  function watchBootstrapTheme(instance, mapId) {
+    var ds = (instance && instance.el && instance.el.dataset) || {};
+    if (ds.followDarkMode === 'false' || typeof MutationObserver === 'undefined') return null;
+    var root = document.documentElement;
+    var observer = new MutationObserver(function () {
+      applyDarkMode(instance, mapId, root.getAttribute('data-bs-theme') === 'dark');
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ['data-bs-theme'] });
+    instance._themeObserver = observer;
+    return observer;
+  }
 
   // -----------------------------------------------------------------------
   // deck_add_control — add a MapLibre control

@@ -18,6 +18,39 @@ html, body { height: 100%; margin: 0; }
 }
 
 /* ===================================================================
+   Dark mode (v1.13.0): .deckgl-dark on the map div, set by the runtime
+   when <html data-bs-theme="dark"> or set_dark_mode(). deck.gl's widgets
+   read these custom properties from their container; the legend below
+   gets its own dark colours.
+   =================================================================== */
+.deckgl-map.deckgl-dark .deck-widget-container {
+  --button-background: rgba(24, 26, 30, 0.9);
+  --button-stroke: rgba(255, 255, 255, 0.12);
+  --button-inner-stroke: rgba(255, 255, 255, 0.05);
+  --button-shadow: 0 0 8px 2px rgba(0, 0, 0, 0.35);
+  --button-icon-idle: rgba(230, 232, 236, 0.85);
+  --button-icon-hover: #fff;
+  --button-text: #e6e8ec;
+  --menu-background: rgba(24, 26, 30, 0.95);
+  --menu-border: rgba(255, 255, 255, 0.12);
+  --menu-shadow: 0 0 8px 2px rgba(0, 0, 0, 0.35);
+  --menu-text: #e6e8ec;
+  --menu-item-hover: rgba(255, 255, 255, 0.08);
+  --range-track-color: rgba(255, 255, 255, 0.25);
+  --range-thumb-color: #e6e8ec;
+  --icon-compass-north-color: #ff6b6b;
+  --icon-compass-south-color: #9aa0a6;
+}
+.deckgl-map.deckgl-dark .deck-legend-ctrl {
+  background: #1a1c20;
+  color: #e6e8ec;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+.deckgl-map.deckgl-dark .deck-legend-header { background: #24272c; }
+.deckgl-map.deckgl-dark .deck-legend-header:hover { background: #2c3036; }
+.deckgl-map.deckgl-dark .deck-legend-row:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* ===================================================================
    Layer legend widget (layer_legend_widget / _DeckLayerLegendWidget)
    =================================================================== */
 .deck-legend-ctrl {

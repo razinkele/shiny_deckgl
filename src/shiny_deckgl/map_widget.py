@@ -134,6 +134,8 @@ _JSON_WIDGET_SETTINGS = (
     ("interleaved", "interleaved", False),
     ("cooperativeGestures", "cooperative_gestures", False),
     ("mapOptions", "map_options", None),
+    ("darkStyle", "dark_style", None),
+    ("followDarkMode", "follow_dark_mode", True),
 )
 
 
@@ -225,6 +227,16 @@ class MapWidget:
         "renderWorldCopies": False, "antialias": True}``. They override the
         view-state-derived defaults; ``container`` and ``style`` cannot be set
         here (use ``style=``).
+    dark_style
+        Basemap style URL to use while the app is in dark mode (Bootstrap's
+        ``data-bs-theme="dark"``, e.g. from ``ui.input_dark_mode()``); the
+        constructor ``style`` is the light one. With or without it, dark mode
+        also darkens the deck.gl widgets and the layer legend. Swaps report
+        through :attr:`dark_mode_input_id`; :meth:`set_dark_mode` switches
+        from the server.
+    follow_dark_mode
+        Whether the map follows ``data-bs-theme`` on its own (default
+        ``True``). ``False`` leaves the switching to :meth:`set_dark_mode`.
     """
 
     def __init__(
@@ -247,6 +259,9 @@ class MapWidget:
         cooperative_gestures: bool = False,
         # Extra MapLibre Map options (v1.12.0)
         map_options: dict | None = None,
+        # Dark mode (v1.13.0)
+        dark_style: str | None = None,
+        follow_dark_mode: bool = True,
     ):
         # Resolve through the current Shiny module namespace so the
         # widget works identically inside and outside @module.ui /
@@ -285,6 +300,10 @@ class MapWidget:
         if map_options and ({"container", "style"} & set(map_options)):
             raise ValueError("map_options cannot set 'container' or 'style'; use style=")
         self.map_options = dict(map_options) if map_options else None
+        if dark_style is not None and not isinstance(dark_style, str):
+            raise TypeError(f"dark_style must be a style URL string or None, got {type(dark_style).__name__!r}")
+        self.dark_style = dark_style
+        self.follow_dark_mode = bool(follow_dark_mode)
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -351,6 +370,16 @@ class MapWidget:
         ``zoom`` and ``reset``, or ``None`` for ``click``.
         """
         return f"{self._bare_id}_widget_event"
+
+    @property
+    def dark_mode_input_id(self) -> str:
+        """Shiny input set when the map switches between light and dark.
+
+        Value: ``{"dark": bool, "style": str | None}`` -- the style now in
+        force, so an app that added native layers can re-add them (a style
+        swap removes them, as with :meth:`set_style`).
+        """
+        return f"{self._bare_id}_dark_mode"
 
     @property
     def reconnected_input_id(self) -> str:
@@ -427,6 +456,10 @@ class MapWidget:
             attrs["data_interleaved"] = "true"
         if self.map_options:
             attrs["data_map_options"] = json.dumps(self.map_options)
+        if self.dark_style:
+            attrs["data_dark_style"] = self.dark_style
+        if not self.follow_dark_mode:
+            attrs["data_follow_dark_mode"] = "false"
         if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
         return attrs
@@ -865,6 +898,29 @@ class MapWidget:
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
             "controller": options,
+        })
+
+    async def set_dark_mode(self, session: "Session", dark: bool) -> None:
+        """Switch this map to dark (or light) mode from the server.
+
+        With a ``dark_style`` the basemap swaps (recorded per session, so
+        :meth:`current_style` and exports follow); with or without one the
+        deck.gl widgets and the legend turn dark. Typical use with
+        ``ui.input_dark_mode(id="mode")`` and ``follow_dark_mode=False``::
+
+            @reactive.effect
+            async def _theme():
+                await widget.set_dark_mode(session, input.mode() == "dark")
+        """
+        dark = bool(dark)
+        if self.dark_style:
+            try:
+                self._session_styles[session] = self.dark_style if dark else self.style
+            except TypeError:
+                pass
+        await session.send_custom_message("deck_set_dark_mode", {
+            "id": self.id,
+            "dark": dark,
         })
 
     async def set_cooperative_gestures(

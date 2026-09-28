@@ -5,6 +5,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.13.1] — 2026-09-28
+
+### Fixed
+
+- **A map whose WebGL context the browser dropped went blank** (the demo's
+  3-D tab after visiting enough other tabs). Chrome keeps at most 16 live
+  WebGL contexts and silently drops the oldest; each map holds two (MapLibre
+  and deck.gl). The runtime now listens for `webglcontextlost` on both
+  canvases and rebuilds the map from what it recorded -- layers, widgets,
+  effects, style, dark mode, camera -- at once when visible, otherwise when
+  its tab is next shown. The app hears about it through
+  `reconnected_input_id` (`reason: "webgl-context-lost"`), so a handler that
+  re-adds native MapLibre layers after a reconnect covers this too.
+
 ## [1.13.0] — 2026-09-28
 
 The Shiny 1.8 roadmap (`docs/2026-09-28-shiny-1.8-improvements.md`; plan in

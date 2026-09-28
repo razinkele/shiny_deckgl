@@ -83,8 +83,16 @@ READBACK_PLACEHOLDERS = {
 def test_readback_outputs_show_placeholder_before_first_event(output_id, placeholder):
     # Reading a never-set input raises SilentException, which left these
     # cards blank; the demo now checks is_set() first.
+    import time
     with test_server(app, timeout_secs=60) as s:
+        # Outputs render asynchronously after start-up and get_output() reads a
+        # snapshot: under load the first snapshot can still say
+        # "never-rendered", so flush() (re-read) briefly until it has rendered.
+        deadline = time.time() + 15
         out = s.get_output(output_id)
+        while out.status == "never-rendered" and time.time() < deadline:
+            time.sleep(0.2)
+            out = s.flush().get_output(output_id)
         assert out.status == "ok", (output_id, out.status)
         assert placeholder in out.value
 

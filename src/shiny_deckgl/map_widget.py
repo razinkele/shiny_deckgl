@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import html as _html_mod
 import json
 import pathlib
+import warnings
 from functools import lru_cache
 from importlib import resources as impresources
 from shiny import ui
@@ -132,7 +135,120 @@ _JSON_WIDGET_SETTINGS = (
     ("interleaved", "interleaved", False),
     ("cooperativeGestures", "cooperative_gestures", False),
     ("mapOptions", "map_options", None),
+    ("darkStyle", "dark_style", None),
+    ("followDarkMode", "follow_dark_mode", True),
 )
+
+
+def _shiny_version() -> tuple[int, ...]:
+    """The installed Shiny version as a tuple of ints (pre-release tags dropped)."""
+    from importlib.metadata import version
+
+    parts: list[int] = []
+    for piece in version("shiny").split("."):
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+_BOOKMARK_TRANSIENT_INPUTS = (
+    "_click", "_hover", "_map_click", "_map_contextmenu", "_query_result",
+    "_export_result", "_has_image", "_widget_event", "_reconnected",
+    "_dark_mode", "_drag",
+)
+
+
+# -- Test mode (v1.13.0) -----------------------------------------------------
+# With SHINY_TESTMODE=1 Shiny dumps every input at /session/{id}/dataobj/shinytest.
+# The map's inputs are noisy (float camera, whole picked objects, request
+# ids, data URLs); these scrubbers keep the snapshot diffable. They only
+# affect snapshots, never the live inputs, and are no-ops off test mode.
+
+def _round_floats(value: Any, ndigits: int = 4) -> Any:
+    if isinstance(value, float):
+        return round(value, ndigits)
+    if isinstance(value, list):
+        return [_round_floats(v, ndigits) for v in value]
+    if isinstance(value, tuple):
+        return [_round_floats(v, ndigits) for v in value]
+    if isinstance(value, dict):
+        return {k: _round_floats(v, ndigits) for k, v in value.items()}
+    return value
+
+
+def _scrub_view_state(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    return _round_floats({k: v for k, v in value.items() if k != "bounds"})
+
+
+def _scrub_pick(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    out = {k: v for k, v in value.items() if k != "object"}
+    if "object" in value:
+        obj = value["object"]
+        out["object_keys"] = sorted(obj) if isinstance(obj, dict) else type(obj).__name__
+    return _round_floats(out)
+
+
+def _scrub_query_result(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    feats = value.get("features")
+    return {"features": len(feats) if isinstance(feats, list) else feats}
+
+
+def _scrub_export_result(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    out = {k: v for k, v in value.items() if k not in ("requestId", "dataUrl")}
+    if "dataUrl" in value:
+        out["dataUrl_length"] = len(value["dataUrl"] or "")
+    return out
+
+
+def _export_test_values(**values: Any) -> None:
+    """``shiny.testmode.export_test_values`` when available and a session is current."""
+    try:
+        from shiny.testmode import export_test_values
+    except ImportError:  # Shiny < 1.7
+        return
+    try:
+        export_test_values(**values)
+    except Exception:  # no current session (plain coroutine, tests): nothing to export to
+        return
+
+
+def _refuse_rpc_inside_flush() -> None:
+    """Raise when called from a reactive context that would deadlock an RPC.
+
+    Shiny's session loop awaits the reactive flush inline, so a coroutine
+    that awaits the browser's reply from inside an effect/calc/render can
+    never receive it: the reply message is read only after the flush ends.
+    ``reactive.extended_task`` runs its coroutine in its own asyncio task
+    under a ``DenialContext``, which is the supported call site.
+    """
+    from shiny import reactive
+
+    try:
+        ctx = reactive.get_current_context()
+    except RuntimeError:
+        return  # no reactive context: a plain coroutine, fine
+    try:
+        from shiny.reactive._extended_task import DenialContext
+    except ImportError:  # pragma: no cover - older Shiny
+        return
+    if isinstance(ctx, DenialContext):
+        return  # inside an extended_task: fine
+    raise RuntimeError(
+        "MapWidget.rpc() cannot be awaited inside a reactive effect, calc or "
+        "render: the session loop waits for the flush, so the browser's reply "
+        "could never be read (deadlock). Call it from a reactive.extended_task "
+        "and read task.result()."
+    )
 
 
 class MapWidget:
@@ -194,6 +310,16 @@ class MapWidget:
         "renderWorldCopies": False, "antialias": True}``. They override the
         view-state-derived defaults; ``container`` and ``style`` cannot be set
         here (use ``style=``).
+    dark_style
+        Basemap style URL to use while the app is in dark mode (Bootstrap's
+        ``data-bs-theme="dark"``, e.g. from ``ui.input_dark_mode()``); the
+        constructor ``style`` is the light one. With or without it, dark mode
+        also darkens the deck.gl widgets and the layer legend. Swaps report
+        through :attr:`dark_mode_input_id`; :meth:`set_dark_mode` switches
+        from the server.
+    follow_dark_mode
+        Whether the map follows ``data-bs-theme`` on its own (default
+        ``True``). ``False`` leaves the switching to :meth:`set_dark_mode`.
     """
 
     def __init__(
@@ -216,6 +342,9 @@ class MapWidget:
         cooperative_gestures: bool = False,
         # Extra MapLibre Map options (v1.12.0)
         map_options: dict | None = None,
+        # Dark mode (v1.13.0)
+        dark_style: str | None = None,
+        follow_dark_mode: bool = True,
     ):
         # Resolve through the current Shiny module namespace so the
         # widget works identically inside and outside @module.ui /
@@ -235,8 +364,15 @@ class MapWidget:
         # Same for other settings a session can change at run time
         # (tooltip, cooperative gestures): {session: {name: value}}.
         self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
-        # Fallback for _recall("last_update") before any update() ran.
+        # Fallbacks for _recall() before a session recorded anything.
         self.last_update: dict | None = None
+        self.rpc_state: dict | None = None
+        self.http_state: dict | None = None
+        self.testmode_registered: bool = False
+        #: Serialised update() payloads at least this many bytes go over HTTP
+        #: (session.dynamic_route + fetch) instead of the websocket when
+        #: ``transport="auto"`` (v1.13.0).
+        self.http_transport_threshold: int = 2_000_000
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -253,6 +389,10 @@ class MapWidget:
         if map_options and ({"container", "style"} & set(map_options)):
             raise ValueError("map_options cannot set 'container' or 'style'; use style=")
         self.map_options = dict(map_options) if map_options else None
+        if dark_style is not None and not isinstance(dark_style, str):
+            raise TypeError(f"dark_style must be a style URL string or None, got {type(dark_style).__name__!r}")
+        self.dark_style = dark_style
+        self.follow_dark_mode = bool(follow_dark_mode)
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -319,6 +459,16 @@ class MapWidget:
         ``zoom`` and ``reset``, or ``None`` for ``click``.
         """
         return f"{self._bare_id}_widget_event"
+
+    @property
+    def dark_mode_input_id(self) -> str:
+        """Shiny input set when the map switches between light and dark.
+
+        Value: ``{"dark": bool, "style": str | None}`` -- the style now in
+        force, so an app that added native layers can re-add them (a style
+        swap removes them, as with :meth:`set_style`).
+        """
+        return f"{self._bare_id}_dark_mode"
 
     @property
     def reconnected_input_id(self) -> str:
@@ -395,6 +545,10 @@ class MapWidget:
             attrs["data_interleaved"] = "true"
         if self.map_options:
             attrs["data_map_options"] = json.dumps(self.map_options)
+        if self.dark_style:
+            attrs["data_dark_style"] = self.dark_style
+        if not self.follow_dark_mode:
+            attrs["data_follow_dark_mode"] = "false"
         if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
         return attrs
@@ -415,6 +569,8 @@ class MapWidget:
         animate: bool | None = None,
         # Widgets (v0.8.0)
         widgets: list[dict] | None = None,
+        # Transport (v1.13.0)
+        transport: str = "auto",
     ) -> None:
         """Push a new set of deck.gl layers to this map.
 
@@ -448,6 +604,14 @@ class MapWidget:
             Optional list of deck.gl widget dicts (e.g. from
             ``zoom_widget()``, ``compass_widget()``).  When provided the
             JS client passes them to ``overlay.setProps({widgets})``.
+        transport
+            ``"auto"`` (default) sends payloads of at least
+            :attr:`http_transport_threshold` bytes over HTTP -- the message
+            carries a session URL (``session.dynamic_route``) that the client
+            fetches -- and smaller ones over the websocket; ``"ws"`` and
+            ``"http"`` force one or the other. HTTP keeps multi-MB layer
+            data out of the websocket frames and lets the browser fetch it
+            while rendering.
 
         .. tip::
            ``update()`` serialises **every** layer to JSON on each call.
@@ -488,8 +652,73 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
+        self._register_testmode(session)
         self._record_full_update(session, payload)
-        await session.send_custom_message("deck_update", json_safe(payload))
+        await self._send_update(session, payload, transport)
+
+    def _register_testmode(self, session: "Session") -> None:
+        """Scrub this map's inputs in test-mode snapshots and export its layer state.
+
+        Once per session, from the first :meth:`update`. Harmless off test mode
+        (Shiny ignores the registrations) and on sessions without the API.
+        """
+        if self._recall(session, "testmode_registered"):
+            return
+        self._remember(session, "testmode_registered", True)
+        set_pre = getattr(session, "set_snapshot_preprocess", None)
+        if set_pre is not None:
+            set_pre(self.view_state_input_id, _scrub_view_state)
+            set_pre(self.click_input_id, _scrub_pick)
+            set_pre(self.hover_input_id, _scrub_pick)
+            set_pre(self.query_result_input_id, _scrub_query_result)
+            set_pre(self.export_result_input_id, _scrub_export_result)
+
+        def _layers() -> list[dict]:
+            snap = self._recall(session, "last_update") or {}
+            return [
+                {"id": lyr["id"], "visible": lyr.get("visible", True) is not False}
+                for lyr in snap.get("layers", []) if "id" in lyr
+            ]
+
+        _export_test_values(**{
+            f"{self._bare_id}_layers": _layers,
+            f"{self._bare_id}_style": lambda: self.current_style(session),
+        })
+
+    # -- Transport (v1.13.0) -----------------------------------------------------
+
+    async def _send_update(self, session: "Session", payload: dict, transport: str = "auto") -> None:
+        """Send a ``deck_update`` inline or as a URL the client fetches."""
+        if transport not in ("auto", "ws", "http"):
+            raise ValueError(f"transport must be 'auto', 'ws' or 'http', got {transport!r}")
+        body = json_safe(payload)
+        if transport == "ws" or not hasattr(session, "dynamic_route"):
+            await session.send_custom_message("deck_update", body)
+            return
+        data = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        if transport == "auto" and len(data) < self.http_transport_threshold:
+            await session.send_custom_message("deck_update", body)
+            return
+        state = self._recall(session, "http_state")
+        if state is None:
+            state = {"route": None, "seq": 0, "data": b""}
+            self._remember(session, "http_state", state)
+        state["seq"] += 1
+        state["data"] = data
+        if state["route"] is None:
+            # One route per map and session; it always serves the latest payload.
+            def _serve(request: Any) -> Any:
+                from starlette.responses import Response
+
+                return Response(content=state["data"], media_type="application/json")
+
+            state["route"] = session.dynamic_route(f"{self._bare_id}_payload", _serve)
+        await session.send_custom_message("deck_update", {
+            "id": self.id,
+            "url": f"{state['route']}&v={state['seq']}",
+            "seq": state["seq"],
+            "bytes": len(data),
+        })
 
     # -- Reconnect snapshot ---------------------------------------------------
     # resend_last_update() must replay the session's *state*, not the last
@@ -558,8 +787,217 @@ class MapWidget:
         snap = self._recall(session, "last_update")
         if not snap:
             return False
-        await session.send_custom_message("deck_update", json_safe(snap))
+        await self._send_update(session, snap)
         return True
+
+    # -- Bookmarking (v1.13.0) -----------------------------------------------
+
+    def enable_bookmarking(
+        self,
+        session: "Session",
+        *,
+        view: bool = True,
+        layers: bool = True,
+        style: bool = True,
+    ) -> None:
+        """Make this map part of Shiny's bookmarks (``App(bookmark_store=...)``).
+
+        Shiny stores every input in a bookmark. This excludes the map's
+        transient inputs (clicks, hovers, query/export results, widget
+        events, ...) so they do not bloat the URL, records the layer
+        visibility and the basemap style in the bookmark's values, and on
+        restore flies to the saved camera, swaps the style and re-applies the
+        visibility. Needs Shiny >= 1.6.4 (bookmark path-traversal fix).
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        view, layers, style
+            Which parts to restore. ``view=False`` also stops the view-state
+            input from being stored.
+        """
+        bookmark = getattr(session, "bookmark", None)
+        if bookmark is None:
+            raise RuntimeError(
+                "enable_bookmarking() needs a Shiny session with bookmark support "
+                "(shiny >= 1.6.4 and App(bookmark_store='url' | 'server'))."
+            )
+        if _shiny_version() < (1, 6, 4):
+            raise RuntimeError(
+                "enable_bookmarking() requires shiny >= 1.6.4 (earlier bookmark "
+                "restores had a path-traversal bug, CWE-22)."
+            )
+        if getattr(bookmark, "store", None) == "disable":
+            warnings.warn(
+                "enable_bookmarking(): the app has bookmark_store='disable'; pass "
+                "App(bookmark_store='url') (or 'server') for bookmarks to work.",
+                UserWarning, stacklevel=2,
+            )
+        exclude = [self._bare_id + suffix for suffix in _BOOKMARK_TRANSIENT_INPUTS]
+        if not view:
+            exclude.append(self.view_state_input_id)
+        bookmark.exclude.extend(x for x in exclude if x not in bookmark.exclude)
+
+        def _on_bookmark(state: Any) -> None:
+            snap = self._recall(session, "last_update") or {}
+            visible = {
+                lyr["id"]: lyr.get("visible", True) is not False
+                for lyr in snap.get("layers", []) if "id" in lyr
+            }
+            state.values[self.id] = {"visible": visible, "style": self.current_style(session)}
+
+        async def _on_restored(state: Any) -> None:
+            vals = (state.values or {}).get(self.id) or {}
+            vs = (state.input or {}).get(self.view_state_input_id) if view else None
+            saved_style = vals.get("style") if style else None
+            if saved_style and saved_style != self.current_style(session):
+                await self.set_style(session, saved_style)
+            if vs and vs.get("longitude") is not None and vs.get("latitude") is not None:
+                await self.fly_to(
+                    session, vs["longitude"], vs["latitude"],
+                    zoom=vs.get("zoom"), pitch=vs.get("pitch"), bearing=vs.get("bearing"),
+                    duration=0,
+                )
+            visible = vals.get("visible") if layers else None
+            if visible:
+                await self.set_layer_visibility(session, dict(visible))
+
+        bookmark.on_bookmark(_on_bookmark)
+        bookmark.on_restored(_on_restored)
+
+    # -- RPC: ask the browser and await its answer (v1.13.0) ------------------
+    # Python sends deck_request {id, requestId, method, params}; the runtime
+    # runs RPC_METHODS[method] and answers through Shiny.shinyapp.makeRequest()
+    # to the handler registered below with session.set_message_handler().
+
+    @property
+    def rpc_reply_handler_name(self) -> str:
+        """Name of the client message handler that receives RPC replies."""
+        return f"{self.id}_rpc_reply"
+
+    def _rpc_state(self, session: "Session") -> dict:
+        st = self._recall(session, "rpc_state")
+        if st is None:
+            st = {"pending": {}, "seq": 0, "handler": False}
+            self._remember(session, "rpc_state", st)
+        return st
+
+    async def rpc(
+        self,
+        session: "Session",
+        method: str,
+        params: dict | None = None,
+        *,
+        timeout: float = 10.0,
+    ) -> Any:
+        """Run *method* in the browser for this map and return its result.
+
+        Methods (see ``RPC_METHODS`` in the runtime): ``getViewState``,
+        ``queryFeatures``, ``exportImage``, ``hasImage`` -- wrapped by
+        :meth:`get_view_state`, :meth:`get_features`, :meth:`get_image` and
+        :meth:`image_loaded`.
+
+        Must be awaited from a :func:`shiny.reactive.extended_task` (or any
+        coroutine outside the reactive flush)::
+
+            @reactive.extended_task
+            async def features_at_centre():
+                vs = await widget.get_view_state(session)
+                return await widget.get_features(session, lnglat=[vs["longitude"], vs["latitude"]])
+
+        Awaiting it inside a reactive effect raises ``RuntimeError`` at once:
+        the session loop waits for the flush, so the reply could never be
+        read. Raises ``TimeoutError`` when no reply arrives within *timeout*
+        seconds and ``RuntimeError`` when the browser reports an error.
+        """
+        _refuse_rpc_inside_flush()
+        st = self._rpc_state(session)
+        if not st["handler"]:
+            pending = st["pending"]
+
+            async def _on_reply(request_id: str, result: Any = None, error: Any = None) -> None:
+                fut = pending.pop(request_id, None)
+                if fut is None or fut.done():
+                    return None  # stale: timed out, or not ours
+                if error:
+                    fut.set_exception(RuntimeError(str(error)))
+                else:
+                    fut.set_result(result)
+                return None
+
+            session.set_message_handler(self.rpc_reply_handler_name, _on_reply)
+            st["handler"] = True
+        st["seq"] += 1
+        request_id = f"{self._bare_id}-{st['seq']}"
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        st["pending"][request_id] = fut
+        await session.send_custom_message("deck_request", json_safe({
+            "id": self.id,
+            "requestId": request_id,
+            "method": method,
+            "params": params or {},
+        }))
+        try:
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            st["pending"].pop(request_id, None)
+            raise TimeoutError(
+                f"{method}: no reply from the browser within {timeout}s. rpc() must "
+                "be awaited from a reactive.extended_task (or outside the reactive "
+                "flush); see MapWidget.rpc."
+            ) from None
+
+    async def get_view_state(self, session: "Session") -> dict:
+        """The map's current camera: ``{longitude, latitude, zoom, pitch,
+        bearing, bounds: {sw, ne}}`` -- on demand, without waiting for a
+        ``moveend``. See :meth:`rpc` for the call-site rule."""
+        return await self.rpc(session, "getViewState")
+
+    async def get_features(
+        self,
+        session: "Session",
+        *,
+        point: list[float] | None = None,
+        bounds: list[list[float]] | None = None,
+        lnglat: list[float] | None = None,
+        layers: list[str] | None = None,
+        filter_expr: list | None = None,
+    ) -> list[dict]:
+        """Rendered MapLibre features at a pixel *point*, pixel *bounds* or a
+        *lnglat*, returned directly (compare :meth:`query_rendered_features`,
+        which reports through an input). See :meth:`rpc` for the call-site
+        rule."""
+        params: dict = {}
+        if point is not None:
+            params["point"] = list(point)
+        elif bounds is not None:
+            params["bounds"] = [list(b) for b in bounds]
+        elif lnglat is not None:
+            params["lnglat"] = list(lnglat)
+        if layers is not None:
+            params["layers"] = list(layers)
+        if filter_expr is not None:
+            params["filter"] = filter_expr
+        return await self.rpc(session, "queryFeatures", params)
+
+    async def get_image(
+        self,
+        session: "Session",
+        *,
+        format: str = "png",
+        quality: float = 0.92,
+    ) -> bytes:
+        """A screenshot of the map (basemap + deck.gl layers) as image bytes.
+        See :meth:`rpc` for the call-site rule."""
+        out = await self.rpc(session, "exportImage", {"format": format, "quality": quality})
+        data_url = out["dataUrl"]
+        return base64.b64decode(data_url.split(",", 1)[1])
+
+    async def image_loaded(self, session: "Session", image_id: str) -> bool:
+        """Whether the MapLibre style has an image named *image_id*. See
+        :meth:`rpc` for the call-site rule."""
+        return bool(await self.rpc(session, "hasImage", {"imageId": image_id}))
 
     async def partial_update(
         self,
@@ -700,6 +1138,29 @@ class MapWidget:
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
             "controller": options,
+        })
+
+    async def set_dark_mode(self, session: "Session", dark: bool) -> None:
+        """Switch this map to dark (or light) mode from the server.
+
+        With a ``dark_style`` the basemap swaps (recorded per session, so
+        :meth:`current_style` and exports follow); with or without one the
+        deck.gl widgets and the legend turn dark. Typical use with
+        ``ui.input_dark_mode(id="mode")`` and ``follow_dark_mode=False``::
+
+            @reactive.effect
+            async def _theme():
+                await widget.set_dark_mode(session, input.mode() == "dark")
+        """
+        dark = bool(dark)
+        if self.dark_style:
+            try:
+                self._session_styles[session] = self.dark_style if dark else self.style
+            except TypeError:
+                pass
+        await session.send_custom_message("deck_set_dark_mode", {
+            "id": self.id,
+            "dark": dark,
         })
 
     async def set_cooperative_gestures(
@@ -911,10 +1372,26 @@ class MapWidget:
                 pass
         return self.style
 
+    def _forget(self, session: "Session") -> None:
+        """Drop everything recorded for *session* (its scope was destroyed)."""
+        for store in (self._session_state, self._session_styles):
+            try:
+                store.pop(session, None)
+            except TypeError:
+                pass
+
     def _remember(self, session: "Session", name: str, value: Any) -> None:
         """Record a run-time setting against *session*, not the shared widget."""
         try:
-            self._session_state.setdefault(session, {})[name] = value
+            state = self._session_state.setdefault(session, {})
+            state[name] = value
+            # Free the state when the session or module scope is destroyed
+            # (Shiny >= 1.6.1); a destroyed module would otherwise keep its
+            # layer snapshot until the root session ends.
+            on_destroy = getattr(session, "on_destroy", None)
+            if on_destroy is not None and not state.get("_destroy_hooked"):
+                state["_destroy_hooked"] = True
+                on_destroy(lambda: self._forget(session))
         except TypeError:
             # Session object is not weak-referenceable; fall back to the
             # shared attribute rather than losing the change entirely.

@@ -1489,8 +1489,9 @@ def build_ui():
         ),
     ),
 
-    # -- About (right-aligned) --------------------------------------------
+    # -- Dark mode switch: the maps with a dark_style= follow it (v1.13.0) --
     ui.nav_spacer(),
+    ui.nav_control(ui.input_dark_mode(id="mode", mode="light")),
     ui.nav_menu(
         "\u2139\uFE0F About",
         ui.nav_control(

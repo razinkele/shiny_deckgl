@@ -5,6 +5,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.13.0] — 2026-09-28
+
+The Shiny 1.8 roadmap (`docs/2026-09-28-shiny-1.8-improvements.md`; plan in
+`docs/superpowers/plans/2026-09-28-shiny-1.8-roadmap.md`): capabilities of
+Shiny for Python 1.3–1.8 the package did not use yet. Runtime floor stays
+`shiny>=1.6.3`; bookmarking needs 1.6.4, test-mode snapshots 1.7.
+
+### Added
+
+- **`MapWidget.rpc()`** — ask the browser and await its reply
+  (`session.set_message_handler` + `Shiny.shinyapp.makeRequest`), with typed
+  wrappers `get_view_state()`, `get_features()`, `get_image()` (PNG/JPEG/WebP
+  bytes) and `image_loaded()`. Awaited from a `reactive.extended_task`; inside
+  a plain effect it raises at once instead of deadlocking (the session loop
+  waits for the flush).
+- **Dark mode** — `MapWidget(dark_style=, follow_dark_mode=True)` follows
+  Bootstrap's `data-bs-theme` (`ui.input_dark_mode()`): the basemap swaps,
+  deck.gl widgets and the layer legend turn dark; `set_dark_mode()` switches
+  from the server; `dark_mode_input_id` reports swaps. Demo: navbar switch,
+  MapLibre and Events maps follow it.
+- **`MapWidget.enable_bookmarking(session)`** — camera, style and layer
+  visibility survive `App(bookmark_store=...)` bookmarks; transient inputs are
+  excluded from the URL.
+- **`update(transport="auto")`** — payloads of 2 MB or more
+  (`http_transport_threshold`) go over HTTP via `session.dynamic_route()` and
+  `fetch`, keeping them out of websocket frames; layer messages that arrive
+  during the fetch apply after it, in order. `"ws"`/`"http"` force a transport.
+- **`shiny_deckgl.testing.MapWidgetController`** — a Playwright controller
+  on Shiny's `UiBase` (`wait_ready`, `expect_layers`, `expect_layer_visible`,
+  `expect_widget`, `click_legend`, `view_state`, ...). Imports without a browser.
+- **Test-mode snapshots** (`SHINY_TESTMODE=1`): the map's inputs are scrubbed
+  (rounded camera, picked-object keys, no request ids / data URLs) and the
+  layer ids/visibility and style are exported as `<id>_layers` / `<id>_style`.
+
+### Fixed
+
+- Per-session map state (layer snapshot, style, RPC and transport state) is
+  freed when the session or module scope is destroyed (`session.on_destroy`).
+
 ## [1.12.3] — 2026-09-28
 
 From the 2026-09-28 review (`docs/2026-09-28-app-review.md`): every blocker

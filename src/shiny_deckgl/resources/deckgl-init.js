@@ -947,6 +947,12 @@
     const initMaxZoom = isNaN(parseFloat(el.dataset.initialMaxZoom)) ? 24 : parseFloat(el.dataset.initialMaxZoom);
     const mapStyle = el.dataset.style ||
       'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json';
+    // Dark from the first frame when the page already is (no double load).
+    const darkStyle = el.dataset.darkStyle || null;
+    const startDark = !!darkStyle && el.dataset.followDarkMode !== 'false' &&
+      document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    const startStyle = startDark ? darkStyle : mapStyle;
+    if (startDark) el.classList.toggle('deckgl-dark', true);
 
     // Optional Mapbox API key — enables mapbox:// style URLs
     const mapboxApiKey = el.dataset.mapboxApiKey || null;
@@ -968,7 +974,7 @@
 
     const mapOpts = {
       container: mapId,
-      style: mapStyle,
+      style: startStyle,
       center: [initLon, initLat],
       zoom: initZoom,
       pitch: initPitch,
@@ -1141,6 +1147,11 @@
       tooltipConfig: tooltipConfig,
       dragMarker: null,
       lastLayers: [],          // cache for visibility toggling
+      el: el,
+      lightStyle: mapStyle,    // dark mode (v1.13.0): the pair to swap between
+      darkStyle: darkStyle,
+      currentStyle: startStyle,
+      dark: startDark,
       controls: initialControls,
       // true when the navigation control is our default, not the app's choice
       _implicitNavigation: el.dataset.controls === undefined,
@@ -1149,6 +1160,7 @@
       // TripsLayer animation state (v0.9.0)
       tripsAnimation: null     // see startTripsAnimation()
     };
+    watchBootstrapTheme(mapInstances[mapId], mapId);
 
     // Dismiss tooltip when the cursor is over empty map space.
     // Per-layer onHover only fires while the pointer is near that layer's
@@ -1223,6 +1235,7 @@
       if (instance._frameRaf) cancelAnimationFrame(instance._frameRaf);
     } catch (e) { /* ignore */ }
     instance._frameRaf = null;
+    try { if (instance._themeObserver) instance._themeObserver.disconnect(); } catch (e) { /* ignore */ }
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
@@ -2550,7 +2563,11 @@
       var merged = payload;
       while (queue.length && SUPERSEDED_BY_UPDATE[queue[queue.length - 1].handler]) {
         var prev = queue.pop();
-        if (prev.handler === 'deck_update') merged = Object.assign({}, prev.payload, merged);
+        if (prev.handler === 'deck_update') {
+          merged = Object.assign({}, prev.payload, merged);
+          // The newest update decides the transport: drop the other form.
+          if (payload.url) delete merged.layers; else delete merged.url;
+        }
       }
       payload = merged;
     }
@@ -2598,15 +2615,50 @@
 
   // Wrap a Shiny message handler to defer messages for maps in hidden tabs.
   // Messages are queued and replayed when the tab becomes visible.
+  // HTTP transport (v1.13.0): update(transport="http"/"auto") sends
+  // {id, url, seq, bytes}; the JSON is fetched here and applied through
+  // onDeckUpdate. The fetch is remembered on the instance so that layer
+  // messages arriving meanwhile (partial_update, layer_visibility,
+  // set_widgets, another update) run after it, in order.
+  var FETCH_ORDERED = { deck_update: 1, deck_partial_update: 1, deck_layer_visibility: 1, deck_set_widgets: 1 };
+
+  function fetchPayload(instance, payload) {
+    var p = (instance._pendingFetch || Promise.resolve()).then(function () {
+      return fetch(payload.url, { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (full) { onDeckUpdate(full); });
+    }).catch(function (e) {
+      console.error('[shiny_deckgl] deck_update: fetching ' + payload.url + ' failed:', e);
+    }).then(function () {
+      if (instance._pendingFetch === p) instance._pendingFetch = null;
+    });
+    instance._pendingFetch = p;
+    return p;
+  }
+
   function addDeferrable(name, fn) {
     // Guard live handler execution so a throw in one handler cannot abort the
     // whole Shiny custom-message callback (mirrors replayDeferredMessages).
-    function runFn(payload) {
+    function runNow(payload) {
       try {
         fn(payload);
       } catch (e) {
         console.error('[shiny_deckgl] Handler "' + name + '" failed:', e);
       }
+    }
+    function runFn(payload) {
+      var inst = payload && payload.id ? mapInstances[payload.id] : null;
+      if (inst && inst._pendingFetch && FETCH_ORDERED[name]) {
+        // A fetched deck_update is still in flight: keep the order, and clear
+        // the chain once this (last) link has run so later messages run at once.
+        var next = inst._pendingFetch.then(function () { runNow(payload); }).then(function () {
+          if (inst._pendingFetch === next) inst._pendingFetch = null;
+        });
+        inst._pendingFetch = next;
+        return;
+      }
+      runNow(payload);
     }
     _handlerFns[name] = fn;
     Shiny.addCustomMessageHandler(name, function (payload) {
@@ -2636,7 +2688,7 @@
   // -----------------------------------------------------------------------
   // deck_update — main layer push
   // -----------------------------------------------------------------------
-  addDeferrable("deck_update", function (payload) {
+  function onDeckUpdate(payload) {
     if (!payload || !payload.id) return;
     const targetId = payload.id;
     const instance = mapInstances[targetId];
@@ -2644,6 +2696,8 @@
       console.warn('[shiny_deckgl] deck_update: map "' + targetId + '" not found');
       return;
     }
+    // HTTP transport (v1.13.0): the message is only a pointer to the payload.
+    if (payload.url) { fetchPayload(instance, payload); return; }
 
     const { map, overlay } = instance;
 
@@ -2720,7 +2774,8 @@
     }).catch(function (err) {
       console.error('[shiny_deckgl] deck_update rendering failed for "' + targetId + '":', err);
     }); // end SVG atlas preload .then()
-  });
+  }
+  addDeferrable("deck_update", onDeckUpdate);
 
   // -----------------------------------------------------------------------
   // deck_partial_update — lightweight layer patch (merge into cached layers)
@@ -2973,10 +3028,12 @@
   // -----------------------------------------------------------------------
   // deck_set_style — change the basemap style dynamically
   // -----------------------------------------------------------------------
-  addDeferrable("deck_set_style", function (payload) {
-    if (!payload || !payload.id) return;
-    const instance = mapInstances[payload.id];
-    if (!instance) return;
+  // Swap the basemap style. Shared by deck_set_style and the dark-mode
+  // switch, so both get the native-layer warning, the style-change guard
+  // and the tracker reset.
+  function applyStyle(instance, style, diff) {
+    if (!instance || !style) return;
+    instance.currentStyle = style;
     if (instance.nativeLayers && Object.keys(instance.nativeLayers).length > 0) {
       console.warn('[shiny_deckgl] set_style will remove all native sources/layers. '
         + 'Re-add them after the style loads.');
@@ -3033,15 +3090,58 @@
     // match set_style(diff=False). A diff never fires 'style.load' when the
     // style is unchanged, and when it lands after layers were re-added it
     // diffs them away against the bare basemap JSON.
-    const styleOpts = { diff: !!payload.diff };
-    instance.map.setStyle(payload.style, styleOpts);
-    if (payload.diff) settleDiffStyle(instance, payload.style);
+    const styleOpts = { diff: !!diff };
+    instance.map.setStyle(style, styleOpts);
+    if (diff) settleDiffStyle(instance, style);
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)
-    if (!payload.diff) {
+    if (!diff) {
       resetNativeLayers(instance);
     }
+  }
+
+  addDeferrable("deck_set_style", function (payload) {
+    if (!payload || !payload.id) return;
+    applyStyle(mapInstances[payload.id], payload.style, !!payload.diff);
   });
+
+  // -----------------------------------------------------------------------
+  // deck_set_dark_mode -- dark basemap + dark widgets (v1.13.0)
+  // -----------------------------------------------------------------------
+  // A Bootstrap dark app sets data-bs-theme="dark" on <html>. With a
+  // dark_style= the map swaps its basemap through applyStyle(); with or
+  // without one, the map div gets .deckgl-dark (dark deck widgets and
+  // legend, see styles.css) and the server hears about it through
+  // <id>_dark_mode = {dark, style}.
+  function applyDarkMode(instance, mapId, dark) {
+    if (!instance) return;
+    dark = !!dark;
+    var target = dark ? instance.darkStyle : instance.lightStyle;
+    if (target && target !== instance.currentStyle) applyStyle(instance, target, false);
+    if (instance.el && instance.el.classList) instance.el.classList.toggle('deckgl-dark', dark);
+    instance.dark = dark;
+    Shiny.setInputValue(mapId + '_dark_mode', { dark: dark, style: instance.currentStyle || null });
+  }
+
+  function handleSetDarkMode(payload) {
+    if (!payload || !payload.id) return;
+    applyDarkMode(mapInstances[payload.id], payload.id, payload.dark);
+  }
+  addDeferrable("deck_set_dark_mode", handleSetDarkMode);
+
+  // Follow data-bs-theme on <html> (ui.input_dark_mode, or a fixed theme)
+  // unless data-follow-dark-mode="false". Returns the observer, or null.
+  function watchBootstrapTheme(instance, mapId) {
+    var ds = (instance && instance.el && instance.el.dataset) || {};
+    if (ds.followDarkMode === 'false' || typeof MutationObserver === 'undefined') return null;
+    var root = document.documentElement;
+    var observer = new MutationObserver(function () {
+      applyDarkMode(instance, mapId, root.getAttribute('data-bs-theme') === 'dark');
+    });
+    observer.observe(root, { attributes: true, attributeFilter: ['data-bs-theme'] });
+    instance._themeObserver = observer;
+    return observer;
+  }
 
   // -----------------------------------------------------------------------
   // deck_add_control — add a MapLibre control
@@ -3470,6 +3570,117 @@
   // -----------------------------------------------------------------------
   // deck_query_features — query rendered features and return to Shiny
   // -----------------------------------------------------------------------
+  // A MapLibre feature reduced to what the server needs (and can serialise).
+  function simplifyFeature(f) {
+    return {
+      type: "Feature",
+      geometry: f.geometry,
+      properties: f.properties,
+      layer: { id: f.layer ? f.layer.id : null },
+      source: f.source || null
+    };
+  }
+
+  // Flatten the basemap and the deck.gl canvas into one image once the map
+  // is idle; done({dataUrl, width, height}). Shared by deck_export_image and
+  // the exportImage RPC so both paths stay identical.
+  function captureMapImage(instance, params, done) {
+    const map = instance.map;
+    const canvas = map.getCanvas();
+    const mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    const format = mimeTypes[params.format] || 'image/png';
+    const quality = params.quality || 0.92;
+    function capture() {
+      // deck.gl renders into its own canvas unless interleaved, so flatten
+      // both before encoding -- otherwise the export is basemap-only.
+      var deckCanvas = null;
+      try {
+        var dk = instance.overlay && (instance.overlay._deck || instance.overlay.deck);
+        if (dk && typeof dk.getCanvas === 'function') deckCanvas = dk.getCanvas();
+        else if (dk && dk.canvas) deckCanvas = dk.canvas;
+      } catch (e) {
+        deckCanvas = null;
+      }
+      const shot = compositeMapCanvases(canvas, deckCanvas);
+      done({ dataUrl: shot.toDataURL(format, quality), width: shot.width, height: shot.height });
+    }
+    map.triggerRepaint();
+    if (map.isStyleLoaded && map.isStyleLoaded() && !map.isMoving()) {
+      requestAnimationFrame(capture);
+    } else {
+      map.once('idle', function () { requestAnimationFrame(capture); });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // deck_request — server -> client request with a reply (v1.13.0)
+  // -----------------------------------------------------------------------
+  // Python's MapWidget.rpc() sends {id, requestId, method, params}; the
+  // method's value (or the promise it returns) goes back through
+  // Shiny.shinyapp.makeRequest() to the handler set_message_handler()
+  // registered as "<id>_rpc_reply", as [requestId, result, error].
+  var RPC_METHODS = {
+    getViewState: function (instance) {
+      var map = instance.map, c = map.getCenter(), b = map.getBounds();
+      return {
+        longitude: c.lng, latitude: c.lat, zoom: map.getZoom(),
+        pitch: map.getPitch(), bearing: map.getBearing(),
+        bounds: { sw: [b.getWest(), b.getSouth()], ne: [b.getEast(), b.getNorth()] }
+      };
+    },
+    queryFeatures: function (instance, params) {
+      return new Promise(function (resolve) {
+        whenStyleReady(instance.map, function () {
+          var opts = {};
+          if (params.layers) opts.layers = params.layers;
+          if (params.filter) opts.filter = params.filter;
+          var geom = params.point || params.bounds;
+          if (params.lnglat) {
+            var p = instance.map.project(params.lnglat);
+            geom = [p.x, p.y];
+          }
+          var feats = geom ? instance.map.queryRenderedFeatures(geom, opts)
+                           : instance.map.queryRenderedFeatures(opts);
+          resolve(feats.map(simplifyFeature));
+        });
+      });
+    },
+    exportImage: function (instance, params) {
+      return new Promise(function (resolve) { captureMapImage(instance, params, resolve); });
+    },
+    hasImage: function (instance, params) {
+      return !!instance.map.hasImage(params.imageId);
+    }
+  };
+
+  function rpcReply(payload, result, error) {
+    if (!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.makeRequest)) {
+      console.warn('[shiny_deckgl] deck_request: Shiny.shinyapp.makeRequest unavailable');
+      return;
+    }
+    Shiny.shinyapp.makeRequest(payload.id + '_rpc_reply', [payload.requestId, result, error],
+      function () {},
+      function (err) { console.warn('[shiny_deckgl] rpc reply failed:', err); });
+  }
+
+  function handleDeckRequest(payload) {
+    if (!payload || !payload.id || !payload.requestId) return;
+    var instance = mapInstances[payload.id];
+    var fn = RPC_METHODS[payload.method];
+    if (!instance) return rpcReply(payload, null, 'no such map: ' + payload.id);
+    if (!fn) return rpcReply(payload, null, 'unknown rpc method: ' + payload.method);
+    var out;
+    try {
+      out = fn(instance, payload.params || {});
+    } catch (e) {
+      return rpcReply(payload, null, String(e && e.message || e));
+    }
+    Promise.resolve(out).then(
+      function (v) { rpcReply(payload, v === undefined ? null : v, null); },
+      function (e) { rpcReply(payload, null, String(e && e.message || e)); });
+  }
+  addDeferrable("deck_request", handleDeckRequest);
+
   addDeferrable("deck_query_features", function (payload) {
     if (!payload || !payload.id) return;
     const instance = mapInstances[payload.id];
@@ -3491,15 +3702,7 @@
         features = map.queryRenderedFeatures(queryOpts);
       }
 
-      const simplified = features.map(function (f) {
-        return {
-          type: "Feature",
-          geometry: f.geometry,
-          properties: f.properties,
-          layer: { id: f.layer ? f.layer.id : null },
-          source: f.source || null
-        };
-      });
+      const simplified = features.map(simplifyFeature);
 
       Shiny.setInputValue(payload.id + '_query_result', {
         requestId: payload.requestId || 'default',
@@ -3527,15 +3730,7 @@
         [point.x, point.y], queryOpts
       );
 
-      const simplified = features.map(function (f) {
-        return {
-          type: "Feature",
-          geometry: f.geometry,
-          properties: f.properties,
-          layer: { id: f.layer ? f.layer.id : null },
-          source: f.source || null
-        };
-      });
+      const simplified = features.map(simplifyFeature);
 
       Shiny.setInputValue(payload.id + '_query_result', {
         requestId: payload.requestId || 'default',
@@ -3795,42 +3990,14 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
 
-    const map = instance.map;
-    const canvas = map.getCanvas();
-    const mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
-    const format = mimeTypes[payload.format] || 'image/png';
-    const quality = payload.quality || 0.92;
-
-    // Wait for tiles to finish loading before capturing
-    function capture() {
-      // deck.gl renders into its own canvas unless interleaved, so flatten
-      // both before encoding -- otherwise the export is basemap-only.
-      var deckCanvas = null;
-      try {
-        var dk = instance.overlay && (instance.overlay._deck || instance.overlay.deck);
-        if (dk && typeof dk.getCanvas === 'function') deckCanvas = dk.getCanvas();
-        else if (dk && dk.canvas) deckCanvas = dk.canvas;
-      } catch (e) {
-        deckCanvas = null;
-      }
-      const shot = compositeMapCanvases(canvas, deckCanvas);
-      const dataUrl = shot.toDataURL(format, quality);
+    captureMapImage(instance, payload, function (shot) {
       Shiny.setInputValue(payload.id + '_export_result', {
         requestId: payload.requestId || 'default',
-        dataUrl: dataUrl,
+        dataUrl: shot.dataUrl,
         width: shot.width,
         height: shot.height
       }, { priority: "event" });
-    }
-
-    map.triggerRepaint();
-    if (map.isStyleLoaded && map.isStyleLoaded() && !map.isMoving()) {
-      requestAnimationFrame(capture);
-    } else {
-      map.once('idle', function () {
-        requestAnimationFrame(capture);
-      });
-    }
+    });
   });
 
   // -----------------------------------------------------------------------

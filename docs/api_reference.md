@@ -2790,6 +2790,98 @@ def _on_widget():
 `value` is the callback's argument: a number/bool/string, an object for `geocode`,
 `zoom` and `reset`, or `None` for an icon `click`.
 
+### RPC: ask the browser (v1.13.0)
+
+```python
+await widget.rpc(session, method: str, params: dict | None = None, *, timeout: float = 10.0) -> Any
+await widget.get_view_state(session) -> dict          # {longitude, latitude, zoom, pitch, bearing, bounds: {sw, ne}}
+await widget.get_features(session, *, point=None, bounds=None, lnglat=None, layers=None, filter_expr=None) -> list[dict]
+await widget.get_image(session, *, format="png", quality=0.92) -> bytes
+await widget.image_loaded(session, image_id: str) -> bool
+```
+
+The browser runs the method and replies through `Shiny.shinyapp.makeRequest()` to a handler the
+widget registers with `session.set_message_handler()`. **Call site:** Shiny's session loop waits for
+the reactive flush, so a reply awaited inside an effect, calc or render could never be read; `rpc()`
+raises `RuntimeError` there. Await it from a `reactive.extended_task`:
+
+```python
+@reactive.extended_task
+async def features_here():
+    vs = await widget.get_view_state(session)
+    return await widget.get_features(session, lnglat=[vs["longitude"], vs["latitude"]])
+
+@reactive.effect
+@reactive.event(input.ask)
+def _ask():
+    features_here()
+
+@render.text
+def n_features():
+    return f"{len(features_here.result())} features"
+```
+
+`TimeoutError` when no reply arrives within `timeout`; `RuntimeError` when the browser reports an
+error. The input-based `query_rendered_features()` / `export_image()` remain available.
+
+### Dark mode (v1.13.0)
+
+```python
+MapWidget(..., dark_style: str | None = None, follow_dark_mode: bool = True)
+await widget.set_dark_mode(session, dark: bool)
+widget.dark_mode_input_id   # {"dark": bool, "style": str | None}
+```
+
+With `dark_style` the basemap swaps when the page's `data-bs-theme` becomes `"dark"` (Bootstrap;
+`ui.input_dark_mode(id=...)`), through the same path as `set_style()` (native layers are removed —
+re-add them on `dark_mode_input_id`). With or without a dark style the map div gets `deckgl-dark`,
+which darkens deck.gl's widgets and the layer legend. `follow_dark_mode=False` leaves the switching
+to `set_dark_mode()`.
+
+### Bookmarking (v1.13.0)
+
+```python
+widget.enable_bookmarking(session, *, view=True, layers=True, style=True)
+```
+
+Requires `App(bookmark_store="url" | "server")` (and Shiny ≥ 1.6.4). Excludes the transient inputs
+(clicks, hovers, query/export results, widget events, ...) from the bookmark, stores the layer
+visibility and style in its values, and on restore flies to the saved camera, swaps the style and
+re-applies the visibility. Call it once at the top of `server()`.
+
+### Transport (v1.13.0)
+
+```python
+await widget.update(session, layers, ..., transport="auto" | "ws" | "http")
+widget.http_transport_threshold = 2_000_000   # bytes
+```
+
+With `"auto"`, a serialised payload of at least `http_transport_threshold` bytes is served from a
+session URL (`session.dynamic_route`) that the client fetches; the websocket message is only
+`{id, url, seq, bytes}`. Layer messages that arrive while the fetch is in flight run after it, in
+order. `resend_last_update()` makes the same decision.
+
+### Testing (v1.13.0)
+
+```python
+from shiny_deckgl.testing import MapWidgetController
+
+m = MapWidgetController(page, "gallery_map")
+m.wait_ready()                              # runtime up, first update() delivered
+m.expect_layers(["ports", "routes"])
+m.expect_layer_visible("routes", False)
+m.expect_widget("ZoomWidget")
+m.click_legend("routes")
+m.view_state(); m.layer_ids(); m.layer("ports"); m.widget_classes(); m.style_url()
+```
+
+A controller on Shiny's `shiny.playwright.controller` base; pairs with `shiny.pytest.create_app_fixture()`
+(pass `env={"PYTHONPATH": "src"}` when testing a working tree). Importing the module needs no browser.
+
+**Test mode** (`SHINY_TESTMODE=1`, Shiny ≥ 1.7): the widget scrubs its inputs in snapshots (camera
+rounded to 4 dp, picked objects reduced to their keys, request ids and data URLs dropped) and exports
+`<id>_layers` (`[{id, visible}]`) and `<id>_style` for `AppTestValues`.
+
 ### `layer_legend_widget()`
 
 **Custom shiny\_deckgl widget** — a deck.gl widget that displays a legend panel for

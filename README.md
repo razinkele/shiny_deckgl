@@ -127,6 +127,16 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.13.0 — Shiny 1.8 Roadmap
+
+| Capability | Details |
+| --- | --- |
+| **RPC with replies** | `await widget.get_view_state(session)`, `get_features()`, `get_image()`, `image_loaded()` — from a `reactive.extended_task`; a plain effect is refused (it would deadlock). |
+| **Dark mode** | `MapWidget(dark_style=CARTO_DARK)` follows `ui.input_dark_mode()`: dark basemap, widgets and legend; `set_dark_mode()`; `dark_mode_input_id`. |
+| **Bookmarking** | `widget.enable_bookmarking(session)` with `App(bookmark_store="url")`: camera, style and layer visibility restore from the URL. |
+| **HTTP transport** | `update()` sends payloads ≥ 2 MB over HTTP (`session.dynamic_route`) instead of the websocket; ordering is preserved. |
+| **Testing** | `shiny_deckgl.testing.MapWidgetController` for Playwright; test-mode snapshots scrubbed and layer state exported. |
+
 ### v1.12.3 — Review Fixes & Browser CI
 
 | Capability | Details |

@@ -7,6 +7,7 @@ import base64
 import html as _html_mod
 import json
 import pathlib
+import warnings
 from functools import lru_cache
 from importlib import resources as impresources
 from shiny import ui
@@ -136,6 +137,26 @@ _JSON_WIDGET_SETTINGS = (
     ("mapOptions", "map_options", None),
     ("darkStyle", "dark_style", None),
     ("followDarkMode", "follow_dark_mode", True),
+)
+
+
+def _shiny_version() -> tuple[int, ...]:
+    """The installed Shiny version as a tuple of ints (pre-release tags dropped)."""
+    from importlib.metadata import version
+
+    parts: list[int] = []
+    for piece in version("shiny").split("."):
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+_BOOKMARK_TRANSIENT_INPUTS = (
+    "_click", "_hover", "_map_click", "_map_contextmenu", "_query_result",
+    "_export_result", "_has_image", "_widget_event", "_reconnected",
+    "_dark_mode", "_drag",
 )
 
 
@@ -625,6 +646,82 @@ class MapWidget:
             return False
         await session.send_custom_message("deck_update", json_safe(snap))
         return True
+
+    # -- Bookmarking (v1.13.0) -----------------------------------------------
+
+    def enable_bookmarking(
+        self,
+        session: "Session",
+        *,
+        view: bool = True,
+        layers: bool = True,
+        style: bool = True,
+    ) -> None:
+        """Make this map part of Shiny's bookmarks (``App(bookmark_store=...)``).
+
+        Shiny stores every input in a bookmark. This excludes the map's
+        transient inputs (clicks, hovers, query/export results, widget
+        events, ...) so they do not bloat the URL, records the layer
+        visibility and the basemap style in the bookmark's values, and on
+        restore flies to the saved camera, swaps the style and re-applies the
+        visibility. Needs Shiny >= 1.6.4 (bookmark path-traversal fix).
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        view, layers, style
+            Which parts to restore. ``view=False`` also stops the view-state
+            input from being stored.
+        """
+        bookmark = getattr(session, "bookmark", None)
+        if bookmark is None:
+            raise RuntimeError(
+                "enable_bookmarking() needs a Shiny session with bookmark support "
+                "(shiny >= 1.6.4 and App(bookmark_store='url' | 'server'))."
+            )
+        if _shiny_version() < (1, 6, 4):
+            raise RuntimeError(
+                "enable_bookmarking() requires shiny >= 1.6.4 (earlier bookmark "
+                "restores had a path-traversal bug, CWE-22)."
+            )
+        if getattr(bookmark, "store", None) == "disable":
+            warnings.warn(
+                "enable_bookmarking(): the app has bookmark_store='disable'; pass "
+                "App(bookmark_store='url') (or 'server') for bookmarks to work.",
+                UserWarning, stacklevel=2,
+            )
+        exclude = [self._bare_id + suffix for suffix in _BOOKMARK_TRANSIENT_INPUTS]
+        if not view:
+            exclude.append(self.view_state_input_id)
+        bookmark.exclude.extend(x for x in exclude if x not in bookmark.exclude)
+
+        def _on_bookmark(state: Any) -> None:
+            snap = self._recall(session, "last_update") or {}
+            visible = {
+                lyr["id"]: lyr.get("visible", True) is not False
+                for lyr in snap.get("layers", []) if "id" in lyr
+            }
+            state.values[self.id] = {"visible": visible, "style": self.current_style(session)}
+
+        async def _on_restored(state: Any) -> None:
+            vals = (state.values or {}).get(self.id) or {}
+            vs = (state.input or {}).get(self.view_state_input_id) if view else None
+            saved_style = vals.get("style") if style else None
+            if saved_style and saved_style != self.current_style(session):
+                await self.set_style(session, saved_style)
+            if vs and vs.get("longitude") is not None and vs.get("latitude") is not None:
+                await self.fly_to(
+                    session, vs["longitude"], vs["latitude"],
+                    zoom=vs.get("zoom"), pitch=vs.get("pitch"), bearing=vs.get("bearing"),
+                    duration=0,
+                )
+            visible = vals.get("visible") if layers else None
+            if visible:
+                await self.set_layer_visibility(session, dict(visible))
+
+        bookmark.on_bookmark(_on_bookmark)
+        bookmark.on_restored(_on_restored)
 
     # -- RPC: ask the browser and await its answer (v1.13.0) ------------------
     # Python sends deck_request {id, requestId, method, params}; the runtime

@@ -5,6 +5,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [1.12.3] — 2026-09-28
+
+From the 2026-09-28 review (`docs/2026-09-28-app-review.md`): every blocker
+and major; the minors are listed there with their suggested fixes.
+
+### Fixed
+
+- **`resend_last_update()` replays the session's state**, not the last
+  `update()` call's delta: widgets/effects/views set earlier, later
+  `partial_update()` patches, `set_layer_visibility()` toggles and
+  `set_widgets()` all survive a reconnect, and the camera is not moved.
+- **`CoordinateSystem.DEFAULT`** was the string `"-1"` (deck.gl 9 rejects it
+  at draw time); it is now a true alias of `IDENTITY`.
+- **`layer_legend_widget`** is exported from `shiny_deckgl.__all__`.
+- **Runtime:** `set_style(diff=True)` no longer stalls every native-layer
+  call for 30 s; MapLibre projections deck.gl 9.4 cannot handle (zoom
+  expressions, `vertical-perspective`) are normalised to mercator/globe; the
+  default navigation control is dropped when a Zoom or Compass widget would
+  sit under it.
+- **Demo:** spatial-query count (dict payload), blank readback cards before
+  the first event, camera re-flying on every Layers-tab toggle, seal-overlay
+  and HexSim sliders resending multi-MB payloads, SST colours changing on
+  pan. The Widgets tab shows widget events; the gallery map resyncs after a
+  reconnect; the MapLibre tab uses `map_options`.
+- **Docs:** `docs/api_reference.md` no longer describes a
+  `deck_legend_control()` that never shipped.
+
+### Changed
+
+- **CI runs the browser suite.** The 14 Playwright modules (94 tests) had
+  never run in CI. A `browser` extra (`pip install -e ".[dev]"` now includes
+  Playwright; run `playwright install chromium`), `browser` markers on every
+  browser module, and a CI job that runs them one file at a time with
+  `SHINY_DECKGL_REQUIRE_BROWSER=1`, so a browser that fails to launch is a
+  failure rather than a skip. The unit suite runs before a PyPI publish.
+
 ## [1.12.2] — 2026-09-27
 
 ### Fixed

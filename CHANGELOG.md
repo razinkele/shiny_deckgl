@@ -1270,22 +1270,22 @@ From the 2026-09-26 codebase review (`docs/2026-09-26-codebase-review.md`).
 - Conda recipe (`conda.recipe/meta.yaml`).
 - CDN-pinned assets: deck.gl 9.1.4, MapLibre GL JS 5.3.1.
 
-[1.6.1]: https://github.com/razinka/shiny_deckgl/compare/v1.6.0...HEAD
-[1.6.0]: https://github.com/razinka/shiny_deckgl/compare/v1.5.0...v1.6.0
-[1.5.0]: https://github.com/razinka/shiny_deckgl/compare/70f8a45...v1.5.0
-[1.4.0]: https://github.com/razinka/shiny_deckgl/compare/70f8a45...70f8a45
-[1.3.0]: https://github.com/razinka/shiny_deckgl/compare/cd57ebf...70f8a45
-[1.2.0]: https://github.com/razinka/shiny_deckgl/compare/3980562...cd57ebf
-[1.1.0]: https://github.com/razinka/shiny_deckgl/compare/3980562...3980562
-[1.0.1]: https://github.com/razinka/shiny_deckgl/compare/f07585e...3980562
-[1.0.0]: https://github.com/razinka/shiny_deckgl/compare/fa75ff1...f07585e
-[0.9.0]: https://github.com/razinka/shiny_deckgl/compare/f3c7340...fa75ff1
-[0.8.0]: https://github.com/razinka/shiny_deckgl/compare/d8a3b2e...f3c7340
-[0.7.0]: https://github.com/razinka/shiny_deckgl/compare/b3cc3af...d8a3b2e
-[0.6.1]: https://github.com/razinka/shiny_deckgl/compare/b3cc3af...b3cc3af
-[0.6.0]: https://github.com/razinka/shiny_deckgl/compare/05bed3c...b3cc3af
-[0.5.0]: https://github.com/razinka/shiny_deckgl/compare/a0066d0...05bed3c
-[0.4.0]: https://github.com/razinka/shiny_deckgl/compare/9708b7a...a0066d0
-[0.3.0]: https://github.com/razinka/shiny_deckgl/compare/49afabb...9708b7a
-[0.2.0]: https://github.com/razinka/shiny_deckgl/compare/1d96b2d...49afabb
-[0.1.0]: https://github.com/razinka/shiny_deckgl/compare/1d96b2d...1d96b2d
+[1.6.1]: https://github.com/razinkele/shiny_deckgl/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/razinkele/shiny_deckgl/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/razinkele/shiny_deckgl/compare/70f8a45...v1.5.0
+[1.4.0]: https://github.com/razinkele/shiny_deckgl/compare/70f8a45...70f8a45
+[1.3.0]: https://github.com/razinkele/shiny_deckgl/compare/cd57ebf...70f8a45
+[1.2.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...cd57ebf
+[1.1.0]: https://github.com/razinkele/shiny_deckgl/compare/3980562...3980562
+[1.0.1]: https://github.com/razinkele/shiny_deckgl/compare/f07585e...3980562
+[1.0.0]: https://github.com/razinkele/shiny_deckgl/compare/fa75ff1...f07585e
+[0.9.0]: https://github.com/razinkele/shiny_deckgl/compare/f3c7340...fa75ff1
+[0.8.0]: https://github.com/razinkele/shiny_deckgl/compare/d8a3b2e...f3c7340
+[0.7.0]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...d8a3b2e
+[0.6.1]: https://github.com/razinkele/shiny_deckgl/compare/b3cc3af...b3cc3af
+[0.6.0]: https://github.com/razinkele/shiny_deckgl/compare/05bed3c...b3cc3af
+[0.5.0]: https://github.com/razinkele/shiny_deckgl/compare/a0066d0...05bed3c
+[0.4.0]: https://github.com/razinkele/shiny_deckgl/compare/9708b7a...a0066d0
+[0.3.0]: https://github.com/razinkele/shiny_deckgl/compare/49afabb...9708b7a
+[0.2.0]: https://github.com/razinkele/shiny_deckgl/compare/1d96b2d...49afabb
+[0.1.0]: https://github.com/razinkele/shiny_deckgl/compare/1d96b2d...1d96b2d

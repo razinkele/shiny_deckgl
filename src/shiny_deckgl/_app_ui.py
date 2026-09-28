@@ -1518,7 +1518,7 @@ def build_ui():
                 ui.tags.hr(style="margin:10px 0;"),
                 ui.tags.a(
                     "GitHub repository",
-                    href="https://github.com/razinka/shiny_deckgl",
+                    href="https://github.com/razinkele/shiny_deckgl",
                     target="_blank",
                     style="font-size:0.85rem;",
                 ),

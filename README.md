@@ -127,6 +127,16 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.12.3 — Review Fixes & Browser CI
+
+| Capability | Details |
+| --- | --- |
+| **Reconnect resync** | `resend_last_update()` replays the session's merged state (patches, visibility, widgets), not the last `update()` delta, and leaves the camera alone. |
+| **`CoordinateSystem.DEFAULT`** | Was `"-1"` (rejected by deck.gl 9); now an alias of `IDENTITY`. |
+| **Runtime** | `set_style(diff=True)` no longer stalls native-layer calls; unsupported projections normalised; default nav control yields to Zoom/Compass widgets. |
+| **Demo** | Query count, blank readbacks, camera re-flying, multi-MB overlay resends and SST recolouring fixed; widget events, reconnect and `map_options` shown. |
+| **CI** | Browser suite runs in CI for the first time (`browser` extra, markers, strict launch mode). |
+
 ### v1.12.2 — Legend Fix
 
 | Capability | Details |

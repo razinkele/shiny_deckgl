@@ -6,6 +6,7 @@ opt back in through their stylesheet, and the custom legend has to as well,
 or every click falls through to the map canvas. The Node legend tests drive
 the widget through a fake DOM, so only a real pointer click catches this.
 
+Written with shiny_deckgl.testing.MapWidgetController (v1.13.0).
 Needs chromium and network access for the CDN bundles.
 """
 from __future__ import annotations
@@ -21,38 +22,36 @@ pytestmark = pytest.mark.browser
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _e2e_app import browser_page, running_app  # noqa: E402
 
-PORT = 18778
+from shiny_deckgl.testing import MapWidgetController  # noqa: E402
 
-_VISIBLE = """(id) => {
-  const i = window.__deckgl_instances && window.__deckgl_instances.lmap;
-  const l = i && i.overlay._deck.props.layers.find(l => l.id === id);
-  return l ? l.props.visible !== false : null;
-}"""
+PORT = 18778
 
 
 @pytest.fixture(scope="module")
-def page():
+def m():
     with running_app("legend_click_app", PORT):
         with browser_page(f"http://127.0.0.1:{PORT}/", "#lmap .maplibregl-canvas") as pg:
+            ctl = MapWidgetController(pg, "lmap")
+            ctl.wait_ready()
             pg.wait_for_selector("#lmap .deck-legend-cb", timeout=30000)
-            pg.wait_for_function(f"() => ({_VISIBLE})('buoys') === true", timeout=15000)
-            yield pg
+            ctl.expect_layers(["ports", "buoys"])
+            ctl.expect_layer_visible("buoys", True)
+            yield ctl
 
 
-def test_legend_checkbox_receives_the_click(page):
-    cb = page.locator("#lmap .deck-legend-row", has_text="buoys").locator("input.deck-legend-cb")
+def test_legend_checkbox_receives_the_click(m):
+    cb = m.page.locator("#lmap .deck-legend-row", has_text="buoys").locator("input.deck-legend-cb")
     assert cb.is_checked()
-    cb.click(timeout=5000)          # times out if the map canvas intercepts the pointer
-    assert not cb.is_checked()
+    m.click_legend("buoys")          # times out if the map canvas intercepts the pointer
+    m.expect_layer_visible("buoys", False)
 
 
-def test_unticked_layer_is_hidden_and_reported(page):
-    page.wait_for_function(f"() => ({_VISIBLE})('buoys') === false", timeout=5000)
-    assert page.evaluate(f"() => ({_VISIBLE})('ports')") is True
-    page.wait_for_function("() => document.getElementById('last').innerText === 'buoys:False'", timeout=5000)
+def test_unticked_layer_is_hidden_and_reported(m):
+    assert m.layer_visible("ports") is True
+    m.page.wait_for_function("() => document.getElementById('last').innerText === 'buoys:False'", timeout=5000)
 
 
-def test_ticking_again_shows_the_layer(page):
-    page.locator("#lmap .deck-legend-row", has_text="buoys").locator("input.deck-legend-cb").click(timeout=5000)
-    page.wait_for_function(f"() => ({_VISIBLE})('buoys') === true", timeout=5000)
-    page.wait_for_function("() => document.getElementById('last').innerText === 'buoys:True'", timeout=5000)
+def test_ticking_again_shows_the_layer(m):
+    m.click_legend("buoys")
+    m.expect_layer_visible("buoys", True)
+    m.page.wait_for_function("() => document.getElementById('last').innerText === 'buoys:True'", timeout=5000)

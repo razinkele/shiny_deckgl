@@ -641,6 +641,68 @@
     return out;
   }
 
+  // deck.gl 9.4's MapLibre integration reads map.getProjection().type on
+  // every render and throws ("Unsupported MapLibre projection") for anything
+  // but 'mercator' or 'globe' -- e.g. a style whose projection is a zoom
+  // expression or 'vertical-perspective'. Normalise to the nearest supported
+  // preset so deck keeps syncing. Returns the type in force afterwards.
+  function normaliseProjection(map) {
+    var p = map.getProjection && map.getProjection();
+    var t = p && p.type;
+    if (t == null || t === 'mercator' || t === 'globe') return t;
+    var globe = Array.isArray(t) || t === 'vertical-perspective';
+    var next = globe ? 'globe' : 'mercator';
+    console.warn('[shiny_deckgl] deck.gl 9.4 supports only mercator/globe projections; ' +
+      'normalising ' + JSON.stringify(t) + ' to ' + next);
+    map.setProjection({ type: next });
+    return next;
+  }
+
+  // ZoomWidget/CompassWidget default to top-right, where our default MapLibre
+  // NavigationControl sits; MapLibre's control is the later sibling, so it
+  // paints over the deck widget and takes its clicks. When the app never
+  // chose controls (the navigation control is only our default), drop it in
+  // favour of the widgets that replace it.
+  var NAV_REPLACING_WIDGETS = /^_?(Zoom|Compass)Widget$/;
+  function dropImplicitNavigation(instance, widgetSpecs) {
+    if (!instance || !instance._implicitNavigation || !widgetSpecs) return false;
+    var nav = instance.controls && instance.controls.navigation;
+    if (!nav) return false;
+    var replaces = widgetSpecs.some(function (s) {
+      return !!s && NAV_REPLACING_WIDGETS.test(s['@@widgetClass'] || '');
+    });
+    if (!replaces) return false;
+    try { instance.map.removeControl(nav.control); } catch (e) { /* already gone */ }
+    delete instance.controls.navigation;
+    return true;
+  }
+
+  // map.setStyle(style, {diff: true}) applies the diff in place and fires no
+  // 'style.load' (only the setState-failed fallback does), so the guard that
+  // deck_set_style raises would stay up until its 30 s timeout and stall every
+  // whenStyleReady() caller (add_source, add_maplibre_layer, popups, ...).
+  // Settle it: synchronously for a style object (the diff already ran inside
+  // setStyle), on the next 'styledata' for a URL (fired once the fetched diff
+  // is applied). Idempotent, so the fallback's 'style.load' handler and the
+  // timeout can still run without harm.
+  function settleDiffStyle(instance, style) {
+    var done = function () {
+      if (!instance.map._deckStyleChanging) return;
+      if (instance._styleChangeTimeout) {
+        clearTimeout(instance._styleChangeTimeout);
+        instance._styleChangeTimeout = null;
+      }
+      if (instance._styleLoadHandler) {
+        instance.map.off('style.load', instance._styleLoadHandler);
+        instance._styleLoadHandler = null;
+      }
+      instance.map._deckStyleChanging = false;
+      if (instance.map._deckStyleDrainFn) instance.map._deckStyleDrainFn();
+    };
+    if (style && typeof style === 'object') done();
+    else instance.map.once('styledata', done);
+  }
+
   function applyController(map, value) {
     var opts = (value && typeof value === 'object') ? value : null;
     var on = value !== false;
@@ -945,6 +1007,8 @@
       };
     }
     const map = new maplibregl.Map(mergeMapOptions(mapOpts, el));
+    // Every style (initial and set_style) must leave a projection deck 9.4 accepts.
+    map.on('style.load', function () { normaliseProjection(map); });
 
     // Apply initial controller setting from data attribute
     if (el.dataset.controller !== undefined) {
@@ -1078,6 +1142,8 @@
       dragMarker: null,
       lastLayers: [],          // cache for visibility toggling
       controls: initialControls,
+      // true when the navigation control is our default, not the app's choice
+      _implicitNavigation: el.dataset.controls === undefined,
       nativeLayers: {},        // tracks native MapLibre layers added via add_maplibre_layer
       _legendAutoTargets: legendAutoTargets,  // live default targets for legend controls
       // TripsLayer animation state (v0.9.0)
@@ -2635,6 +2701,7 @@
     if (payload._animate !== undefined) overlayProps._animate = payload._animate;
 
     // Widgets (v0.8.0)
+    dropImplicitNavigation(mapInstances[targetId], payload.widgets);
     const widgets = buildWidgets(payload.widgets, targetId);
     if (widgets) overlayProps.widgets = widgets;
 
@@ -2765,6 +2832,7 @@
     if (!payload || !payload.id) return;
     const instance = mapInstances[payload.id];
     if (!instance) return;
+    dropImplicitNavigation(instance, payload.widgets);
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
       instance.overlay.setProps({ widgets: widgets });
@@ -2967,6 +3035,7 @@
     // diffs them away against the bare basemap JSON.
     const styleOpts = { diff: !!payload.diff };
     instance.map.setStyle(payload.style, styleOpts);
+    if (payload.diff) settleDiffStyle(instance, payload.style);
     // Clear stale tracker — all native layers/sources are removed by setStyle
     // (unless diff mode preserves them)
     if (!payload.diff) {

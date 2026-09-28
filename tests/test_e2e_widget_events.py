@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("playwright")
+pytestmark = pytest.mark.browser
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _e2e_app import browser_page, running_app  # noqa: E402

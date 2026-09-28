@@ -7,6 +7,7 @@ scriptable survives.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _js_harness import extract_function, extract_var  # noqa: E402
 
 pytest.importorskip("playwright")
+pytestmark = pytest.mark.browser
+
+
+# CI sets SHINY_DECKGL_REQUIRE_BROWSER=1: a browser that fails to launch is
+# then a failure, not a skip, so a broken Playwright install cannot go green.
+def _browser_unavailable(exc: BaseException) -> None:
+    if os.environ.get("SHINY_DECKGL_REQUIRE_BROWSER"):
+        raise exc
+    pytest.skip(f"chromium unavailable: {exc}")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 
@@ -66,7 +76,7 @@ def page():
         pw = sync_playwright().start()
         browser = pw.chromium.launch()
     except Exception as exc:  # browser not installed
-        pytest.skip(f"chromium unavailable: {exc}")
+        _browser_unavailable(exc)
     pg = browser.new_page()
     pg.set_content("<!doctype html><html><body></body></html>")
     pg.add_script_tag(content=_SANITIZER + "\nwindow.sanitizeHtml = sanitizeHtml;")

@@ -142,6 +142,21 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # local imports deferred until app startup
     from shiny import reactive, render, ui  # imported here to keep top-level light
     from .map_widget import MapWidget
+
+    def _input_or_none(input_id: str):
+        """An input's value, or ``None`` before the browser has ever set it.
+
+        Reading a never-set input raises ``SilentException`` (the output just
+        stays blank), so an ``if value is None: return placeholder`` branch
+        never runs. Check ``is_set()`` first to show the placeholder text.
+        """
+        v = input[input_id]
+        return v() if v.is_set() else None
+
+    # Keep the session alive across a dropped websocket (Shiny >= 1.8) so the
+    # maps can be restored with resend_last_update() -- see _gl_resync below.
+    if hasattr(session, "allow_reconnect"):
+        session.allow_reconnect(True)
     from .layers import (
         layer,
         scatterplot_layer,
@@ -370,7 +385,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def ml_drag_info():
-        pos = input[maplibre_widget.drag_input_id]()
+        pos = _input_or_none(maplibre_widget.drag_input_id)
         if pos is None:
             return "Place a marker first\u2026"
         return (
@@ -466,7 +481,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def events_drag():
-        pos = input[events_widget.drag_input_id]()
+        pos = _input_or_none(events_widget.drag_input_id)
         if pos is None:
             return "Place a marker to see position\u2026"
         return (
@@ -476,7 +491,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def events_drag2():
-        pos = input[events_widget.drag_input_id]()
+        pos = _input_or_none(events_widget.drag_input_id)
         if pos is None:
             return "No drag marker placed."
         return (
@@ -487,7 +502,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # Event readback outputs
     @render.text
     def click_info():
-        data = input[events_widget.click_input_id]()
+        data = _input_or_none(events_widget.click_input_id)
         if data is None:
             return "Click a port or arc on the map\u2026"
         obj_str = json.dumps(data.get("object"), indent=2, default=str)
@@ -499,7 +514,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def hover_info():
-        data = input[events_widget.hover_input_id]()
+        data = _input_or_none(events_widget.hover_input_id)   # also None on mouse-out
         if data is None:
             return "Hover over a feature\u2026"
         return (
@@ -510,7 +525,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def viewport_info():
-        vs = input[events_widget.view_state_input_id]()
+        vs = _input_or_none(events_widget.view_state_input_id)
         if vs is None:
             return "Pan or zoom the map\u2026"
         return (
@@ -1259,10 +1274,15 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     @reactive.event(input[draw_widget.query_result_input_id])
     def _query_result():
         data = input[draw_widget.query_result_input_id]()
-        n = len(data) if isinstance(data, list) else 0
+        # The client sends {requestId, features: [...]}, not a bare list.
+        feats = data.get("features", []) if isinstance(data, dict) else []
+        layer_ids = sorted({
+            (f.get("layer") or {}).get("id", "?") for f in feats
+        })
         _draw_log.set(
             _draw_log.get()
-            + f"\n🔍  Query returned {n} feature(s)."
+            + f"\n🔍  Query returned {len(feats)} feature(s)"
+            + (": " + ", ".join(layer_ids) if feats else ".")
         )
 
     @render.text
@@ -1546,27 +1566,26 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         input.seal_species,
         input.seal_icon_shape,
         _seal_trips,
-        input.seal_bathymetry,
-        input.seal_haulouts,
-        input.seal_foraging,
-        input.seal_routes,
-        input.seal_grid,
+        # Not the five overlay switches: those only flip `visible` through
+        # _seal_overlays, so the multi-MB trips payload is not resent.
     )
     async def _seal_layers():
         selected = set(input.seal_species())
         trips = _seal_trips()
         layers: list[dict] = []
 
+        # Overlay layers are always built (hidden when their switch is off) so
+        # that set_layer_visibility() in _seal_overlays finds them client-side.
         # EMODnet bathymetry WMS underlay (deck.gl native WMSLayer)
-        if input.seal_bathymetry():
-            layers.append(wms_layer(
-                "seal-bathymetry-wms",
-                EMODNET_WMS_URL,
-                layers=["emodnet:mean_atlas_land"],
-            ))
+        layers.append(wms_layer(
+            "seal-bathymetry-wms",
+            EMODNET_WMS_URL,
+            layers=["emodnet:mean_atlas_land"],
+            visible=input.seal_bathymetry(),
+        ))
 
         # Foraging area ellipses (below tracks)
-        if input.seal_foraging():
+        if True:
             filtered_features = [
                 f for f in _seal_foraging_geojson["features"]
                 if f["properties"]["species"] in selected
@@ -1580,6 +1599,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     geojson_layer(
                         "seal_foraging_areas",
                         foraging_geojson,
+                        visible=input.seal_foraging(),
                         getFillColor=[100, 180, 220, 40],
                         getLineColor=[80, 140, 200, 100],
                         lineWidthMinPixels=1,
@@ -1628,7 +1648,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             )
 
         # Haul-out colony markers
-        if input.seal_haulouts():
+        if True:
             filtered_haulouts = [
                 h for h in _seal_haulout_data
                 if h["species"] in selected
@@ -1638,6 +1658,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     scatterplot_layer(
                         "seal_haulouts",
                         filtered_haulouts,
+                        visible=input.seal_haulouts(),
                         getPosition="@@=d.position",
                         getRadius="@@=d.radius",
                         getFillColor="@@d.color",
@@ -1649,7 +1670,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 )
 
         # GreatCircleLayer — geodesic arcs between haulout colonies
-        if input.seal_routes():
+        if True:
             gc_data = []
             for t in filtered_trips:
                 wps = [p[:2] for p in t["path"]]
@@ -1673,6 +1694,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     great_circle_layer(
                         "seal_gc_routes",
                         gc_data,
+                        visible=input.seal_routes(),
                         getSourceColor=[100, 180, 220, 120],
                         getTargetColor=[100, 180, 220, 120],
                         getWidth=1,
@@ -1680,7 +1702,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 )
 
         # GridLayer — 3-D extruded density grid from haulout positions
-        if input.seal_grid():
+        if True:
             grid_pts = [
                 h["position"]
                 for h in _seal_haulout_data
@@ -1692,6 +1714,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     grid_layer(
                         "seal_density_grid",
                         grid_pts,
+                        visible=input.seal_grid(),
                         cellSize=30000,
                         elevationScale=200,
                         extruded=True,
@@ -1707,6 +1730,22 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         _seal_has_trips.set(bool(filtered_trips))
 
     _seal_has_trips: reactive.Value[bool] = reactive.Value(False)
+
+    # The overlay switches only flip `visible`: ~200 bytes instead of the
+    # whole trips payload (megabytes for large runs).
+    @reactive.Effect
+    @reactive.event(
+        input.seal_bathymetry, input.seal_haulouts, input.seal_foraging,
+        input.seal_routes, input.seal_grid, ignore_init=True,
+    )
+    async def _seal_overlays():
+        await seal_widget.set_layer_visibility(session, {
+            "seal-bathymetry-wms": input.seal_bathymetry(),
+            "seal_haulouts": input.seal_haulouts(),
+            "seal_foraging_areas": input.seal_foraging(),
+            "seal_gc_routes": input.seal_routes(),
+            "seal_density_grid": input.seal_grid(),
+        })
 
     # Speed and trail only touch two props of the trips layer, so patch those
     # instead of resending every track (megabytes for large runs).
@@ -1972,6 +2011,24 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         return (
             _wg_log.get()
             or "Toggle widgets in the sidebar to see them on the map."
+        )
+
+    # Widget callbacks (timeline scrub/play, theme, geocoder, zoom, fullscreen,
+    # reset view, stats expand, ...) arrive as one Shiny input (v1.12.0).
+    _wg_events: reactive.Value[list[str]] = reactive.Value([])
+
+    @reactive.Effect
+    @reactive.event(input[widgets_gallery_widget.widget_event_input_id])
+    def _wg_event():
+        e = input[widgets_gallery_widget.widget_event_input_id]()
+        line = f"{e['widget']}#{e['id']}  {e['event']} -> {e['value']!r}"
+        _wg_events.set(([line] + _wg_events.get())[:12])
+
+    @render.text
+    def wg_events():
+        return (
+            "\n".join(_wg_events.get())
+            or "Scrub the timeline, switch theme, zoom with the widget, …"
         )
 
     # -- Preset buttons --------------------------------------------------
@@ -2571,6 +2628,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # -- Send all layers once at session init ----------------------------
 
     _gl_initialized: reactive.Value[bool] = reactive.Value(False)
+    _gl_last_view: list = [None]   # last view class flown to, see _gl_toggle
 
     @reactive.Effect
     async def _gl_init():
@@ -2587,9 +2645,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                     active_names.update(name for _, name in pairs)
 
             vs = _gl_view_state(active_names)
+            _gl_last_view[0] = vs
 
         widgets = [
-            zoom_widget(), compass_widget(),
+            zoom_widget(zoom_step=0.5), compass_widget(),
             fullscreen_widget(), scale_widget(),
             loading_widget(label="Loading layers…"),
             layer_legend_widget(
@@ -2670,16 +2729,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         # Send only visibility dict (~200 bytes vs ~30 MB)
         await gallery_widget.set_layer_visibility(session, visibility)
 
-        # Update view state for 3-D layers (lightweight fly_to)
+        # Fly only when the view *class* changes (e.g. a 3-D layer comes on);
+        # flying on every switch flip or legend tick snapped a user who had
+        # zoomed in back to the Baltic overview.
         vs = _gl_view_state(active_names)
-        await gallery_widget.fly_to(
-            session,
-            longitude=vs["longitude"],
-            latitude=vs["latitude"],
-            zoom=vs.get("zoom"),
-            pitch=vs.get("pitch"),
-            bearing=vs.get("bearing"),
-        )
+        if vs != _gl_last_view[0]:
+            _gl_last_view[0] = vs
+            await gallery_widget.fly_to(
+                session,
+                longitude=vs["longitude"],
+                latitude=vs["latitude"],
+                zoom=vs.get("zoom"),
+                pitch=vs.get("pitch"),
+                bearing=vs.get("bearing"),
+            )
 
         # Update status (legend auto-refreshes via introspection)
         _gl_update_status(active_names)
@@ -2694,6 +2757,14 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         for sw, pairs in _GL_TOGGLE_MAP.items()
         for layer_id, _ in pairs
     }
+
+    # -- Reconnect -> restore the map from the server's snapshot ----------
+    @reactive.Effect
+    @reactive.event(input[gallery_widget.reconnected_input_id])
+    async def _gl_resync():
+        n = (input[gallery_widget.reconnected_input_id]() or {}).get("count", 0)
+        if await gallery_widget.resend_last_update(session):
+            _gl_log.set(_gl_log.get() + f"\n🔌 Reconnected (#{n}): layers restored.")
 
     @reactive.Effect
     @reactive.event(input[gallery_widget.legend_visibility_input_id])
@@ -2723,7 +2794,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     @render.text
     def ts_info():
-        vs = input[timespace_widget.view_state_input_id]()
+        vs = _input_or_none(timespace_widget.view_state_input_id)
         if vs and "bounds" in vs:
             b = vs["bounds"]
             return (
@@ -2745,6 +2816,8 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         for p in PORTS
     ]
 
+    _TS_TEMP_DOMAIN = (0.0, 20.0)   # degrees C; pins the bin edges
+
     @on_viewport_change(timespace_widget, input, session, debounce_ms=300)
     async def _ts_load_data(bounds, zoom):
         month_idx = tl.index()
@@ -2754,11 +2827,15 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
         if data:
             from .colors import color_bins, PALETTE_THERMAL
+            # Bin on a fixed domain, not on the cells currently in view: the
+            # seasonal model is 10 +/- 8 C (plus a latitude offset), and a
+            # viewport-fitted scale recoloured every cell on each pan.
+            lo, hi = _TS_TEMP_DOMAIN
             colors = color_bins(
-                [d["temperature_c"] for d in data],
+                [*(d["temperature_c"] for d in data), lo, hi],
                 n_bins=6,
                 palette=PALETTE_THERMAL,
-            )
+            )[:len(data)]
             for d, c in zip(data, colors):
                 d["fill_color"] = c
 
@@ -2838,11 +2915,7 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 )
 
             @reactive.Effect
-            @reactive.event(
-                input.hexfish_n_fish,
-                hexfish_anim.speed,
-                hexfish_anim.trail,
-            )
+            @reactive.event(input.hexfish_n_fish)
             async def _hexfish_layers():
                 trips = _hexfish_trips()
                 trips_lyr = trips_layer(
@@ -2871,6 +2944,20 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
                 await hexfish_widget.update(
                     session, [_hf_mesh_layer, trips_lyr],
                 )
+
+            # Speed/trail are two props of the trips layer: patch them rather
+            # than resend the HexSim mesh and every track (as the seal tab does).
+            @reactive.Effect
+            @reactive.event(hexfish_anim.speed, hexfish_anim.trail, ignore_init=True)
+            async def _hexfish_anim_params():
+                await hexfish_widget.partial_update(session, [{
+                    "id": "fish-trips",
+                    "trailLength": hexfish_anim.trail(),
+                    "_tripsAnimation": {
+                        "loopLength": _HEXFISH_LOOP,
+                        "speed": hexfish_anim.speed(),
+                    },
+                }])
 
 
 __all__ = ["server"]

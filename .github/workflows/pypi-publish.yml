@@ -30,6 +30,14 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+      # A release from an untested tag must not publish: run the unit suite
+      # (the browser modules run in python-package on every push).
+      - name: Unit tests
+        if: steps.published.outputs.exists != 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          pytest -q -m "not browser" --benchmark-disable
       - name: Build sdist and wheel
         if: steps.published.outputs.exists != 'true'
         run: |
@@ -44,7 +52,8 @@ jobs:
           python - <<'EOF'
           import glob, sys, zipfile
           names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
-          need = ["shiny_deckgl/resources/deckgl-init.js", "shiny_deckgl/py.typed"]
+          need = ["shiny_deckgl/resources/deckgl-init.js", "shiny_deckgl/resources/styles.css",
+                  "shiny_deckgl/data/helcom_mpa.geojson", "shiny_deckgl/py.typed"]
           missing = [n for n in need if n not in names]
           sys.exit(f"wheel is missing {missing}" if missing else 0)
           EOF

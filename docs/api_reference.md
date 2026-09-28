@@ -67,7 +67,6 @@ import shiny_deckgl as sdgl
   - [terrain\_control()](#terrain_control)
   - [legend\_control()](#legend_control)
   - [opacity\_control()](#opacity_control)
-  - [deck\_legend\_control()](#deck_legend_control)
 - [Layer Helpers (v0.7)](#layer-helpers-v07)
   - [layer()](#layer)
   - [scatterplot\_layer()](#scatterplot_layer)
@@ -1163,10 +1162,6 @@ await widget.set_controls(session, [
     geolocate_control(position="top-right", trackUserLocation=True),
     globe_control(position="top-right"),
     legend_control(targets={"water": "Water"}, position="bottom-left"),
-    deck_legend_control(
-        entries=[{"layer_id": "ports", "label": "Ports", "color": [0, 200, 100]}],
-        position="bottom-right", title="Deck.gl Layers",
-    ),
 ])
 ```
 
@@ -1233,7 +1228,7 @@ legend_control(
 
 Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend`). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
 
-> **Note:** This control only sees native MapLibre layers added via `add_maplibre_layer()`. For deck.gl overlay layers, use [`deck_legend_control()`](#deck_legend_control) instead.
+> **Note:** This control only sees native MapLibre layers added via `add_maplibre_layer()`. For deck.gl overlay layers, use the deck.gl widget [`layer_legend_widget()`](#layer_legend_widget) instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -1281,70 +1276,9 @@ opacity_control(
 )
 ```
 
-### `deck_legend_control()`
+### Legend for deck.gl layers
 
-```python
-deck_legend_control(
-    entries: list[dict],
-    position: str = "bottom-right",
-    *,
-    show_checkbox: bool = True,
-    collapsed: bool = False,
-    title: str | None = None,
-) -> dict
-```
-
-Create a legend control for **deck.gl overlay layers**. Unlike `legend_control()` (which wraps the `@watergis/maplibre-gl-legend` plugin and can only see native MapLibre style layers), this control displays user-defined entries with colour swatches and optional visibility checkboxes that toggle deck.gl layers on and off.
-
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `entries` | `list[dict]` | *(required)* | Legend entries (see table below). |
-| `position` | `str` | `"bottom-right"` | Control position. |
-| `show_checkbox` | `bool` | `True` | Show checkboxes to toggle deck.gl layer visibility. |
-| `collapsed` | `bool` | `False` | Start the panel in collapsed state. |
-| `title` | `str \| None` | `None` | Header text. When set, the panel is collapsible. |
-
-**Entry dict keys:**
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `layer_id` | `str` | deck.gl layer id (used by the visibility checkbox). |
-| `label` | `str` | Human-readable display label. |
-| `color` | `list \| str` | `[r, g, b]`, `[r, g, b, a]`, or CSS colour string. |
-| `shape` | `str` | Swatch shape: `"circle"` (default), `"rect"`, `"line"`, `"arc"`, `"gradient"`. |
-| `color2` | `list \| str` | Second colour for `"arc"` shape (gradient end). |
-| `colors` | `list` | List of colours for `"gradient"` shape (e.g. HeatmapLayer `colorRange`). |
-
-**Swatch shapes and typical use:**
-
-| Shape | CSS Class | Best For |
-| --- | --- | --- |
-| `circle` | 12 × 12 px circle | `ScatterplotLayer` |
-| `rect` | 16 × 12 px rectangle | `GeoJsonLayer` fill, `ColumnLayer` |
-| `line` | 20 × 3 px bar | `PathLayer`, `LineLayer` |
-| `arc` | 24 × 4 px gradient bar | `ArcLayer` (source → target colour) |
-| `gradient` | 40 × 10 px multi-stop gradient | `HeatmapLayer`, `HexagonLayer` |
-
-```python
-deck_legend_control(
-    entries=[
-        {"layer_id": "ports", "label": "Baltic Ports",
-         "color": [65, 182, 196], "shape": "circle"},
-        {"layer_id": "mpa-zones", "label": "Marine Protected Areas",
-         "color": [0, 128, 0, 100], "shape": "rect"},
-        {"layer_id": "port-arcs", "label": "Shipping Routes",
-         "color": [255, 140, 0], "color2": [200, 0, 80], "shape": "arc"},
-        {"layer_id": "observation-heat", "label": "Observation Heatmap",
-         "colors": [[0, 25, 0], [0, 209, 0], [255, 255, 0], [255, 0, 0]],
-         "shape": "gradient"},
-        {"layer_id": "route-paths", "label": "Route Paths",
-         "color": [100, 100, 200], "shape": "line"},
-    ],
-    position="bottom-right",
-    title="Deck.gl Layers",
-    show_checkbox=True,
-)
-```
+`legend_control()` only sees native MapLibre style layers. For deck.gl overlay layers use [`layer_legend_widget()`](#layer_legend_widget), a deck.gl widget passed through `widgets=` or `set_widgets()`: it lists layers with colour swatches and optional visibility checkboxes and reports toggles through `MapWidget.legend_visibility_input_id`.
 
 ---
 

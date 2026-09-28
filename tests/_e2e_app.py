@@ -11,6 +11,14 @@ from pathlib import Path
 
 import pytest
 
+
+# CI sets SHINY_DECKGL_REQUIRE_BROWSER=1: a browser that fails to launch is
+# then a failure, not a skip, so a broken Playwright install cannot go green.
+def _browser_unavailable(exc: BaseException) -> None:
+    if os.environ.get("SHINY_DECKGL_REQUIRE_BROWSER"):
+        raise exc
+    pytest.skip(f"chromium unavailable: {exc}")
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -60,7 +68,7 @@ def browser_page(url: str, ready_selector: str):
         try:
             browser = p.chromium.launch(headless=True)
         except Exception as exc:
-            pytest.skip(f"chromium unavailable: {exc}")
+            _browser_unavailable(exc)
         pg = browser.new_page()
         pg.console_log = []
         pg.on("console", lambda msg: pg.console_log.append(msg.text))

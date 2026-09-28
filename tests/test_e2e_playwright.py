@@ -19,6 +19,7 @@ import pytest
 
 # Skip all tests if playwright is not installed
 pytest.importorskip("playwright")
+pytestmark = pytest.mark.browser
 
 from playwright.sync_api import Page, sync_playwright, Browser
 
@@ -295,17 +296,16 @@ class TestMapDataAttributes:
 class TestNoJavaScriptErrors:
     """Tests that verify no JavaScript errors occur."""
 
-    def test_no_page_errors(self, browser: Browser, demo_server: subprocess.Popen):
-        """Page should load without JavaScript errors."""
-        errors: list[str] = []
-        page = browser.new_page()
-        page.on("pageerror", lambda err: errors.append(str(err)))
+    def test_no_page_errors(self, page: Page):
+        """The demo initialises and renders its first update without a page error.
 
-        page.goto(URL, wait_until="domcontentloaded", timeout=60000)
-        time.sleep(3)
-
-        page.close()
-        assert len(errors) == 0, f"JavaScript errors detected: {errors}"
+        Uses the shared page (whose fixture waits for the gallery map and its
+        first deck_update) and the errors captured from before navigation;
+        the old version opened a second page and looked for only 3 seconds
+        after DOMContentLoaded, before init had even run.
+        """
+        errors = [e for e in CONSOLE_ERRORS if e.startswith("pageerror:")]
+        assert not errors, f"JavaScript errors detected: {errors}"
 
 
 class TestServedPathRendersRealLayers:

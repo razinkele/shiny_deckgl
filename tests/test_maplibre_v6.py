@@ -20,17 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _chromium_available() -> bool:
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError:
-        return False
-    try:
-        with sync_playwright() as pw:
-            b = pw.chromium.launch()
-            b.close()
-        return True
-    except Exception:
-        return False
+    # Only checks that Playwright is importable: launching Chromium here ran a
+    # browser during collection of every pytest invocation. A launch failure
+    # surfaces in the fixture (and fails under SHINY_DECKGL_REQUIRE_BROWSER).
+    import importlib.util
+    return importlib.util.find_spec("playwright") is not None
 
 
 requires_browser = pytest.mark.skipif(

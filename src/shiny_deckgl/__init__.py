@@ -396,6 +396,7 @@ __all__ = [
     "toggle_widget",
     "selector_widget",
     "scrollbar_widget",
+    "layer_legend_widget",
     # Controls
     "geolocate_control",
     "globe_control",

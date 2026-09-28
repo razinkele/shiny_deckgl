@@ -1717,3 +1717,87 @@ class TestReconnectResync:
         # Review Focus 3: a reconnect before any update() is a no-op.
         assert asyncio.run(w.resend_last_update(s2)) is False
         assert s2.messages == []
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-28 API review (docs/2026-09-28-app-review.md)
+# ---------------------------------------------------------------------------
+
+class TestResendReplaysSessionState:
+    """resend_last_update() must replay the session's *state*, not the last
+    update() call's delta: widgets/effects set earlier, later partial patches,
+    visibility toggles and set_widgets() all have to survive; the camera must
+    not fly back."""
+
+    def _run(self, coro):
+        import asyncio
+        return asyncio.run(coro)
+
+    def test_snapshot_merges_every_state_changing_call(self):
+        from shiny_deckgl import MapWidget, scatterplot_layer, zoom_widget, compass_widget
+        w, s = MapWidget("m"), _FakeSession()
+        self._run(w.update(s, [scatterplot_layer("a", [], getRadius=1), scatterplot_layer("b", [])],
+                           view_state={"longitude": 1, "latitude": 2, "zoom": 3}, transition_duration=2000,
+                           effects=[{"type": "LightingEffect"}], widgets=[zoom_widget()], picking_radius=5))
+        self._run(w.update(s, [scatterplot_layer("a", [], getRadius=1), scatterplot_layer("b", [])]))
+        self._run(w.partial_update(s, [{"id": "a", "getRadius": 99}, {"id": "c", "type": "ScatterplotLayer", "data": []}]))
+        self._run(w.set_widgets(s, [compass_widget()]))
+        self._run(w.set_layer_visibility(s, {"b": False}))
+        n = len(s.messages)
+        assert self._run(w.resend_last_update(s)) is True
+        handler, p = s.messages[-1]
+        assert handler == "deck_update" and len(s.messages) == n + 1
+        by_id = {lyr["id"]: lyr for lyr in p["layers"]}
+        assert by_id["a"]["getRadius"] == 99                   # partial patch kept
+        assert by_id["b"]["visible"] is False                  # visibility kept
+        assert "c" in by_id                                    # appended layer kept
+        assert p["widgets"] == [compass_widget()]              # set_widgets kept
+        assert p["effects"] == [{"type": "LightingEffect"}]    # effects from call 1 kept
+        assert p["pickingRadius"] == 5
+        assert "viewState" not in p and "transitionDuration" not in p   # no camera yank
+
+    def test_explicit_empty_lists_clear_state(self):
+        from shiny_deckgl import MapWidget, scatterplot_layer, zoom_widget
+        w, s = MapWidget("m"), _FakeSession()
+        self._run(w.update(s, [scatterplot_layer("a", [])], effects=[{"type": "LightingEffect"}], widgets=[zoom_widget()]))
+        self._run(w.update(s, [scatterplot_layer("a", [])], effects=[], widgets=[]))
+        self._run(w.resend_last_update(s))
+        p = s.messages[-1][1]
+        assert p["effects"] == [] and p["widgets"] == []
+
+    def test_partial_before_any_update_is_replayable(self):
+        from shiny_deckgl import MapWidget
+        w, s = MapWidget("m"), _FakeSession()
+        self._run(w.partial_update(s, [{"id": "a", "type": "ScatterplotLayer", "data": []}]))
+        assert self._run(w.resend_last_update(s)) is True
+        assert [lyr["id"] for lyr in s.messages[-1][1]["layers"]] == ["a"]
+
+    def test_caller_list_mutation_does_not_change_the_snapshot(self):
+        from shiny_deckgl import MapWidget, scatterplot_layer
+        w, s = MapWidget("m"), _FakeSession()
+        layers = [scatterplot_layer("a", [], getRadius=1)]
+        self._run(w.update(s, layers))
+        layers[0]["getRadius"] = 500
+        layers.append(scatterplot_layer("zzz", []))
+        self._run(w.resend_last_update(s))
+        p = s.messages[-1][1]
+        assert [lyr["id"] for lyr in p["layers"]] == ["a"] and p["layers"][0]["getRadius"] == 1
+
+
+class TestCoordinateSystemDefaultIsIdentity:
+    def test_default_aliases_identity(self):
+        from shiny_deckgl.enums import CoordinateSystem
+        assert CoordinateSystem.DEFAULT is CoordinateSystem.IDENTITY
+        assert CoordinateSystem.DEFAULT.value == "default"
+
+    def test_default_serialises_to_a_deckgl_9_string(self):
+        import json as _json
+        from shiny_deckgl import COORDINATE_SYSTEM
+        assert _json.dumps(COORDINATE_SYSTEM.DEFAULT) == '"default"'
+
+
+def test_every_widgets_export_is_a_package_export():
+    import shiny_deckgl
+    from shiny_deckgl import widgets
+    missing = set(widgets.__all__) - set(shiny_deckgl.__all__)
+    assert not missing, f"missing from shiny_deckgl.__all__: {sorted(missing)}"

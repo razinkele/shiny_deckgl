@@ -160,6 +160,68 @@ _BOOKMARK_TRANSIENT_INPUTS = (
 )
 
 
+# -- Test mode (v1.13.0) -----------------------------------------------------
+# With SHINY_TESTMODE=1 Shiny dumps every input at /session/{id}/dataobj/shinytest.
+# The map's inputs are noisy (float camera, whole picked objects, request
+# ids, data URLs); these scrubbers keep the snapshot diffable. They only
+# affect snapshots, never the live inputs, and are no-ops off test mode.
+
+def _round_floats(value: Any, ndigits: int = 4) -> Any:
+    if isinstance(value, float):
+        return round(value, ndigits)
+    if isinstance(value, list):
+        return [_round_floats(v, ndigits) for v in value]
+    if isinstance(value, tuple):
+        return [_round_floats(v, ndigits) for v in value]
+    if isinstance(value, dict):
+        return {k: _round_floats(v, ndigits) for k, v in value.items()}
+    return value
+
+
+def _scrub_view_state(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    return _round_floats({k: v for k, v in value.items() if k != "bounds"})
+
+
+def _scrub_pick(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    out = {k: v for k, v in value.items() if k != "object"}
+    if "object" in value:
+        obj = value["object"]
+        out["object_keys"] = sorted(obj) if isinstance(obj, dict) else type(obj).__name__
+    return _round_floats(out)
+
+
+def _scrub_query_result(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    feats = value.get("features")
+    return {"features": len(feats) if isinstance(feats, list) else feats}
+
+
+def _scrub_export_result(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    out = {k: v for k, v in value.items() if k not in ("requestId", "dataUrl")}
+    if "dataUrl" in value:
+        out["dataUrl_length"] = len(value["dataUrl"] or "")
+    return out
+
+
+def _export_test_values(**values: Any) -> None:
+    """``shiny.testmode.export_test_values`` when available and a session is current."""
+    try:
+        from shiny.testmode import export_test_values
+    except ImportError:  # Shiny < 1.7
+        return
+    try:
+        export_test_values(**values)
+    except Exception:  # no current session (plain coroutine, tests): nothing to export to
+        return
+
+
 def _refuse_rpc_inside_flush() -> None:
     """Raise when called from a reactive context that would deadlock an RPC.
 
@@ -306,6 +368,7 @@ class MapWidget:
         self.last_update: dict | None = None
         self.rpc_state: dict | None = None
         self.http_state: dict | None = None
+        self.testmode_registered: bool = False
         #: Serialised update() payloads at least this many bytes go over HTTP
         #: (session.dynamic_route + fetch) instead of the websocket when
         #: ``transport="auto"`` (v1.13.0).
@@ -589,8 +652,38 @@ class MapWidget:
         # Widgets
         if widgets is not None:
             payload["widgets"] = widgets
+        self._register_testmode(session)
         self._record_full_update(session, payload)
         await self._send_update(session, payload, transport)
+
+    def _register_testmode(self, session: "Session") -> None:
+        """Scrub this map's inputs in test-mode snapshots and export its layer state.
+
+        Once per session, from the first :meth:`update`. Harmless off test mode
+        (Shiny ignores the registrations) and on sessions without the API.
+        """
+        if self._recall(session, "testmode_registered"):
+            return
+        self._remember(session, "testmode_registered", True)
+        set_pre = getattr(session, "set_snapshot_preprocess", None)
+        if set_pre is not None:
+            set_pre(self.view_state_input_id, _scrub_view_state)
+            set_pre(self.click_input_id, _scrub_pick)
+            set_pre(self.hover_input_id, _scrub_pick)
+            set_pre(self.query_result_input_id, _scrub_query_result)
+            set_pre(self.export_result_input_id, _scrub_export_result)
+
+        def _layers() -> list[dict]:
+            snap = self._recall(session, "last_update") or {}
+            return [
+                {"id": lyr["id"], "visible": lyr.get("visible", True) is not False}
+                for lyr in snap.get("layers", []) if "id" in lyr
+            ]
+
+        _export_test_values(**{
+            f"{self._bare_id}_layers": _layers,
+            f"{self._bare_id}_style": lambda: self.current_style(session),
+        })
 
     # -- Transport (v1.13.0) -----------------------------------------------------
 
@@ -1279,10 +1372,26 @@ class MapWidget:
                 pass
         return self.style
 
+    def _forget(self, session: "Session") -> None:
+        """Drop everything recorded for *session* (its scope was destroyed)."""
+        for store in (self._session_state, self._session_styles):
+            try:
+                store.pop(session, None)
+            except TypeError:
+                pass
+
     def _remember(self, session: "Session", name: str, value: Any) -> None:
         """Record a run-time setting against *session*, not the shared widget."""
         try:
-            self._session_state.setdefault(session, {})[name] = value
+            state = self._session_state.setdefault(session, {})
+            state[name] = value
+            # Free the state when the session or module scope is destroyed
+            # (Shiny >= 1.6.1); a destroyed module would otherwise keep its
+            # layer snapshot until the root session ends.
+            on_destroy = getattr(session, "on_destroy", None)
+            if on_destroy is not None and not state.get("_destroy_hooked"):
+                state["_destroy_hooked"] = True
+                on_destroy(lambda: self._forget(session))
         except TypeError:
             # Session object is not weak-referenceable; fall back to the
             # shared attribute rather than losing the change entirely.

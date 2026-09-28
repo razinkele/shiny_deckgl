@@ -1801,3 +1801,37 @@ def test_every_widgets_export_is_a_package_export():
     from shiny_deckgl import widgets
     missing = set(widgets.__all__) - set(shiny_deckgl.__all__)
     assert not missing, f"missing from shiny_deckgl.__all__: {sorted(missing)}"
+
+
+class TestOnDestroy:
+    """Per-session map state is dropped when the session or module scope is destroyed (v1.13.0)."""
+
+    class _DestroySession(_FakeSession):
+        def __init__(self):
+            super().__init__()
+            self.destroy_fns = []
+
+        def on_destroy(self, fn):
+            self.destroy_fns.append(fn)
+
+    def test_destroy_forgets_snapshot_style_and_rpc_state(self):
+        import asyncio
+        from shiny_deckgl import MapWidget, scatterplot_layer
+        from shiny_deckgl.colors import CARTO_POSITRON
+        w, s = MapWidget("m"), self._DestroySession()
+        asyncio.run(w.update(s, [scatterplot_layer("a", [])]))
+        asyncio.run(w.set_style(s, "https://example.com/x.json"))
+        assert len(s.destroy_fns) == 1                      # registered once per session
+        asyncio.run(w.update(s, [scatterplot_layer("a", [])]))
+        assert len(s.destroy_fns) == 1
+        for fn in s.destroy_fns:
+            fn()
+        assert asyncio.run(w.resend_last_update(s)) is False
+        assert w.current_style(s) == CARTO_POSITRON
+
+    def test_sessions_without_on_destroy_still_work(self):
+        import asyncio
+        from shiny_deckgl import MapWidget, scatterplot_layer
+        w, s = MapWidget("m"), _FakeSession()
+        asyncio.run(w.update(s, [scatterplot_layer("a", [])]))
+        assert asyncio.run(w.resend_last_update(s)) is True

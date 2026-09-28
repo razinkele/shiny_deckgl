@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import html as _html_mod
 import json
 import pathlib
@@ -135,6 +137,35 @@ _JSON_WIDGET_SETTINGS = (
 )
 
 
+def _refuse_rpc_inside_flush() -> None:
+    """Raise when called from a reactive context that would deadlock an RPC.
+
+    Shiny's session loop awaits the reactive flush inline, so a coroutine
+    that awaits the browser's reply from inside an effect/calc/render can
+    never receive it: the reply message is read only after the flush ends.
+    ``reactive.extended_task`` runs its coroutine in its own asyncio task
+    under a ``DenialContext``, which is the supported call site.
+    """
+    from shiny import reactive
+
+    try:
+        ctx = reactive.get_current_context()
+    except RuntimeError:
+        return  # no reactive context: a plain coroutine, fine
+    try:
+        from shiny.reactive._extended_task import DenialContext
+    except ImportError:  # pragma: no cover - older Shiny
+        return
+    if isinstance(ctx, DenialContext):
+        return  # inside an extended_task: fine
+    raise RuntimeError(
+        "MapWidget.rpc() cannot be awaited inside a reactive effect, calc or "
+        "render: the session loop waits for the flush, so the browser's reply "
+        "could never be read (deadlock). Call it from a reactive.extended_task "
+        "and read task.result()."
+    )
+
+
 class MapWidget:
     """Reusable deck.gl map widget for Shiny for Python.
 
@@ -235,8 +266,9 @@ class MapWidget:
         # Same for other settings a session can change at run time
         # (tooltip, cooperative gestures): {session: {name: value}}.
         self._session_state: "WeakKeyDictionary[Any, dict]" = WeakKeyDictionary()
-        # Fallback for _recall("last_update") before any update() ran.
+        # Fallbacks for _recall() before a session recorded anything.
         self.last_update: dict | None = None
+        self.rpc_state: dict | None = None
         _validate_tooltip(tooltip)
         self.tooltip = tooltip
         self.mapbox_api_key = mapbox_api_key
@@ -560,6 +592,139 @@ class MapWidget:
             return False
         await session.send_custom_message("deck_update", json_safe(snap))
         return True
+
+    # -- RPC: ask the browser and await its answer (v1.13.0) ------------------
+    # Python sends deck_request {id, requestId, method, params}; the runtime
+    # runs RPC_METHODS[method] and answers through Shiny.shinyapp.makeRequest()
+    # to the handler registered below with session.set_message_handler().
+
+    @property
+    def rpc_reply_handler_name(self) -> str:
+        """Name of the client message handler that receives RPC replies."""
+        return f"{self.id}_rpc_reply"
+
+    def _rpc_state(self, session: "Session") -> dict:
+        st = self._recall(session, "rpc_state")
+        if st is None:
+            st = {"pending": {}, "seq": 0, "handler": False}
+            self._remember(session, "rpc_state", st)
+        return st
+
+    async def rpc(
+        self,
+        session: "Session",
+        method: str,
+        params: dict | None = None,
+        *,
+        timeout: float = 10.0,
+    ) -> Any:
+        """Run *method* in the browser for this map and return its result.
+
+        Methods (see ``RPC_METHODS`` in the runtime): ``getViewState``,
+        ``queryFeatures``, ``exportImage``, ``hasImage`` -- wrapped by
+        :meth:`get_view_state`, :meth:`get_features`, :meth:`get_image` and
+        :meth:`image_loaded`.
+
+        Must be awaited from a :func:`shiny.reactive.extended_task` (or any
+        coroutine outside the reactive flush)::
+
+            @reactive.extended_task
+            async def features_at_centre():
+                vs = await widget.get_view_state(session)
+                return await widget.get_features(session, lnglat=[vs["longitude"], vs["latitude"]])
+
+        Awaiting it inside a reactive effect raises ``RuntimeError`` at once:
+        the session loop waits for the flush, so the reply could never be
+        read. Raises ``TimeoutError`` when no reply arrives within *timeout*
+        seconds and ``RuntimeError`` when the browser reports an error.
+        """
+        _refuse_rpc_inside_flush()
+        st = self._rpc_state(session)
+        if not st["handler"]:
+            pending = st["pending"]
+
+            async def _on_reply(request_id: str, result: Any = None, error: Any = None) -> None:
+                fut = pending.pop(request_id, None)
+                if fut is None or fut.done():
+                    return None  # stale: timed out, or not ours
+                if error:
+                    fut.set_exception(RuntimeError(str(error)))
+                else:
+                    fut.set_result(result)
+                return None
+
+            session.set_message_handler(self.rpc_reply_handler_name, _on_reply)
+            st["handler"] = True
+        st["seq"] += 1
+        request_id = f"{self._bare_id}-{st['seq']}"
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        st["pending"][request_id] = fut
+        await session.send_custom_message("deck_request", json_safe({
+            "id": self.id,
+            "requestId": request_id,
+            "method": method,
+            "params": params or {},
+        }))
+        try:
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            st["pending"].pop(request_id, None)
+            raise TimeoutError(
+                f"{method}: no reply from the browser within {timeout}s. rpc() must "
+                "be awaited from a reactive.extended_task (or outside the reactive "
+                "flush); see MapWidget.rpc."
+            ) from None
+
+    async def get_view_state(self, session: "Session") -> dict:
+        """The map's current camera: ``{longitude, latitude, zoom, pitch,
+        bearing, bounds: {sw, ne}}`` -- on demand, without waiting for a
+        ``moveend``. See :meth:`rpc` for the call-site rule."""
+        return await self.rpc(session, "getViewState")
+
+    async def get_features(
+        self,
+        session: "Session",
+        *,
+        point: list[float] | None = None,
+        bounds: list[list[float]] | None = None,
+        lnglat: list[float] | None = None,
+        layers: list[str] | None = None,
+        filter_expr: list | None = None,
+    ) -> list[dict]:
+        """Rendered MapLibre features at a pixel *point*, pixel *bounds* or a
+        *lnglat*, returned directly (compare :meth:`query_rendered_features`,
+        which reports through an input). See :meth:`rpc` for the call-site
+        rule."""
+        params: dict = {}
+        if point is not None:
+            params["point"] = list(point)
+        elif bounds is not None:
+            params["bounds"] = [list(b) for b in bounds]
+        elif lnglat is not None:
+            params["lnglat"] = list(lnglat)
+        if layers is not None:
+            params["layers"] = list(layers)
+        if filter_expr is not None:
+            params["filter"] = filter_expr
+        return await self.rpc(session, "queryFeatures", params)
+
+    async def get_image(
+        self,
+        session: "Session",
+        *,
+        format: str = "png",
+        quality: float = 0.92,
+    ) -> bytes:
+        """A screenshot of the map (basemap + deck.gl layers) as image bytes.
+        See :meth:`rpc` for the call-site rule."""
+        out = await self.rpc(session, "exportImage", {"format": format, "quality": quality})
+        data_url = out["dataUrl"]
+        return base64.b64decode(data_url.split(",", 1)[1])
+
+    async def image_loaded(self, session: "Session", image_id: str) -> bool:
+        """Whether the MapLibre style has an image named *image_id*. See
+        :meth:`rpc` for the call-site rule."""
+        return bool(await self.rpc(session, "hasImage", {"imageId": image_id}))
 
     async def partial_update(
         self,

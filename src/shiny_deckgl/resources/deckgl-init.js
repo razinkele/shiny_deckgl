@@ -3470,6 +3470,117 @@
   // -----------------------------------------------------------------------
   // deck_query_features — query rendered features and return to Shiny
   // -----------------------------------------------------------------------
+  // A MapLibre feature reduced to what the server needs (and can serialise).
+  function simplifyFeature(f) {
+    return {
+      type: "Feature",
+      geometry: f.geometry,
+      properties: f.properties,
+      layer: { id: f.layer ? f.layer.id : null },
+      source: f.source || null
+    };
+  }
+
+  // Flatten the basemap and the deck.gl canvas into one image once the map
+  // is idle; done({dataUrl, width, height}). Shared by deck_export_image and
+  // the exportImage RPC so both paths stay identical.
+  function captureMapImage(instance, params, done) {
+    const map = instance.map;
+    const canvas = map.getCanvas();
+    const mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+    const format = mimeTypes[params.format] || 'image/png';
+    const quality = params.quality || 0.92;
+    function capture() {
+      // deck.gl renders into its own canvas unless interleaved, so flatten
+      // both before encoding -- otherwise the export is basemap-only.
+      var deckCanvas = null;
+      try {
+        var dk = instance.overlay && (instance.overlay._deck || instance.overlay.deck);
+        if (dk && typeof dk.getCanvas === 'function') deckCanvas = dk.getCanvas();
+        else if (dk && dk.canvas) deckCanvas = dk.canvas;
+      } catch (e) {
+        deckCanvas = null;
+      }
+      const shot = compositeMapCanvases(canvas, deckCanvas);
+      done({ dataUrl: shot.toDataURL(format, quality), width: shot.width, height: shot.height });
+    }
+    map.triggerRepaint();
+    if (map.isStyleLoaded && map.isStyleLoaded() && !map.isMoving()) {
+      requestAnimationFrame(capture);
+    } else {
+      map.once('idle', function () { requestAnimationFrame(capture); });
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // deck_request — server -> client request with a reply (v1.13.0)
+  // -----------------------------------------------------------------------
+  // Python's MapWidget.rpc() sends {id, requestId, method, params}; the
+  // method's value (or the promise it returns) goes back through
+  // Shiny.shinyapp.makeRequest() to the handler set_message_handler()
+  // registered as "<id>_rpc_reply", as [requestId, result, error].
+  var RPC_METHODS = {
+    getViewState: function (instance) {
+      var map = instance.map, c = map.getCenter(), b = map.getBounds();
+      return {
+        longitude: c.lng, latitude: c.lat, zoom: map.getZoom(),
+        pitch: map.getPitch(), bearing: map.getBearing(),
+        bounds: { sw: [b.getWest(), b.getSouth()], ne: [b.getEast(), b.getNorth()] }
+      };
+    },
+    queryFeatures: function (instance, params) {
+      return new Promise(function (resolve) {
+        whenStyleReady(instance.map, function () {
+          var opts = {};
+          if (params.layers) opts.layers = params.layers;
+          if (params.filter) opts.filter = params.filter;
+          var geom = params.point || params.bounds;
+          if (params.lnglat) {
+            var p = instance.map.project(params.lnglat);
+            geom = [p.x, p.y];
+          }
+          var feats = geom ? instance.map.queryRenderedFeatures(geom, opts)
+                           : instance.map.queryRenderedFeatures(opts);
+          resolve(feats.map(simplifyFeature));
+        });
+      });
+    },
+    exportImage: function (instance, params) {
+      return new Promise(function (resolve) { captureMapImage(instance, params, resolve); });
+    },
+    hasImage: function (instance, params) {
+      return !!instance.map.hasImage(params.imageId);
+    }
+  };
+
+  function rpcReply(payload, result, error) {
+    if (!(window.Shiny && Shiny.shinyapp && Shiny.shinyapp.makeRequest)) {
+      console.warn('[shiny_deckgl] deck_request: Shiny.shinyapp.makeRequest unavailable');
+      return;
+    }
+    Shiny.shinyapp.makeRequest(payload.id + '_rpc_reply', [payload.requestId, result, error],
+      function () {},
+      function (err) { console.warn('[shiny_deckgl] rpc reply failed:', err); });
+  }
+
+  function handleDeckRequest(payload) {
+    if (!payload || !payload.id || !payload.requestId) return;
+    var instance = mapInstances[payload.id];
+    var fn = RPC_METHODS[payload.method];
+    if (!instance) return rpcReply(payload, null, 'no such map: ' + payload.id);
+    if (!fn) return rpcReply(payload, null, 'unknown rpc method: ' + payload.method);
+    var out;
+    try {
+      out = fn(instance, payload.params || {});
+    } catch (e) {
+      return rpcReply(payload, null, String(e && e.message || e));
+    }
+    Promise.resolve(out).then(
+      function (v) { rpcReply(payload, v === undefined ? null : v, null); },
+      function (e) { rpcReply(payload, null, String(e && e.message || e)); });
+  }
+  addDeferrable("deck_request", handleDeckRequest);
+
   addDeferrable("deck_query_features", function (payload) {
     if (!payload || !payload.id) return;
     const instance = mapInstances[payload.id];
@@ -3491,15 +3602,7 @@
         features = map.queryRenderedFeatures(queryOpts);
       }
 
-      const simplified = features.map(function (f) {
-        return {
-          type: "Feature",
-          geometry: f.geometry,
-          properties: f.properties,
-          layer: { id: f.layer ? f.layer.id : null },
-          source: f.source || null
-        };
-      });
+      const simplified = features.map(simplifyFeature);
 
       Shiny.setInputValue(payload.id + '_query_result', {
         requestId: payload.requestId || 'default',
@@ -3527,15 +3630,7 @@
         [point.x, point.y], queryOpts
       );
 
-      const simplified = features.map(function (f) {
-        return {
-          type: "Feature",
-          geometry: f.geometry,
-          properties: f.properties,
-          layer: { id: f.layer ? f.layer.id : null },
-          source: f.source || null
-        };
-      });
+      const simplified = features.map(simplifyFeature);
 
       Shiny.setInputValue(payload.id + '_query_result', {
         requestId: payload.requestId || 'default',
@@ -3795,42 +3890,14 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
 
-    const map = instance.map;
-    const canvas = map.getCanvas();
-    const mimeTypes = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
-    const format = mimeTypes[payload.format] || 'image/png';
-    const quality = payload.quality || 0.92;
-
-    // Wait for tiles to finish loading before capturing
-    function capture() {
-      // deck.gl renders into its own canvas unless interleaved, so flatten
-      // both before encoding -- otherwise the export is basemap-only.
-      var deckCanvas = null;
-      try {
-        var dk = instance.overlay && (instance.overlay._deck || instance.overlay.deck);
-        if (dk && typeof dk.getCanvas === 'function') deckCanvas = dk.getCanvas();
-        else if (dk && dk.canvas) deckCanvas = dk.canvas;
-      } catch (e) {
-        deckCanvas = null;
-      }
-      const shot = compositeMapCanvases(canvas, deckCanvas);
-      const dataUrl = shot.toDataURL(format, quality);
+    captureMapImage(instance, payload, function (shot) {
       Shiny.setInputValue(payload.id + '_export_result', {
         requestId: payload.requestId || 'default',
-        dataUrl: dataUrl,
+        dataUrl: shot.dataUrl,
         width: shot.width,
         height: shot.height
       }, { priority: "event" });
-    }
-
-    map.triggerRepaint();
-    if (map.isStyleLoaded && map.isStyleLoaded() && !map.isMoving()) {
-      requestAnimationFrame(capture);
-    } else {
-      map.once('idle', function () {
-        requestAnimationFrame(capture);
-      });
-    }
+    });
   });
 
   // -----------------------------------------------------------------------

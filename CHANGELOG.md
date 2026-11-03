@@ -5,7 +5,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
-## [Unreleased]
+## [1.14.0] — 2026-11-03
 
 Shiny for Python 1.9 (`docs/2026-11-02-shiny-1.9-improvements.md`). Runtime floor
 stays `shiny>=1.6.3`. On 1.9.0 the unit suite and the browser tests for RPC, viewport

@@ -5,6 +5,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+Shiny for Python 1.9 (`docs/2026-11-02-shiny-1.9-improvements.md`). Runtime floor
+stays `shiny>=1.6.3`. On 1.9.0 the unit suite and the browser tests for RPC, viewport
+debounce, HTTP transport and bookmarking pass.
+
+### Changed
+
+- **`MapWidget.rpc()` (and `get_view_state()`, `get_features()`, `get_image()`,
+  `image_loaded()`) can be awaited inside a plain reactive effect on Shiny ≥ 1.9.**
+  1.9 dispatches `makeRequest` replies in their own task while effects run, so the
+  deadlock the guard prevented no longer exists there. Detected per session through
+  `session.run_once_when_idle` (new in 1.9); on older Shiny the call is still refused
+  with a `RuntimeError` pointing to `reactive.extended_task`.
+
+### Fixed
+
+- A cancelled `rpc()` call left its future in the per-session pending table. Shiny
+  1.9 cancels in-progress effects when their session or module scope is destroyed,
+  so this could now happen in practice; the entry is removed in a `finally`.
+
+### Documentation
+
+- User manual: handing data from a background task or timer to the map with
+  `session.run_once_when_idle()`, and the ordering of updates from different effects
+  now that 1.9 runs effects concurrently.
+- The "global reactive lock" rationale for `on_viewport_change`'s reschedule-not-sleep
+  debounce now covers 1.9, where the lock is gone but the design is still needed.
+
 ## [1.13.1] — 2026-09-28
 
 ### Fixed

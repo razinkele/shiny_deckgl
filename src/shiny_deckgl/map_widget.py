@@ -222,15 +222,23 @@ def _export_test_values(**values: Any) -> None:
         return
 
 
-def _refuse_rpc_inside_flush() -> None:
+def _refuse_rpc_inside_flush(session: "Session") -> None:
     """Raise when called from a reactive context that would deadlock an RPC.
 
-    Shiny's session loop awaits the reactive flush inline, so a coroutine
-    that awaits the browser's reply from inside an effect/calc/render can
-    never receive it: the reply message is read only after the flush ends.
-    ``reactive.extended_task`` runs its coroutine in its own asyncio task
-    under a ``DenialContext``, which is the supported call site.
+    Before Shiny 1.9 the session loop awaits the reactive flush inline, so a
+    coroutine that awaits the browser's reply from inside an
+    effect/calc/render can never receive it: the reply message is read only
+    after the flush ends. ``reactive.extended_task`` runs its coroutine in
+    its own asyncio task under a ``DenialContext``, which is the supported
+    call site there.
+
+    Shiny 1.9 runs effects concurrently and dispatches ``makeRequest``
+    replies in their own task while effects run, so the call is safe. It is
+    detected by ``session.run_once_when_idle`` (new in 1.9, on root and
+    module sessions alike).
     """
+    if hasattr(session, "run_once_when_idle"):
+        return  # Shiny >= 1.9: replies are read while effects run
     from shiny import reactive
 
     try:
@@ -245,9 +253,9 @@ def _refuse_rpc_inside_flush() -> None:
         return  # inside an extended_task: fine
     raise RuntimeError(
         "MapWidget.rpc() cannot be awaited inside a reactive effect, calc or "
-        "render: the session loop waits for the flush, so the browser's reply "
-        "could never be read (deadlock). Call it from a reactive.extended_task "
-        "and read task.result()."
+        "render on Shiny < 1.9: the session loop waits for the flush, so the "
+        "browser's reply could never be read (deadlock). Call it from a "
+        "reactive.extended_task and read task.result(), or upgrade to Shiny >= 1.9."
     )
 
 
@@ -898,7 +906,19 @@ class MapWidget:
         :meth:`get_view_state`, :meth:`get_features`, :meth:`get_image` and
         :meth:`image_loaded`.
 
-        Must be awaited from a :func:`shiny.reactive.extended_task` (or any
+        On Shiny >= 1.9 it can also be awaited inside a reactive effect,
+        calc or render::
+
+            @reactive.effect
+            @reactive.event(input.ask)
+            async def _():
+                vs = await widget.get_view_state(session)
+
+        While the effect awaits the reply the session is busy and its input
+        changes queue, so prefer a :func:`shiny.reactive.extended_task` for
+        slow methods such as ``exportImage``.
+
+        On Shiny < 1.9 it must be awaited from an ``extended_task`` (or any
         coroutine outside the reactive flush)::
 
             @reactive.extended_task
@@ -906,12 +926,13 @@ class MapWidget:
                 vs = await widget.get_view_state(session)
                 return await widget.get_features(session, lnglat=[vs["longitude"], vs["latitude"]])
 
-        Awaiting it inside a reactive effect raises ``RuntimeError`` at once:
-        the session loop waits for the flush, so the reply could never be
-        read. Raises ``TimeoutError`` when no reply arrives within *timeout*
-        seconds and ``RuntimeError`` when the browser reports an error.
+        There, awaiting it inside a reactive effect raises ``RuntimeError``
+        at once: the session loop waits for the flush, so the reply could
+        never be read. Raises ``TimeoutError`` when no reply arrives within
+        *timeout* seconds and ``RuntimeError`` when the browser reports an
+        error.
         """
-        _refuse_rpc_inside_flush()
+        _refuse_rpc_inside_flush(session)
         st = self._rpc_state(session)
         if not st["handler"]:
             pending = st["pending"]
@@ -941,12 +962,15 @@ class MapWidget:
         try:
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
-            st["pending"].pop(request_id, None)
             raise TimeoutError(
-                f"{method}: no reply from the browser within {timeout}s. rpc() must "
-                "be awaited from a reactive.extended_task (or outside the reactive "
-                "flush); see MapWidget.rpc."
+                f"{method}: no reply from the browser within {timeout}s. On Shiny "
+                "< 1.9 rpc() must be awaited from a reactive.extended_task (or "
+                "outside the reactive flush); see MapWidget.rpc."
             ) from None
+        finally:
+            # Also on cancellation: Shiny 1.9 cancels an in-progress effect
+            # when its session or module scope is destroyed.
+            st["pending"].pop(request_id, None)
 
     async def get_view_state(self, session: "Session") -> dict:
         """The map's current camera: ``{longitude, latitude, zoom, pitch,

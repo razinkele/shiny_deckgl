@@ -160,10 +160,12 @@ def on_viewport_change(
 
             _latest.set((bounds, zoom, time.monotonic()))
 
-        # Debounce by rescheduling, never by sleeping: Shiny runs effects
-        # under its global reactive lock, so an awaited sleep here blocked
-        # every session for debounce_ms and no newer request could ever
-        # supersede it. A newer request re-runs this effect and restarts the
+        # Debounce by rescheduling, never by sleeping. Before Shiny 1.9 effects
+        # ran under a global reactive lock, so an awaited sleep here blocked
+        # every session for debounce_ms. On 1.9 it would block only this
+        # session, but that session's input changes queue until its effects
+        # finish, so a newer request still could not supersede the sleep
+        # either way. A newer request re-runs this effect and restarts the
         # wait. Reactive values fn() reads become dependencies of this effect,
         # so it re-fires when they change, as documented.
         @reactive.Effect

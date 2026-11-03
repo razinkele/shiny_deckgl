@@ -2801,9 +2801,12 @@ await widget.image_loaded(session, image_id: str) -> bool
 ```
 
 The browser runs the method and replies through `Shiny.shinyapp.makeRequest()` to a handler the
-widget registers with `session.set_message_handler()`. **Call site:** Shiny's session loop waits for
-the reactive flush, so a reply awaited inside an effect, calc or render could never be read; `rpc()`
-raises `RuntimeError` there. Await it from a `reactive.extended_task`:
+widget registers with `session.set_message_handler()`. **Call site:** on Shiny ≥ 1.9 it can also be
+awaited inside a reactive effect, calc or render (1.9 reads replies while effects run; while
+the effect waits, that session's input changes queue, so keep slow methods like `get_image()` in an
+`extended_task`). On Shiny < 1.9 the session loop waits for the reactive flush, so a reply awaited
+inside an effect, calc or render could never be read; `rpc()` raises `RuntimeError` there. Await it
+from a `reactive.extended_task` (works on every version):
 
 ```python
 @reactive.extended_task

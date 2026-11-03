@@ -9,8 +9,10 @@ app_ui = ui.page_fluid(
     head_includes(),
     ui.input_action_button("ask", "Ask the map"),
     ui.input_action_button("shot", "Screenshot"),
+    ui.input_action_button("ask_effect", "Ask from an effect"),
     ui.output_text("answer"),
     ui.output_text("shot_size"),
+    ui.output_text("effect_out"),
     m.ui(height="300px"),
 )
 
@@ -49,6 +51,22 @@ def server(input, output, session):
     @render.text
     def shot_size():
         return f"bytes={screenshot.result()}"
+
+    # Shiny >= 1.9 only: awaited in a plain effect (refused on < 1.9).
+    effect_answer = reactive.Value("")
+
+    @reactive.effect
+    @reactive.event(input.ask_effect)
+    async def _ask_effect():
+        try:
+            vs = await m.get_view_state(session)
+            effect_answer.set(f"effect zoom={vs['zoom']:.1f}")
+        except Exception as e:  # noqa: BLE001 - shown to the test
+            effect_answer.set(f"effect error={type(e).__name__}")
+
+    @render.text
+    def effect_out():
+        return effect_answer()
 
 
 app = App(app_ui, server)

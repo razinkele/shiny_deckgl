@@ -2,9 +2,11 @@
 
 The runtime replies to a ``deck_request`` by calling the message handler the
 widget registered with ``session.set_message_handler("<id>_rpc_reply", fn)``.
-The session loop awaits the reactive flush inline, so awaiting a reply inside a
-plain reactive effect would deadlock; ``rpc()`` refuses that call site and
-documents ``reactive.extended_task``.
+Before Shiny 1.9 the session loop awaits the reactive flush inline, so awaiting
+a reply inside a plain reactive effect would deadlock; there ``rpc()`` refuses
+that call site and documents ``reactive.extended_task``. Shiny 1.9 reads
+replies while effects run (detected by ``session.run_once_when_idle``), so the
+refusal is skipped.
 """
 from __future__ import annotations
 
@@ -81,7 +83,8 @@ def test_stale_reply_is_ignored():
 
 
 def test_rpc_inside_a_reactive_context_is_refused():
-    # Review Focus 1: the session loop awaits the flush, so this would deadlock.
+    # Review Focus 1: before Shiny 1.9 the session loop awaits the flush, so
+    # this would deadlock (_RpcSession has no run_once_when_idle: a 1.8 session).
     from shiny import reactive
     from shiny_deckgl import MapWidget
     w, s = MapWidget("m"), _RpcSession({"getViewState": {}})
@@ -105,6 +108,67 @@ def test_rpc_inside_an_extended_task_context_is_allowed():
             return await w.get_view_state(s)
 
     assert asyncio.run(inside()) == {"zoom": 2}
+
+
+class _ConcurrentRpcSession(_RpcSession):
+    """A Shiny >= 1.9 session: its receive loop reads replies while effects run."""
+
+    def run_once_when_idle(self, fn):
+        fn()
+
+
+def test_rpc_inside_a_reactive_context_is_allowed_on_shiny_1_9():
+    # Shiny 1.9 dispatches makeRequest replies in their own task instead of
+    # awaiting the flush, so a reply awaited inside an effect does arrive.
+    from shiny import reactive
+    from shiny_deckgl import MapWidget
+    w, s = MapWidget("m"), _ConcurrentRpcSession({"getViewState": {"zoom": 3}})
+
+    async def inside():
+        with reactive.isolate():
+            return await w.get_view_state(s)
+
+    assert asyncio.run(inside()) == {"zoom": 3}
+    assert len(_requests(s)) == 1
+
+
+def test_cancelled_rpc_forgets_its_pending_request():
+    # Shiny 1.9 cancels an in-progress effect when its session/module is
+    # destroyed; the cancelled call must not leave its future behind.
+    from shiny_deckgl import MapWidget
+    w, s = MapWidget("m"), _RpcSession(reply=False)
+
+    async def go():
+        task = asyncio.ensure_future(w.rpc(s, "getViewState", timeout=5))
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(go())
+    assert w._rpc_state(s)["pending"] == {}
+
+
+def test_rpc_cancelled_during_the_send_forgets_its_pending_request():
+    # The websocket send is itself an await (a cancellation point): a call
+    # cancelled there never reached wait_for and used to keep its future.
+    from shiny_deckgl import MapWidget
+
+    class _SlowSend(_RpcSession):
+        async def send_custom_message(self, handler, payload):
+            await asyncio.sleep(5)
+
+    w, s = MapWidget("m"), _SlowSend(reply=False)
+
+    async def go():
+        task = asyncio.ensure_future(w.rpc(s, "getViewState", timeout=5))
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(go())
+    assert w._rpc_state(s)["pending"] == {}
 
 
 def test_get_image_decodes_the_data_url():

@@ -958,6 +958,45 @@ async def update_timestep():
     await map_widget.update(session, layers)
 ```
 
+#### Data from a background task or timer (Shiny ≥ 1.9)
+
+When a model run, a sensor feed or a custom timer produces data outside the reactive graph,
+hand it over with `session.run_once_when_idle()`. The value then changes only between
+reactive cycles, never under an effect that is still reading it:
+
+```python
+latest = reactive.Value(None)
+pending = {"frame": None, "queued": False}   # newest frame not yet handed over
+
+def _hand_over():
+    pending["queued"] = False
+    latest.set(pending["frame"])
+
+async def poll_feed():                       # started with asyncio.create_task()
+    while True:
+        pending["frame"] = await fetch_next_frame()
+        # Queue at most one callback: each runs in its own reactive cycle, so
+        # one per frame would pile up behind a slow _push() and replay stale
+        # frames. Frames that arrive meanwhile just replace pending["frame"].
+        if not pending["queued"]:
+            pending["queued"] = True
+            session.run_once_when_idle(_hand_over)
+
+@reactive.effect
+async def _push():
+    if latest() is not None:
+        await map_widget.update(session, [scatterplot_layer("feed", latest(), ...)])
+```
+
+From a thread, use `loop.call_soon_threadsafe(...)`: the reactive graph is not thread-safe.
+A background task can also call `await map_widget.partial_update(session, ...)` directly: map
+messages go straight to the websocket on every Shiny version (on Shiny < 1.9, `ui.update_*()`
+calls made from such a task waited for the next input change).
+
+Since Shiny 1.9 runs effects concurrently, two *different* effects that both call
+`map_widget.update()` reach the browser in the order they finish awaiting, not in effect
+order. Keep updates that must be ordered in one effect.
+
 ---
 
 ## Layer Selection Guide

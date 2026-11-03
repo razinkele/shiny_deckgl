@@ -131,7 +131,7 @@ browser, all without Java dependencies.
 
 | Capability | Details |
 | --- | --- |
-| **RPC with replies** | `await widget.get_view_state(session)`, `get_features()`, `get_image()`, `image_loaded()` — from a `reactive.extended_task`; a plain effect is refused (it would deadlock). |
+| **RPC with replies** | `await widget.get_view_state(session)`, `get_features()`, `get_image()`, `image_loaded()` — also inside a reactive effect on Shiny ≥ 1.9; on older Shiny from a `reactive.extended_task` (a plain effect is refused there: it would deadlock). |
 | **Dark mode** | `MapWidget(dark_style=CARTO_DARK)` follows `ui.input_dark_mode()`: dark basemap, widgets and legend; `set_dark_mode()`; `dark_mode_input_id`. |
 | **Bookmarking** | `widget.enable_bookmarking(session)` with `App(bookmark_store="url")`: camera, style and layer visibility restore from the URL. |
 | **HTTP transport** | `update()` sends payloads ≥ 2 MB over HTTP (`session.dynamic_route`) instead of the websocket; ordering is preserved. |

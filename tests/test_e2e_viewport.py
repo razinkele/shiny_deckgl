@@ -1,9 +1,11 @@
 """on_viewport_change must debounce without blocking the server (P7).
 
-The debounce awaited asyncio.sleep() inside a reactive effect. Shiny runs
-effects under its global reactive lock, so no newer call could start during
-the sleep: it never debounced anything, and each camera move stalled every
-session for debounce_ms.
+The debounce awaited asyncio.sleep() inside a reactive effect. Before Shiny
+1.9 effects ran under a global reactive lock, so no newer call could start
+during the sleep: it never debounced anything, and each camera move stalled
+every session for debounce_ms. On 1.9 the sleep would stall only its own
+session, whose input changes still queue until its effects finish, so the
+reschedule-not-sleep design is needed on both.
 
 Needs chromium and network access for the CDN bundles.
 """

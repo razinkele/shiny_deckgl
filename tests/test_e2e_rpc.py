@@ -1,4 +1,5 @@
-"""MapWidget.rpc() end to end: the browser answers a request awaited in an extended_task.
+"""MapWidget.rpc() end to end: the browser answers a request awaited in an
+extended_task (any Shiny) or in a plain effect (Shiny >= 1.9).
 
 Needs chromium and network access for the CDN bundles.
 """
@@ -36,6 +37,16 @@ def test_view_state_and_features_come_back(page):
     text = page.inner_text("#answer")
     assert text.startswith("zoom=6.0 bounds=True features="), text
     assert int(re.search(r"features=(\d+)", text).group(1)) >= 0
+
+
+@pytest.mark.skipif(
+    not hasattr(__import__("shiny").Session, "run_once_when_idle"),
+    reason="awaiting rpc() inside a plain effect needs Shiny >= 1.9",
+)
+def test_rpc_awaited_in_a_plain_effect_on_shiny_1_9(page):
+    page.click("#ask_effect")
+    page.wait_for_function("() => document.getElementById('effect_out').innerText.startsWith('effect ')", timeout=10000)
+    assert page.inner_text("#effect_out") == "effect zoom=6.0"
 
 
 def test_image_bytes_come_back(page):

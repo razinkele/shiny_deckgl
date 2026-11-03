@@ -24,7 +24,8 @@ debounce, HTTP transport and bookmarking pass.
 
 - A cancelled `rpc()` call left its future in the per-session pending table. Shiny
   1.9 cancels in-progress effects when their session or module scope is destroyed,
-  so this could now happen in practice; the entry is removed in a `finally`.
+  so this could now happen in practice; the entry is removed in a `finally` that
+  also covers a cancellation (or failure) during the request's websocket send.
 
 ### Documentation
 

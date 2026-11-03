@@ -953,13 +953,15 @@ class MapWidget:
         request_id = f"{self._bare_id}-{st['seq']}"
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         st["pending"][request_id] = fut
-        await session.send_custom_message("deck_request", json_safe({
-            "id": self.id,
-            "requestId": request_id,
-            "method": method,
-            "params": params or {},
-        }))
         try:
+            # Inside the try: the send is itself an await, so a cancellation
+            # can land there too.
+            await session.send_custom_message("deck_request", json_safe({
+                "id": self.id,
+                "requestId": request_id,
+                "method": method,
+                "params": params or {},
+            }))
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
             raise TimeoutError(

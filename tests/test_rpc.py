@@ -149,6 +149,28 @@ def test_cancelled_rpc_forgets_its_pending_request():
     assert w._rpc_state(s)["pending"] == {}
 
 
+def test_rpc_cancelled_during_the_send_forgets_its_pending_request():
+    # The websocket send is itself an await (a cancellation point): a call
+    # cancelled there never reached wait_for and used to keep its future.
+    from shiny_deckgl import MapWidget
+
+    class _SlowSend(_RpcSession):
+        async def send_custom_message(self, handler, payload):
+            await asyncio.sleep(5)
+
+    w, s = MapWidget("m"), _SlowSend(reply=False)
+
+    async def go():
+        task = asyncio.ensure_future(w.rpc(s, "getViewState", timeout=5))
+        await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(go())
+    assert w._rpc_state(s)["pending"] == {}
+
+
 def test_get_image_decodes_the_data_url():
     from shiny_deckgl import MapWidget
     s = _RpcSession({"exportImage": {"dataUrl": "data:image/png;base64,aGVsbG8=", "width": 2, "height": 1}})

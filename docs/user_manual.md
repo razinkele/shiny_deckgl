@@ -966,11 +966,21 @@ reactive cycles, never under an effect that is still reading it:
 
 ```python
 latest = reactive.Value(None)
+pending = {"frame": None, "queued": False}   # newest frame not yet handed over
+
+def _hand_over():
+    pending["queued"] = False
+    latest.set(pending["frame"])
 
 async def poll_feed():                       # started with asyncio.create_task()
     while True:
-        frame = await fetch_next_frame()
-        session.run_once_when_idle(lambda f=frame: latest.set(f))
+        pending["frame"] = await fetch_next_frame()
+        # Queue at most one callback: each runs in its own reactive cycle, so
+        # one per frame would pile up behind a slow _push() and replay stale
+        # frames. Frames that arrive meanwhile just replace pending["frame"].
+        if not pending["queued"]:
+            pending["queued"] = True
+            session.run_once_when_idle(_hand_over)
 
 @reactive.effect
 async def _push():

@@ -37,8 +37,18 @@ jobs:
       - name: Build
         if: steps.published.outputs.exists != 'true'
         shell: bash -l {0}
+        # The first install uses the classic solver and updates conda together
+        # with conda-libmamba-solver: Miniforge "latest" + auto-update-conda
+        # can leave a solver plugin conda refuses to load (2026-11-03: conda
+        # 26.9.4 + conda-libmamba-solver 26.10.0 -> "libmamba ... not
+        # recognized. Choose one of: classic"), which failed the v1.14.0 upload.
         run: |
-          conda install -n base -y -c conda-forge conda-build anaconda-client pip
+          conda install -n base -y --solver classic -c conda-forge conda conda-libmamba-solver conda-build anaconda-client pip
+          conda list -n base "^(conda|conda-libmamba-solver|libmambapy|conda-build)$"
+          # setup-miniconda writes both auto_activate and its old alias
+          # auto_activate_base; the updated conda refuses a .condarc with both
+          # (MultipleKeysError). Keep the new key only.
+          conda config --remove-key auto_activate_base || true
           conda build conda.recipe -c razinka -c conda-forge
           OUT=$(conda build conda.recipe -c razinka -c conda-forge --output)
           echo "CONDA_OUT=$OUT" >> $GITHUB_ENV

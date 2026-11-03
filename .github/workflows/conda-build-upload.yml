@@ -45,6 +45,10 @@ jobs:
         run: |
           conda install -n base -y --solver classic -c conda-forge conda conda-libmamba-solver conda-build anaconda-client pip
           conda list -n base "^(conda|conda-libmamba-solver|libmambapy|conda-build)$"
+          # setup-miniconda writes both auto_activate and its old alias
+          # auto_activate_base; the updated conda refuses a .condarc with both
+          # (MultipleKeysError). Keep the new key only.
+          conda config --remove-key auto_activate_base || true
           conda build conda.recipe -c razinka -c conda-forge
           OUT=$(conda build conda.recipe -c razinka -c conda-forge --output)
           echo "CONDA_OUT=$OUT" >> $GITHUB_ENV

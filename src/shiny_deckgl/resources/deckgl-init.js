@@ -949,6 +949,8 @@
       'https://basemaps.cartocdn.com/gl/positron-nolabels-gl-style/style.json';
     // Dark from the first frame when the page already is (no double load).
     const darkStyle = el.dataset.darkStyle || null;
+    const widgetTheme = parseThemeAttr(el.dataset.widgetTheme);
+    const darkWidgetTheme = parseThemeAttr(el.dataset.darkWidgetTheme);
     const startDark = !!darkStyle && el.dataset.followDarkMode !== 'false' &&
       document.documentElement.getAttribute('data-bs-theme') === 'dark';
     const startStyle = startDark ? darkStyle : mapStyle;
@@ -1150,6 +1152,8 @@
       el: el,
       lightStyle: mapStyle,    // dark mode (v1.13.0): the pair to swap between
       darkStyle: darkStyle,
+      widgetTheme: widgetTheme,          // deck.gl widget themes (v1.16)
+      darkWidgetTheme: darkWidgetTheme,
       currentStyle: startStyle,
       dark: startDark,
       controls: initialControls,
@@ -2944,6 +2948,7 @@
     }
 
     overlay.setProps(overlayProps);
+    applyWidgetTheme(instance);
     map.triggerRepaint();
 
     // Start/stop TripsLayer animation if needed (v0.9.0).
@@ -3080,6 +3085,7 @@
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
       instance.overlay.setProps({ widgets: widgets });
+      applyWidgetTheme(instance);
       instance.map.triggerRepaint();
     }
   });
@@ -3317,6 +3323,7 @@
     if (target && target !== instance.currentStyle) applyStyle(instance, target, false);
     if (instance.el && instance.el.classList) instance.el.classList.toggle('deckgl-dark', dark);
     instance.dark = dark;
+    applyWidgetTheme(instance);
     Shiny.setInputValue(mapId + '_dark_mode', { dark: dark, style: instance.currentStyle || null });
   }
 
@@ -3325,6 +3332,60 @@
     applyDarkMode(mapInstances[payload.id], payload.id, payload.dark);
   }
   addDeferrable("deck_set_dark_mode", handleSetDarkMode);
+
+  // -----------------------------------------------------------------------
+  // Widget themes (v1.16): deck.gl's built-in themes or a dict of CSS
+  // variables, written onto the map's .deck-widget-container the way
+  // deck.gl's own ThemeWidget does. In dark mode the dark theme applies;
+  // without one the package's .deckgl-dark stylesheet does.
+  // -----------------------------------------------------------------------
+  var WIDGET_THEME_NAMES = {
+    'light': 'LightTheme', 'dark': 'DarkTheme',
+    'light-glass': 'LightGlassTheme', 'dark-glass': 'DarkGlassTheme',
+  };
+
+  function parseThemeAttr(raw) {
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) {
+      console.warn('[shiny_deckgl] Bad widget theme attribute:', e.message);
+      return null;
+    }
+  }
+
+  function resolveWidgetTheme(spec) {
+    if (!spec) return null;
+    if (typeof spec === 'object') return spec;
+    var name = WIDGET_THEME_NAMES[spec];
+    var theme = name && typeof deck !== 'undefined' ? (deck[name] || deck['_' + name]) : null;
+    if (!theme) console.warn('[shiny_deckgl] Unknown widget theme: ' + spec);
+    return theme || null;
+  }
+
+  function applyWidgetTheme(instance, retried) {
+    if (!instance || !instance.el) return;
+    var theme = resolveWidgetTheme(instance.dark ? instance.darkWidgetTheme : instance.widgetTheme);
+    var containers = instance.el.querySelectorAll('.deck-widget-container');
+    if (!containers.length) {
+      // deck.gl may create the container on its next render.
+      if (theme && !retried) requestAnimationFrame(function () { applyWidgetTheme(instance, true); });
+      return;
+    }
+    var previous = instance._themeKeys || [];
+    containers.forEach(function (c) {
+      previous.forEach(function (k) { c.style.removeProperty(k); });
+      if (theme) Object.keys(theme).forEach(function (k) { c.style.setProperty(k, theme[k]); });
+    });
+    instance._themeKeys = theme ? Object.keys(theme) : [];
+  }
+
+  addDeferrable("deck_set_widget_theme", function (payload) {
+    if (!payload || !payload.id) return;
+    var instance = mapInstances[payload.id];
+    if (!instance) return;
+    instance.widgetTheme = payload.theme || null;
+    instance.darkWidgetTheme = payload.darkTheme || null;
+    applyWidgetTheme(instance);
+  });
 
   // Follow data-bs-theme on <html> (ui.input_dark_mode, or a fixed theme)
   // unless data-follow-dark-mode="false". Returns the observer, or null.
@@ -4548,6 +4609,7 @@
   window.__deckgl_buildDeckLayers = buildDeckLayers;
   window.__deckgl_buildEffects = buildEffects;
   window.__deckgl_preloadEffects = preloadPostProcessModules;
+  window.__deckgl_applyWidgetTheme = applyWidgetTheme;
   window.__deckgl_resolveWidgetClass = resolveWidgetClass;
   window.__deckgl_cloneLayersData = cloneLayersData;
 })();

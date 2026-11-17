@@ -7,6 +7,15 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 ---
 ## [Unreleased]
 
+### Added
+
+- **deck.gl widget themes.** `MapWidget(widget_theme=..., dark_widget_theme=...)` and
+  `set_widget_theme(session, theme, dark_theme=None)` apply deck.gl's built-in themes
+  (`"light"`, `"dark"`, `"light-glass"`, `"dark-glass"`) or a dict of CSS variables to
+  the map's widgets, the way deck.gl's `ThemeWidget` does. The dark theme follows the
+  map's dark mode; without one, dark mode keeps the package's own dark widget colours.
+  Included in `to_json()` / `from_json()`.
+
 ### Changed
 
 - **Python 3.11 or newer is required** *(breaking)*; 3.10 is dropped. py-shiny's next

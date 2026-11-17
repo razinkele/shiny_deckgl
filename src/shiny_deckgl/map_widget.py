@@ -132,7 +132,27 @@ _JSON_WIDGET_SETTINGS = (
     ("mapOptions", "map_options", None),
     ("darkStyle", "dark_style", None),
     ("followDarkMode", "follow_dark_mode", True),
+    ("widgetTheme", "widget_theme", None),
+    ("darkWidgetTheme", "dark_widget_theme", None),
 )
+
+# deck.gl's built-in widget themes (@deck.gl/widgets >= 9.2), by the names
+# widget_theme= accepts; the client looks them up on the `deck` global.
+WIDGET_THEMES = ("light", "dark", "light-glass", "dark-glass")
+
+
+def _check_widget_theme(name: str, theme: Any) -> None:
+    if theme is None or theme in WIDGET_THEMES:
+        return
+    if isinstance(theme, dict):
+        bad = [k for k in theme if not (isinstance(k, str) and k.startswith("--"))]
+        if bad:
+            raise ValueError(f"{name} keys must be CSS variables starting with '--', got {bad!r}")
+        return
+    raise ValueError(
+        f"{name} must be one of {WIDGET_THEMES}, a dict of CSS variables, or None; "
+        f"got {theme!r}"
+    )
 
 
 def _shiny_version() -> tuple[int, ...]:
@@ -323,6 +343,14 @@ class MapWidget:
     follow_dark_mode
         Whether the map follows ``data-bs-theme`` on its own (default
         ``True``). ``False`` leaves the switching to :meth:`set_dark_mode`.
+    widget_theme
+        deck.gl widget theme: ``"light"``, ``"dark"``, ``"light-glass"``,
+        ``"dark-glass"`` (deck.gl's built-in themes) or a dict of CSS
+        variables, e.g. ``{"--button-size": "32px"}``. ``None`` (default)
+        keeps deck.gl's stylesheet. Change it with :meth:`set_widget_theme`.
+    dark_widget_theme
+        The widget theme while the map is in dark mode. ``None`` (default)
+        uses the package's own dark widget colours in dark mode.
     """
 
     def __init__(
@@ -348,6 +376,9 @@ class MapWidget:
         # Dark mode (v1.13.0)
         dark_style: str | None = None,
         follow_dark_mode: bool = True,
+        # deck.gl widget themes (v1.16)
+        widget_theme: str | dict | None = None,
+        dark_widget_theme: str | dict | None = None,
     ):
         # Resolve through the current Shiny module namespace so the
         # widget works identically inside and outside @module.ui /
@@ -396,6 +427,10 @@ class MapWidget:
             raise TypeError(f"dark_style must be a style URL string or None, got {type(dark_style).__name__!r}")
         self.dark_style = dark_style
         self.follow_dark_mode = bool(follow_dark_mode)
+        _check_widget_theme("widget_theme", widget_theme)
+        _check_widget_theme("dark_widget_theme", dark_widget_theme)
+        self.widget_theme = widget_theme
+        self.dark_widget_theme = dark_widget_theme
 
     # -- Shiny input property helpers -----------------------------------------
 
@@ -552,6 +587,10 @@ class MapWidget:
             attrs["data_dark_style"] = self.dark_style
         if not self.follow_dark_mode:
             attrs["data_follow_dark_mode"] = "false"
+        if self.widget_theme is not None:
+            attrs["data_widget_theme"] = json.dumps(self.widget_theme)
+        if self.dark_widget_theme is not None:
+            attrs["data_dark_widget_theme"] = json.dumps(self.dark_widget_theme)
         if self._recall(session, "cooperative_gestures"):
             attrs["data_cooperative_gestures"] = "true"
         return attrs
@@ -1159,6 +1198,33 @@ class MapWidget:
         await session.send_custom_message("deck_set_controller", {
             "id": self.id,
             "controller": options,
+        })
+
+    async def set_widget_theme(
+        self,
+        session: "Session",
+        theme: str | dict | None,
+        dark_theme: str | dict | None = None,
+    ) -> None:
+        """Change the deck.gl widget theme (light mode, and dark mode).
+
+        Parameters
+        ----------
+        session
+            The active Shiny ``Session``.
+        theme
+            ``"light"``, ``"dark"``, ``"light-glass"``, ``"dark-glass"``, a
+            dict of CSS variables, or ``None`` for deck.gl's stylesheet.
+        dark_theme
+            The theme while the map is in dark mode; ``None`` uses the
+            package's own dark widget colours.
+        """
+        _check_widget_theme("theme", theme)
+        _check_widget_theme("dark_theme", dark_theme)
+        await session.send_custom_message("deck_set_widget_theme", {
+            "id": self.id,
+            "theme": theme,
+            "darkTheme": dark_theme,
         })
 
     async def set_dark_mode(self, session: "Session", dark: bool) -> None:

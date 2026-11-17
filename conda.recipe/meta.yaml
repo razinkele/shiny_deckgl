@@ -23,7 +23,8 @@ requirements:
     - setuptools >=77
   run:
     - python >=3.10
-    - shiny >=1.6.3
+    - shiny >=1.7.0
+    - uvicorn >=0.50
     - htmltools
 
 # Build-time verification of the *packaged* result, not the source tree.
@@ -51,8 +52,8 @@ about:
   license_file: LICENSE
   summary: "Shiny for Python -> deck.gl bridge (no Java) with packaged assets"
   description: |
-    A lightweight library for integrating deck.gl (v9.4.0) and
-    MapLibre GL JS (v6.7.0) into Shiny for Python applications.
+    A lightweight library for integrating deck.gl (v9.4.1) and
+    MapLibre GL JS (v6.18.0) into Shiny for Python applications.
     Built for marine science and GIS visualisation.
   doc_url: "https://github.com/razinkele/shiny_deckgl/blob/main/docs/api_reference.md"
   dev_url: "https://github.com/razinkele/shiny_deckgl"

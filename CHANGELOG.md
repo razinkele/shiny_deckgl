@@ -5,6 +5,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+Upstream status review (`docs/2026-11-17-upstream-review.md`), P1 items.
+
+### Security
+
+- **Standalone `to_html()` exports now load MapLibre 5.24.1** (was 5.24.0), which
+  fixes the critical `DOM.sanitize()` XSS bypass GHSA-jrc7-96c5-q579 /
+  CVE-2026-85061 (affects `< 5.24.1`).
+
+### Changed
+
+- **Runtime floor raised to `shiny>=1.7.0`** (was `>=1.6.3`). The demo's export
+  button uses `render.download_button`, added in Shiny 1.7.0, so `shiny_deckgl-demo`
+  crashed on 1.6.x. The new floor also excludes 1.6.3, which still has the
+  bookmark-restore path traversal fixed in 1.6.4. CI now runs the unit suite on
+  Shiny 1.7.0, and a test keeps pyproject, the conda recipe, README and CI in agreement.
+- **New requirement `uvicorn>=0.50`.** Shiny 1.9 can send on one websocket from
+  several tasks at once. Before 0.50, uvicorn's default websocket backend
+  (`websockets.legacy`) raises an `AssertionError` in `drain()` on concurrent sends;
+  Shiny swallows it and closes the socket with code 1008, so the demo disconnected
+  right after loading, with no server traceback. Shiny itself still declares only
+  `uvicorn>=0.23`, so existing environments kept the broken version.
+- **CDN: deck.gl 9.4.0 → 9.4.1, MapLibre GL JS (served) 6.11.2 → 6.18.0.** Note
+  that deck.gl 9.4.1 draws `cartesian` z taller below zoom 12 in `MapView`
+  (visgl/deck.gl#10790), so `terrain_layer()` / extruded `mvt_layer()` heights
+  look larger at low zoom.
+
+### Fixed
+
+- **Shiny version detection read stale package metadata.** A pip-then-conda Shiny
+  upgrade can leave an orphaned `shiny-1.6.0.dist-info` beside the real 1.9.0 one;
+  `importlib.metadata` then reported 1.6.0 and `enable_bookmarking()` refused to run
+  ("requires shiny >= 1.6.4"). The version now comes from the imported
+  `shiny.__version__`, with metadata only as a fallback.
+
+### Documentation
+
+- Fixed the stale deck.gl / MapLibre versions in the conda recipe description and
+  `.github/copilot-instructions.md`, and the broken "no UMD" wording in the README.
+
+---
 ## [1.14.0] — 2026-11-03
 
 Shiny for Python 1.9 (`docs/2026-11-02-shiny-1.9-improvements.md`). Runtime floor

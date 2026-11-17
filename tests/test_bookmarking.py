@@ -137,6 +137,20 @@ def test_old_shiny_is_refused(monkeypatch):
         MapWidget("m").enable_bookmarking(_BookmarkSession())
 
 
+def test_version_comes_from_the_imported_shiny_not_stale_metadata(monkeypatch):
+    # A pip-then-conda upgrade can leave an orphaned shiny-1.6.0.dist-info
+    # next to the real 1.9.0 one; importlib.metadata then reports 1.6.0 and
+    # bookmarking was refused on a Shiny that supports it.
+    import importlib.metadata
+    import shiny
+    import shiny_deckgl.map_widget as mw
+    from shiny_deckgl._version import shiny_version
+    monkeypatch.setattr(importlib.metadata, "version", lambda name: "1.6.0")
+    monkeypatch.setattr(shiny, "__version__", "1.9.0")
+    assert mw._shiny_version() == (1, 9, 0)
+    assert shiny_version() == "1.9.0"
+
+
 def test_session_without_bookmark_support_is_refused():
     from shiny_deckgl import MapWidget
     with pytest.raises(RuntimeError, match="bookmark"):

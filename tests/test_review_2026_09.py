@@ -1194,6 +1194,32 @@ class TestPackagingMetadataIsConsistent:
         for pin in pins:
             assert pin == floor, f"conda recipe pins {pin!r}, expected {floor!r}"
 
+    # The demo uses @render.download_button (_app_server.py), added in
+    # shiny 1.7.0; the floor used to say 1.6.3, where the demo crashed.
+    MIN_SHINY = "1.7.0"
+
+    def test_shiny_floor_is_consistent_and_covers_used_apis(self):
+        root = Path(__file__).resolve().parents[1]
+        deps = self._pyproject()["project"]["dependencies"]
+        assert f"shiny>={self.MIN_SHINY}" in deps, deps
+        recipe = (root / "conda.recipe" / "meta.yaml").read_text(encoding="utf-8")
+        assert f"- shiny >={self.MIN_SHINY}" in recipe
+        readme = (root / "README.md").read_text(encoding="utf-8")
+        assert f"**Shiny ≥ {self.MIN_SHINY}**" in readme
+        ci = (root / ".github" / "workflows" / "python-package.yml").read_text(
+            encoding="utf-8"
+        )
+        assert f'shiny: "{self.MIN_SHINY}"' in ci, "no CI job pinned to the floor"
+
+    def test_uvicorn_floor_avoids_the_legacy_websockets_backend(self):
+        # uvicorn < 0.50 + Shiny 1.9: concurrent sends trip an assertion in
+        # websockets.legacy's drain() and Shiny closes the socket with 1008.
+        root = Path(__file__).resolve().parents[1]
+        deps = self._pyproject()["project"]["dependencies"]
+        assert any(d.replace(" ", "").startswith("uvicorn>=0.50") for d in deps), deps
+        recipe = (root / "conda.recipe" / "meta.yaml").read_text(encoding="utf-8")
+        assert "- uvicorn >=0.50" in recipe
+
     def test_cdn_versions_are_exact_pins(self):
         """CDN assets must stay exactly pinned for deterministic builds."""
         import re

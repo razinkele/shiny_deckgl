@@ -22,8 +22,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    "shiny>=1.6.3",
+    "shiny>=1.7.0",      # render.download_button (demo export)
     "htmltools",
+    # Shiny 1.9 sends on one websocket from several tasks; uvicorn < 0.50
+    # defaults to the websockets.legacy backend, whose drain() asserts on
+    # concurrent sends, and Shiny then closes the socket (1008). Shiny itself
+    # still only asks for uvicorn>=0.23.
+    "uvicorn>=0.50; platform_system != \"Emscripten\"",
 ]
 
 [project.optional-dependencies]

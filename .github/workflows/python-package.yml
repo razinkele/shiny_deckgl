@@ -15,10 +15,13 @@ jobs:
         shiny: ["latest"]
         # Shiny 1.9 changed the session loop: MapWidget.rpc() is allowed
         # inside effects there and refused before. Keep the pre-1.9 side
-        # of that gate (and the >=1.6.3 floor's behaviour) tested too.
+        # of that gate tested too, and the declared runtime floor
+        # (pyproject `shiny>=1.7.0`) so the floor can't silently rot.
         include:
           - python-version: "3.12"
             shiny: "1.8.0"
+          - python-version: "3.11"
+            shiny: "1.7.0"
     name: unit (py${{ matrix.python-version }}, shiny ${{ matrix.shiny }})
     steps:
       - uses: actions/checkout@v4

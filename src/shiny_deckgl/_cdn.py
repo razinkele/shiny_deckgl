@@ -1,14 +1,14 @@
 """CDN URL constants — single source of truth for all external assets."""
 
-DECKGL_VERSION = "9.4.0"
-MAPLIBRE_VERSION = "6.11.2"
+DECKGL_VERSION = "9.4.1"
+MAPLIBRE_VERSION = "6.18.0"
 # Standalone to_html() exports are opened straight from disk (file://), where
 # MapLibre 6 cannot run: it spawns its tile worker as a *module* worker from a
 # blob URL, and a module worker on an opaque (null) origin fails to resolve its
 # own imports and dies silently -- the basemap never loads. MapLibre 5 used a
 # classic worker, which blob:null permits, so exports stay on the last v5
 # release. Served pages (Shiny) are unaffected and use MAPLIBRE_VERSION above.
-MAPLIBRE_EXPORT_VERSION = "5.24.0"
+MAPLIBRE_EXPORT_VERSION = "5.24.1"
 MAPBOX_DRAW_VERSION = "1.5.1"
 MAPLIBRE_LEGEND_VERSION = "2.0.7"
 MAPLIBRE_OPACITY_VERSION = "1.8.0"

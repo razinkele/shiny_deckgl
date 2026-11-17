@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Version 1.10.0** — A Shiny for Python bridge to deck.gl (v9.4.0) and MapLibre GL JS (v6.7.0; standalone exports use v5.24.0).
+> **Current stack** — A Shiny for Python bridge to deck.gl (v9.4.1) and MapLibre GL JS (v6.18.0; standalone exports use v5.24.1).
 
 ```python
 import shiny_deckgl as sdgl
@@ -191,7 +191,7 @@ import shiny_deckgl as sdgl
 shiny_deckgl.head_includes() -> HTMLDependency
 ```
 
-Returns an `HTMLDependency` that injects deck.gl v9.4.0, MapLibre GL JS v6.7.0 (loaded as an ES module), MapboxDraw v1.5.1, and local shiny\_deckgl assets into the page `<head>`.
+Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.1, and local shiny\_deckgl assets into the page `<head>`.
 
 Place as a **direct child** of any `ui.page_*()` layout:
 

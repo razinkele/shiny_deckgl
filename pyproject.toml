@@ -22,7 +22,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    "shiny>=1.6.3",
+    "shiny>=1.7.0",      # render.download_button (demo export)
     "htmltools",
 ]
 

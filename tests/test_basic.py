@@ -211,7 +211,7 @@ def test_app_returns_shiny_app():
 def test_head_includes_contains_cdn_urls():
     html = str(head_includes())
     from shiny_deckgl._cdn import MAPLIBRE_VERSION
-    assert "deck.gl@9.4.0" in html
+    assert "deck.gl@9.4.1" in html
     assert f"maplibre-gl@{MAPLIBRE_VERSION}" in html
 
 
@@ -611,8 +611,8 @@ class TestToHtml:
         html = w.to_html(layers)
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
-        assert "deck.gl@9.4.0" in html
-        assert "maplibre-gl@5.24.0" in html  # exports use the UMD build
+        assert "deck.gl@9.4.1" in html
+        assert "maplibre-gl@5.24.1" in html  # exports use the UMD build
 
     def test_contains_layer_data(self):
         w = MapWidget("t")
@@ -1031,7 +1031,7 @@ class TestMapLibreVersion:
         html = w.to_html([])
         # Exports stay on the UMD v5 build: MapLibre 6's module worker cannot
         # start from a file:// page. See tests/test_maplibre_v6.py.
-        assert "maplibre-gl@5.24.0" in html
+        assert "maplibre-gl@5.24.1" in html
         assert "maplibre-gl@3.6" not in html
 
 

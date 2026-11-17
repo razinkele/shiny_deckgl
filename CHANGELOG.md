@@ -5,6 +5,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+### Documentation
+
+- README: feature sections for 1.14.0–1.15.2, the `uvicorn>=0.50` requirement, and
+  `tools/demo_sweep.py` in the structure table and testing notes.
+- API reference: `PostProcessShader` documented (loadable vs unavailable members), the
+  `LightType` values corrected (they are `"ambient"`, `"point"`, ..., not
+  `"AmbientLight"`), effects/views/widgets persistence (`None` keeps, `[]` clears), a
+  dark-mode example that re-adds native layers, and the on-demand `@luma.gl/effects`
+  note in `head_includes()`.
+
+---
 ## [1.15.2] — 2026-11-17
 
 Bugs found by an exploratory browser sweep of the demo (every tab and control).
@@ -43,6 +56,13 @@ Bugs found by an exploratory browser sweep of the demo (every tab and control).
   dark-mode switch swaps the basemap on the client, which removes native sources and
   layers; the demo re-added them after its basemap dropdown but not after a dark-mode
   swap, so the MPA polygons and port circles stayed gone in light mode too.
+
+### Added
+
+- `tools/demo_sweep.py` (with `tools/demo_serve.py`): the exploratory sweep that found
+  these bugs. It drives every tab and control of the demo in Chromium and records
+  console and page errors, failed requests, server tracebacks (including the websocket
+  send failures Shiny swallows), disconnects, output errors and blank maps per action.
 
 ---
 ## [1.15.1] — 2026-11-17

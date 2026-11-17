@@ -48,3 +48,36 @@ def test_brightness_effect_loads_and_brightens():
             bright = _centre_grey(pg)
             assert bright > plain + 60, (plain, bright)
             assert not any("not available" in t for t in pg.console_log), pg.console_log
+
+
+OVERTAKE_PORT = 18787
+
+OVERTAKE_STATE = """() => { const i = window.__deckgl_instances.omap;
+  const d = i && i.overlay && (i.overlay._deck || i.overlay.deck);
+  return d && d.props.layers.length ? {
+    layers: d.props.layers.filter(Boolean).map(l => l.id),
+    effects: (d.props.effects || []).length,
+  } : null; }"""
+
+
+def test_an_overtaken_update_keeps_its_effects():
+    """A newer layers-only update must not drop the effects of the one it overtook.
+
+    The first update waits for its effect module; the second one, sent at once,
+    claims a newer generation, so the first is dropped as stale when it resumes.
+    Its effects used to go with it although the second update (effects omitted)
+    keeps effects.
+    """
+    with running_app("postprocess_overtake_app", OVERTAKE_PORT):
+        with browser_page(f"http://127.0.0.1:{OVERTAKE_PORT}/", "#omap") as pg:
+            pg.wait_for_function(OVERTAKE_STATE, timeout=30000)   # map is up
+            pg.click("#go")
+            pg.wait_for_function(
+                OVERTAKE_STATE.replace("return d &&", "return d && d.props.layers.some("
+                                       "l => l && l.id === 'second') &&"), timeout=30000)
+            pg.wait_for_function(
+                "() => window.lumaEffects && window.lumaEffects.vignette", timeout=30000)
+            pg.wait_for_timeout(2500)
+            state = pg.evaluate(OVERTAKE_STATE)
+            assert state["layers"] == ["second"]
+            assert state["effects"] == 1, state

@@ -25,6 +25,11 @@ Bugs found by an exploratory browser sweep of the demo (every tab and control).
   widget draws its divider without splitting the map (documented).
 - **One bad widget no longer fails a map's update.** A widget whose constructor throws is
   skipped with a console error; layers and the other widgets still apply.
+- **An overtaken update no longer loses its effects, views or widgets.** When a newer
+  update arrived while an older one was still waiting (icon atlases, or now a first-use
+  effect module), the older render was dropped as stale, and with it any deck-level
+  props the newer update had left out (`None` keeps them). They are now remembered on
+  arrival and applied by whichever render runs.
 - **`post_process_effect()` did nothing.** deck.gl's bundle has no `@luma.gl/effects`
   modules, so every post-process effect was skipped ("shader module not available"),
   including the demo's Brightness/Contrast switch. The client now `import()`s the

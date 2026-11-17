@@ -386,16 +386,13 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
 
     # The navbar's dark-mode switch swaps this map's basemap on the client
     # (dark_style=), which also removes the native layers; the map reports
-    # each swap through its dark-mode input.
-    ml_reported_style = {"style": maplibre_widget.style}
-
+    # each swap through its dark-mode input. Restore on every report: the
+    # server cannot know which style the client started on (a page may load
+    # dark), and re-adding a source/layer that is still there replaces it.
     @reactive.Effect
     @reactive.event(input[maplibre_widget.dark_mode_input_id])
     async def _ml_after_dark_mode():
-        style = input[maplibre_widget.dark_mode_input_id]().get("style")
-        if style and style != ml_reported_style["style"]:
-            ml_reported_style["style"] = style
-            await _ml_restore_native()
+        await _ml_restore_native()
 
     # Drag marker (MapLibre tab)
     @reactive.Effect

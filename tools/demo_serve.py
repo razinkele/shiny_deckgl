@@ -9,13 +9,13 @@ import traceback
 import shiny._connection as c
 import uvicorn
 
-_orig = c.StarletteConnection.send
-
-
 async def send(self, message):
+    # Same contract as Shiny's StarletteConnection.send(), plus a log line.
+    if self._is_closed():
+        return
     try:
         await self.conn.send_text(message)
-    except BaseException as e:
+    except Exception as e:  # not BaseException: let cancellation propagate
         print(f"SEND FAILED len={len(message)} {e!r}\n{traceback.format_exc()}", flush=True)
         if not self._is_closed():
             await self.close(1008, "Send failure")

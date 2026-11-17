@@ -2881,19 +2881,21 @@ if (typeof Shiny === 'undefined') {{
       cloneLayersData(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
-    var apply = function() {{
+    // Capture style readiness now: style.load can fire while the effect
+    // modules load, and isStyleLoaded() is false again while tiles load, so
+    // checking only afterwards could wait for a style.load that never comes.
+    var styleReady = new Promise(function(resolve) {{
+      if (inst.map.isStyleLoaded()) resolve();
+      else inst.map.once('style.load', resolve);
+    }});
+    // PostProcessEffect shader modules load on demand; a failed load still
+    // lets the layers apply (buildEffects then skips that effect).
+    var effectsReady = window.__deckgl_preloadEffects(effectsData).catch(function() {{}});
+    Promise.all([styleReady, effectsReady]).then(function() {{
       var effects = buildEffects(effectsData);
       if (effects) overlayProps.effects = effects;
-      if (inst.map.isStyleLoaded()) {{
-        inst.overlay.setProps(overlayProps);
-      }} else {{
-        inst.map.once('style.load', function() {{
-          inst.overlay.setProps(overlayProps);
-        }});
-      }}
-    }};
-    // PostProcessEffect shader modules load on demand.
-    window.__deckgl_preloadEffects(effectsData).then(apply, apply);
+      inst.overlay.setProps(overlayProps);
+    }});
   }});
   }}).catch(function (err) {{
     document.body.insertAdjacentHTML('afterbegin',

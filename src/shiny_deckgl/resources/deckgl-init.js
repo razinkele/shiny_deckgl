@@ -1940,12 +1940,12 @@
           ' (no such class in this deck.gl build)');
         return null;
       }
-      // SplitterWidget (deck.gl 9.4) takes View instances in viewLayout.views.
-      if (props.viewLayout) props.viewLayout = buildViewLayout(props.viewLayout);
       // One widget whose props this deck.gl rejects must not take the whole
       // update down with it (a constructor throw used to fail deck_update, so
       // the map lost its layers too): drop just that widget.
       try {
+        // SplitterWidget (deck.gl 9.4) takes View instances in viewLayout.views.
+        if (props.viewLayout) props.viewLayout = buildViewLayout(props.viewLayout);
         return attachWidgetEvents(new Cls(props), className, targetId);
       } catch (err) {
         console.error('[shiny_deckgl] Widget ' + className + ' failed to build and was skipped:', err);
@@ -2883,8 +2883,17 @@
       }
     }
 
+    // Deck-level props (effects, views, widgets, ...) are remembered on
+    // arrival, not after the wait. If a newer update arrives meanwhile, this
+    // render is dropped as stale and the newer one applies whatever it did
+    // not set itself -- an update that omits effects keeps them, so it must
+    // not lose the effects of the update it overtook (whose first-use effect
+    // module may still have been loading).
+    rememberDeckSpecs(instance, payload);
+    var deckSpecs = instance.lastDeckSpecs;
+
     // PostProcessEffect shader modules load on demand, in the same wait.
-    svgAtlasPreloads.push(preloadPostProcessModules(payload.effects));
+    svgAtlasPreloads.push(preloadPostProcessModules(deckSpecs.effects));
 
     // Wait for all SVG atlases to rasterise (instant if cache hit or none).
     var updateGen = claimUpdateGeneration(instance);
@@ -2899,25 +2908,40 @@
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
     const overlayProps = { layers: renderLayers(instance, targetId) };
-    rememberDeckSpecs(instance, payload);
+
+    // Apply each remembered deck-level spec not applied yet: this update's,
+    // or a stale overtaken update's that this one did not override.
+    var applied = instance._appliedDeckSpecs || (instance._appliedDeckSpecs = {});
+    var pending = function (k) {
+      return deckSpecs[k] !== undefined && applied[k] !== deckSpecs[k];
+    };
 
     // Effects (lighting, post-processing)
-    const effects = buildEffects(payload.effects);
-    if (effects) overlayProps.effects = effects;
+    if (pending('effects')) {
+      const effects = buildEffects(deckSpecs.effects);
+      if (effects) overlayProps.effects = effects;
+      applied.effects = deckSpecs.effects;
+    }
 
     // Views (MapView, OrthographicView, FirstPersonView)
-    const views = buildViews(payload.views);
-    if (views !== undefined) overlayProps.views = views;
+    if (pending('views')) {
+      const views = buildViews(deckSpecs.views);
+      if (views !== undefined) overlayProps.views = views;
+      applied.views = deckSpecs.views;
+    }
 
     // Deck-level props (v0.7.0)
-    if (payload.pickingRadius !== undefined) overlayProps.pickingRadius = payload.pickingRadius;
-    if (payload.useDevicePixels !== undefined) overlayProps.useDevicePixels = payload.useDevicePixels;
-    if (payload._animate !== undefined) overlayProps._animate = payload._animate;
+    ['pickingRadius', 'useDevicePixels', '_animate'].forEach(function (k) {
+      if (pending(k)) { overlayProps[k] = deckSpecs[k]; applied[k] = deckSpecs[k]; }
+    });
 
     // Widgets (v0.8.0)
-    dropImplicitNavigation(mapInstances[targetId], payload.widgets);
-    const widgets = buildWidgets(payload.widgets, targetId);
-    if (widgets) overlayProps.widgets = widgets;
+    if (pending('widgets')) {
+      dropImplicitNavigation(mapInstances[targetId], deckSpecs.widgets);
+      const widgets = buildWidgets(deckSpecs.widgets, targetId);
+      if (widgets) overlayProps.widgets = widgets;
+      applied.widgets = deckSpecs.widgets;
+    }
 
     overlay.setProps(overlayProps);
     map.triggerRepaint();
@@ -3048,6 +3072,10 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
     rememberDeckSpecs(instance, { widgets: payload.widgets });
+    if (instance.lastDeckSpecs) {
+      (instance._appliedDeckSpecs || (instance._appliedDeckSpecs = {})).widgets =
+        instance.lastDeckSpecs.widgets;
+    }
     dropImplicitNavigation(instance, payload.widgets);
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {

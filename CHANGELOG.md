@@ -5,9 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
-## [Unreleased]
+## [1.15.0] — 2026-11-17
 
-Upstream status review (`docs/2026-11-17-upstream-review.md`), P1 items.
+Upstream status review (`docs/2026-11-17-upstream-review.md`), P1 items. Security
+fix for standalone exports; runtime floors raised to `shiny>=1.7.0` and
+`uvicorn>=0.50`. Unit and browser suites pass on Shiny 1.7.0 and 1.9.0.
 
 ### Security
 

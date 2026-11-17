@@ -3,7 +3,7 @@
 ## Shiny for Python → deck.gl bridge (Java-free)
 
 A lightweight library for integrating [deck.gl](https://deck.gl/) (v9.4.1) and
-[MapLibre GL JS](https://maplibre.org/) (v6.18.0) into
+[MapLibre GL JS](https://maplibre.org/) (v6.19.0) into
 [Shiny for Python](https://shiny.posit.co/py/) applications.
 Built for marine science and GIS visualisation — WMS layers, EMODnet,
 HELCOM, food web modelling — the package handles CDN asset injection, layer
@@ -36,7 +36,7 @@ browser, all without Java dependencies.
 | **HTML export** | `widget.to_html(layers, path="map.html")` — standalone HTML file viewable in any browser. |
 | **JSON spec** | `to_json()` / `from_json()` for serialising and restoring map configurations. |
 | **`@@` accessor convention** | Python strings like `"@@d"` or `"@@d.position"` are resolved to JS arrow functions on the client. |
-| **CDN-pinned assets** | deck.gl 9.4.1, MapLibre GL 6.18.0 — deterministic builds. Standalone `to_html()` exports pin MapLibre 5.24.1 (see below). |
+| **CDN-pinned assets** | deck.gl 9.4.1, MapLibre GL 6.19.0 (served pages and standalone `to_html()` exports alike) — deterministic builds. |
 | **Conda recipe** | Bundled `conda.recipe/meta.yaml` for micromamba / conda-build. |
 
 ### Phase 1 — Controls & Navigation (v0.2)
@@ -393,26 +393,20 @@ Found by driving every tab and control of the demo in a browser (`tools/demo_swe
 
 ## Environment & Prerequisites
 
-### MapLibre versions: 6.18.0 served, 5.24.1 exported
+### MapLibre version: 6.19.0 (served pages and exports)
 
-Shiny apps load **MapLibre GL JS 6.18.0**. v6 is ESM-only — it ships no
-UMD/IIFE build — so it is loaded with a dynamic `import()` rather than a
-`<script src>` tag. The module URL is published in an inert
-`<script type="application/json" id="shiny-deckgl-cdn">` block, which a strict
-`script-src` Content-Security-Policy allows without `'unsafe-inline'`.
+Shiny apps and standalone `to_html()` exports both load **MapLibre GL JS 6.19.0**.
+v6 is ESM-only — it ships no UMD/IIFE build — so it is loaded with a dynamic
+`import()` rather than a `<script src>` tag. The module URL is published in an
+inert `<script type="application/json" id="shiny-deckgl-cdn">` block, which a
+strict `script-src` Content-Security-Policy allows without `'unsafe-inline'`.
 
-Standalone `to_html()` exports deliberately stay on **MapLibre 5.24.1**.
-MapLibre 6 starts its tile worker as a *module* worker created from a blob URL;
-on a `file://` page the origin is opaque, so that worker cannot resolve its own
-imports and dies without raising a map error. The deck.gl layers still draw but
-the basemap never loads — a silent failure. MapLibre 5's classic worker has no
-such restriction, so exports opened by double-click keep working.
-
-If you serve an export over HTTP rather than opening it from disk, v6 works
-there too; the pin is in `shiny_deckgl._cdn.MAPLIBRE_EXPORT_VERSION`.
-
-The v5 line now only receives security fixes: 5.24.1 patches the
-`DOM.sanitize()` XSS bypass (GHSA-jrc7-96c5-q579) present in 5.24.0.
+Until 1.15.3, exports stayed on MapLibre 5: before 6.17, MapLibre 6 started its
+tile worker as a *module* worker from a blob URL, which cannot resolve its imports
+on a `file://` page, so an export opened by double-click drew its deck.gl layers but
+never loaded the basemap. MapLibre 6.17 starts a classic worker instead; exports
+opened from disk load their basemap in Chromium and Firefox, and a browser test
+guards it. The pin is `shiny_deckgl._cdn.MAPLIBRE_VERSION`.
 
 - **Python ≥ 3.11** and **Shiny ≥ 1.7.0** are required. (Python 3.10 was dropped
   after 1.15.3: Shiny's next release drops it too, and CI never tested it.)

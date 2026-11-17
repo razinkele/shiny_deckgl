@@ -735,6 +735,11 @@ Change the entire basemap style dynamically.
 
 > **Warning:** With `diff=False` (default), this destroys all native sources and layers.  Re-add them after the style loads.  Use `diff=True` to preserve them.
 
+The new style is also the one a dark-mode switch returns to: while the map is dark (and has a
+`dark_style`) it replaces the dark style, otherwise the light one. Up to 1.15.2, leaving dark
+mode restored the style the map was constructed with, undoing `set_style()`, even on maps without
+a `dark_style`.
+
 ```python
 await widget.set_style(session, CARTO_DARK)
 

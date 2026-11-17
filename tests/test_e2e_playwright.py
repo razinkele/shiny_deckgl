@@ -403,3 +403,47 @@ class TestDarkModeKeepsNativeLayers:
         self._wait_for_ours(page)
         page.wait_for_timeout(2000)   # a late style diff would remove them again
         assert page.evaluate(self.OURS) == 3
+
+
+class TestBasemapDropdownFollowsDarkMode:
+    """The MapLibre tab's basemap dropdown went out of sync with dark mode.
+
+    Choosing Voyager, then dark and back to light, showed Positron (the
+    client restored the constructed style) while the dropdown said Voyager;
+    in dark mode the dropdown kept its old value too.
+
+    Last in the module and restores the basemap: it changes the shared page.
+    """
+
+    STYLE = "() => window.__deckgl_instances.maplibre_map.currentStyle"
+
+    @staticmethod
+    def _choose(page: Page, label: str) -> None:
+        # The select sits in a collapsed accordion panel: set it as a user's
+        # change arrives (value + change event), without opening the panel.
+        page.evaluate("v => $('#ml_basemap').val(v).trigger('change')", label)
+
+    def test_dropdown_and_map_agree_through_a_dark_round_trip(self, page: Page):
+        page.get_by_role("tab", name="MapLibre Controls").click()
+        page.wait_for_function(
+            "() => { const i = window.__deckgl_instances.maplibre_map;"
+            " return !!(i && i.map && i.map.getLayer('mpa-fill')); }", timeout=30000)
+        toggle = page.locator("bslib-input-dark-mode")
+        try:
+            self._choose(page, "Voyager")
+            page.wait_for_function("() => /voyager/.test(window.__deckgl_instances"
+                                   ".maplibre_map.currentStyle)", timeout=10000)
+            toggle.click()
+            page.wait_for_function("() => document.getElementById('ml_basemap').value"
+                                   " === 'Dark Matter'", timeout=15000)
+            assert "dark-matter" in page.evaluate(self.STYLE)
+            toggle.click()
+            page.wait_for_function("() => document.getElementById('ml_basemap').value"
+                                   " === 'Voyager'", timeout=15000)
+            page.wait_for_timeout(1500)   # a stray re-apply would change it again
+            assert "voyager" in page.evaluate(self.STYLE)
+            assert page.evaluate("() => document.getElementById('ml_basemap').value") == "Voyager"
+        finally:
+            if page.evaluate("() => document.documentElement.getAttribute('data-bs-theme')") == "dark":
+                toggle.click()
+            self._choose(page, "Positron (light)")

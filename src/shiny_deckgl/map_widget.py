@@ -1180,9 +1180,14 @@ class MapWidget:
                 await widget.set_dark_mode(session, input.mode() == "dark")
         """
         dark = bool(dark)
+        self._remember(session, "_dark", dark)
         if self.dark_style:
+            # Back to the style this session chose with set_style(), not the
+            # constructed one.
+            style = (self._session_value(session, "_dark_choice", self.dark_style) if dark
+                     else self._session_value(session, "_light_choice", self.style))
             try:
-                self._session_styles[session] = self.dark_style if dark else self.style
+                self._session_styles[session] = style
             except TypeError:
                 pass
         await session.send_custom_message("deck_set_dark_mode", {
@@ -1380,6 +1385,11 @@ class MapWidget:
             # Session object is not weak-referenceable; fall back to the
             # shared default rather than losing the change entirely.
             self.style = style
+        # The style a later set_dark_mode() switches back to (the client does
+        # the same): the dark one while this session is dark, else the light one.
+        dark = bool(self._session_value(session, "_dark", False))
+        self._remember(session, "_dark_choice" if dark and self.dark_style else "_light_choice",
+                       style)
         await session.send_custom_message("deck_set_style", {
             "id": self.id,
             "style": style,
@@ -1423,6 +1433,17 @@ class MapWidget:
             # Session object is not weak-referenceable; fall back to the
             # shared attribute rather than losing the change entirely.
             setattr(self, name, value)
+
+    def _session_value(self, session: "Session | None", name: str, default: Any) -> Any:
+        """A run-time value *session* recorded with :meth:`_remember`, else *default*."""
+        if session is not None:
+            try:
+                state = self._session_state.get(session)
+            except TypeError:
+                state = None
+            if state is not None and name in state:
+                return state[name]
+        return default
 
     def _recall(self, session: "Session | None", name: str) -> Any:
         """A setting as *session* last set it, else the constructed value."""

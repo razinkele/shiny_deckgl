@@ -7,6 +7,13 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 ---
 ## [Unreleased]
 
+### Added
+
+- **Demo: the 12 tab sidebars are ARIA landmarks on Shiny ≥ 1.9** (`role="complementary"`,
+  rendered as `<aside>`, named "<tab> settings"), so screen readers can jump between a
+  tab's settings and its map. Feature-detected: on older Shiny, which has no `role`,
+  the sidebars build as before.
+
 ### Changed
 
 - **Python 3.11 or newer is required** *(breaking)*; 3.10 is dropped. py-shiny's next

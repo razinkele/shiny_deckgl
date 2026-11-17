@@ -9,6 +9,11 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Python 3.11 or newer is required** *(breaking)*; 3.10 is dropped. py-shiny's next
+  release drops 3.10, and CI never tested it (it runs 3.11–3.13). `requires-python`,
+  the conda recipe and the ruff/mypy targets move to 3.11; `rpc()` now catches the
+  builtin `TimeoutError` (which `asyncio.TimeoutError` aliases on 3.11+).
+
 - **Module namespacing uses Shiny's public `shiny.module.resolve_id`.** It came from
   the private `shiny._namespaces` with a silent fallback to the bare ID, so if that
   private module ever moved, every map inside a Shiny module would have lost its

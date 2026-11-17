@@ -7,7 +7,7 @@ name = "shiny_deckgl"
 dynamic = ["version"]
 description = "Shiny for Python -> deck.gl bridge (no Java), with packaged assets and conda recipe"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "Arturas Baziukas", email = "arturas.baziukas@ku.lt" }]
 keywords = ["shiny", "deck.gl", "maplibre", "webgl", "visualization"]
@@ -96,7 +96,7 @@ where = ["src"]
 shiny_deckgl = ["resources/*.js", "resources/*.css", "data/*.geojson", "py.typed"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -105,4 +105,4 @@ disallow_untyped_defs = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"

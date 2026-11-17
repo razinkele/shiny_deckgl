@@ -414,8 +414,8 @@ there too; the pin is in `shiny_deckgl._cdn.MAPLIBRE_EXPORT_VERSION`.
 The v5 line now only receives security fixes: 5.24.1 patches the
 `DOM.sanitize()` XSS bypass (GHSA-jrc7-96c5-q579) present in 5.24.0.
 
-- **Python ≥ 3.10** and **Shiny ≥ 1.7.0** are required.
-  (Shiny 1.6.2 and later require Python 3.10.)
+- **Python ≥ 3.11** and **Shiny ≥ 1.7.0** are required. (Python 3.10 was dropped
+  after 1.15.3: Shiny's next release drops it too, and CI never tested it.)
 - **uvicorn ≥ 0.50** is required (installed automatically). With Shiny 1.9, older
   uvicorn's default websocket backend fails on concurrent sends and Shiny closes the
   connection right after the page loads; Shiny itself only asks for `uvicorn>=0.23`, so

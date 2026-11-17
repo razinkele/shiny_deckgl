@@ -5,6 +5,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+### Fixed
+
+- **`path_style_extension()` caught up with deck.gl 9.4.** `getOffset` had no effect:
+  deck.gl only honours it when the extension is built with `offset: true`, which the
+  helper never sent. New keyword arguments `offset=` and `dash_mode=` (`"segment"` /
+  `"path"`). `high_precision=True` sent `highPrecisionDash`, which deck.gl 9.4
+  deprecated; it now maps to `dash_mode="path"` with a `DeprecationWarning`. The
+  docstring's `dashMode` / `dashUnits` values were wrong and are corrected. A browser
+  test checks the offset and both dash modes in the pinned deck.gl.
+
+### Documentation
+
+- User manual: map calls that depend on each other (a source and the layer that uses
+  it) belong in one effect, since Shiny 1.9 runs effects concurrently.
+
+---
 ## [1.15.0] — 2026-11-17
 
 Upstream status review (`docs/2026-11-17-upstream-review.md`), P1 items. Security

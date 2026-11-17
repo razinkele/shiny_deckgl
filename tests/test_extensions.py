@@ -122,26 +122,46 @@ class TestExtensionParameters:
         assert ext[1]["pattern"] is False
 
     def test_path_style_extension_defaults(self):
-        """path_style_extension should default to dash=False, high_precision=False."""
+        """Defaults: no dash, no offset, deck.gl's default dash mode."""
         ext = path_style_extension()
-        assert ext[1]["dash"] is False
-        assert ext[1]["highPrecisionDash"] is False
+        assert ext[1] == {"dash": False, "offset": False}
 
     def test_path_style_extension_dash_enabled(self):
         """path_style_extension should accept dash=True."""
         ext = path_style_extension(dash=True)
         assert ext[1]["dash"] is True
 
-    def test_path_style_extension_high_precision(self):
-        """path_style_extension should accept high_precision=True."""
-        ext = path_style_extension(high_precision=True)
-        assert ext[1]["highPrecisionDash"] is True
+    def test_path_style_extension_never_sends_deprecated_option(self):
+        """deck.gl 9.4 deprecated highPrecisionDash in favour of dashMode."""
+        with pytest.warns(DeprecationWarning):
+            ext = path_style_extension(high_precision=True)
+        assert "highPrecisionDash" not in ext[1]
+        assert ext[1]["dashMode"] == "path"
+        assert ext[1]["dash"] is True
+
+    def test_path_style_extension_offset_enables_get_offset(self):
+        """getOffset only works when the extension is built with offset=True."""
+        ext = path_style_extension(offset=True)
+        assert ext[1]["offset"] is True
+
+    @pytest.mark.parametrize("mode", ["segment", "path"])
+    def test_path_style_extension_dash_mode(self, mode):
+        """dash_mode maps to the dashMode constructor option and enables dash."""
+        ext = path_style_extension(dash_mode=mode)
+        assert ext[1] == {"dash": True, "offset": False, "dashMode": mode}
+
+    def test_path_style_extension_rejects_unknown_dash_mode(self):
+        with pytest.raises(ValueError, match="dash_mode"):
+            path_style_extension(dash_mode="continuous")
+
+    def test_path_style_extension_high_precision_conflicts_with_segment(self):
+        with pytest.raises(ValueError, match="high_precision"):
+            path_style_extension(high_precision=True, dash_mode="segment")
 
     def test_path_style_extension_all_options(self):
         """path_style_extension should accept all options together."""
-        ext = path_style_extension(dash=True, high_precision=True)
-        assert ext[1]["dash"] is True
-        assert ext[1]["highPrecisionDash"] is True
+        ext = path_style_extension(dash=True, offset=True, dash_mode="path")
+        assert ext[1] == {"dash": True, "offset": True, "dashMode": "path"}
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ All helpers return either a **string** (no-arg extension) or a
 
 from __future__ import annotations
 
+import warnings
 from typing import Union
 
 #: Type returned by all extension helpers — either a bare class-name
@@ -151,7 +152,16 @@ def fill_style_extension(pattern: bool = True) -> Extension:
     return ["FillStyleExtension", {"pattern": pattern}]
 
 
-def path_style_extension(dash: bool = False, high_precision: bool = False) -> Extension:
+_DASH_MODES = ("segment", "path")
+
+
+def path_style_extension(
+    dash: bool = False,
+    high_precision: bool = False,
+    *,
+    offset: bool = False,
+    dash_mode: str | None = None,
+) -> Extension:
     """``PathStyleExtension`` — dashed/offset path rendering.
 
     Parameters
@@ -159,19 +169,48 @@ def path_style_extension(dash: bool = False, high_precision: bool = False) -> Ex
     dash
         Enable dash patterns.
     high_precision
-        Use high-precision dash rendering (slower but pixel-perfect).
-
-    deck.gl 9.4 adds ``dashMode`` (``"restart"`` per segment or
-    ``"continuous"``) and ``dashUnits`` (``"strokeWidth"``, ``"pixels"``,
-    ``"meters"``, ``"common"``), passed as layer props.
+        **Deprecated** (deck.gl 9.4 deprecated ``highPrecisionDash``); use
+        ``dash_mode="path"``, which this maps to.
+    offset
+        Enable the ``getOffset`` layer prop. Without it deck.gl ignores
+        ``getOffset``.
+    dash_mode
+        Where the dash pattern starts over (deck.gl >= 9.4): ``"segment"``
+        restarts it at every vertex (deck.gl's default), ``"path"`` runs it
+        continuously along the whole path, like MapLibre and SVG. Prefer
+        ``"path"`` for dense data such as GPS tracks, where short segments
+        otherwise draw solid. Setting it also enables ``dash``.
 
     Layer props enabled:
 
-    * ``getDashArray`` — ``[dashLength, gapLength]`` accessor
-    * ``dashJustified`` — align dashes to path start/end
-    * ``getOffset`` — lateral offset accessor
+    * ``getDashArray`` — ``[dashSize, gapSize]`` accessor, in ``dashUnits``
+    * ``dashUnits`` — ``"widths"`` (default; multiples of *half* the stroke
+      width), ``"pixels"``, ``"meters"`` or ``"common"``
+    * ``dashJustified`` — fit the pattern so it starts and ends on half a dash
+    * ``dashGapPickable`` — make the gaps between dashes pickable
+    * ``getOffset`` — sideways shift in stroke widths (needs ``offset=True``)
     """
-    return ["PathStyleExtension", {"dash": dash, "highPrecisionDash": high_precision}]
+    if dash_mode is not None and dash_mode not in _DASH_MODES:
+        raise ValueError(
+            f"dash_mode must be one of {_DASH_MODES}, got {dash_mode!r}"
+        )
+    if high_precision:
+        if dash_mode == "segment":
+            raise ValueError(
+                "high_precision=True means dash_mode='path'; "
+                "it cannot be combined with dash_mode='segment'"
+            )
+        warnings.warn(
+            "path_style_extension(high_precision=True) is deprecated "
+            "(deck.gl 9.4 deprecated highPrecisionDash); use dash_mode='path'",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dash_mode = "path"
+    opts: dict = {"dash": dash or dash_mode is not None, "offset": offset}
+    if dash_mode is not None:
+        opts["dashMode"] = dash_mode
+    return ["PathStyleExtension", opts]
 
 
 def fp64_extension() -> Extension:

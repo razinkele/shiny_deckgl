@@ -27,6 +27,14 @@ Upstream status review (`docs/2026-11-17-upstream-review.md`), P1 items.
   (visgl/deck.gl#10790), so `terrain_layer()` / extruded `mvt_layer()` heights
   look larger at low zoom.
 
+### Fixed
+
+- **Shiny version detection read stale package metadata.** A pip-then-conda Shiny
+  upgrade can leave an orphaned `shiny-1.6.0.dist-info` beside the real 1.9.0 one;
+  `importlib.metadata` then reported 1.6.0 and `enable_bookmarking()` refused to run
+  ("requires shiny >= 1.6.4"). The version now comes from the imported
+  `shiny.__version__`, with metadata only as a fallback.
+
 ### Documentation
 
 - Fixed the stale deck.gl / MapLibre versions in the conda recipe description and

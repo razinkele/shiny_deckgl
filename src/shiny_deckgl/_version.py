@@ -9,7 +9,20 @@ def python_version() -> str:
 
 
 def shiny_version() -> str:
-    """Return the installed Shiny for Python version, or ``'unknown'``."""
+    """Return the installed Shiny for Python version, or ``'unknown'``.
+
+    Prefers the imported module's ``__version__``: a mixed pip/conda upgrade
+    can leave an orphaned older ``shiny-*.dist-info`` that
+    ``importlib.metadata`` reports instead of the code actually running.
+    """
+    try:
+        import shiny
+
+        ver = getattr(shiny, "__version__", None)
+        if isinstance(ver, str) and ver:
+            return ver
+    except ImportError:
+        pass
     try:
         from importlib.metadata import version, PackageNotFoundError
 

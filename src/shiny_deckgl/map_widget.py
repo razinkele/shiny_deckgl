@@ -142,10 +142,10 @@ _JSON_WIDGET_SETTINGS = (
 
 def _shiny_version() -> tuple[int, ...]:
     """The installed Shiny version as a tuple of ints (pre-release tags dropped)."""
-    from importlib.metadata import version
+    from ._version import shiny_version
 
     parts: list[int] = []
-    for piece in version("shiny").split("."):
+    for piece in shiny_version().split("."):
         digits = "".join(ch for ch in piece if ch.isdigit())
         if not digits:
             break

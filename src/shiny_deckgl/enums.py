@@ -234,20 +234,28 @@ class LightType(str, Enum):
 class PostProcessShader(str, Enum):
     """Post-processing shader module identifiers.
 
-    These correspond to luma.gl shader modules available for
-    post-processing effects.
+    These correspond to luma.gl ``@luma.gl/effects`` shader modules for
+    :func:`~shiny_deckgl.post_process_effect`. ``EDGE_WORK``, ``TILT_SHIFT``,
+    ``TRIANGLE_BLUR`` and ``ZOOM_BLUR`` are not available in the browser
+    (they need ``@luma.gl/shadertools``, whose CDN build cannot load beside
+    deck.gl's); the client skips them with a console warning.
     """
     BRIGHTNESS_CONTRAST = "brightnessContrast"
+    BULGE_PINCH = "bulgePinch"
     COLOR_HALFTONE = "colorHalftone"
+    DENOISE = "denoise"
     DOT_SCREEN = "dotScreen"
     EDGE_WORK = "edgeWork"
     FX_AA = "fxaa"
-    HEX_PIXELATE = "hexPixelate"
+    # luma.gl's name; this member used to say "hexPixelate", which no module has.
+    HEX_PIXELATE = "hexagonalPixelate"
+    HEXAGONAL_PIXELATE = "hexagonalPixelate"
     HUE_SATURATION = "hueSaturation"
     INK = "ink"
     MAGNIFY = "magnify"
     NOISE = "noise"
     SEPIA = "sepia"
+    SWIRL = "swirl"
     TILT_SHIFT = "tiltShift"
     TRIANGLE_BLUR = "triangleBlur"
     VIBRANCE = "vibrance"

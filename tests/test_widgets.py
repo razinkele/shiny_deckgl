@@ -369,17 +369,11 @@ class TestKwargsForwarding:
         assert w["visible"] is True
 
     def test_splitter_widget_kwargs(self):
-        """splitter_widget should forward kwargs."""
-        w = splitter_widget(
-            viewId1="view1",
-            viewId2="view2",
-            orientation="horizontal",
-            initialSplit=0.5,
-        )
-        assert w["viewId1"] == "view1"
-        assert w["viewId2"] == "view2"
-        assert w["orientation"] == "horizontal"
-        assert w["initialSplit"] == 0.5
+        """splitter_widget forwards other widget props; layout goes in viewLayout."""
+        w = splitter_widget(orientation="horizontal", initial_split=0.5, id="cmp")
+        assert w["id"] == "cmp"
+        assert w["viewLayout"]["orientation"] == "horizontal"
+        assert w["viewLayout"]["initialSplit"] == 0.5
 
     def test_stats_widget_kwargs(self):
         """stats_widget should forward kwargs."""

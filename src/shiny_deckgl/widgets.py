@@ -278,20 +278,75 @@ def info_widget(placement: str = "top-left", **kwargs) -> dict:
     return {"@@widgetClass": "_InfoWidget", "placement": placement, **kwargs}
 
 
-def splitter_widget(**kwargs) -> dict:
+_SPLITTER_LEGACY = ("viewId1", "viewId2", "initialSplit")
+
+
+def splitter_widget(
+    views: list | None = None,
+    *,
+    orientation: str = "horizontal",
+    initial_split: float | None = None,
+    min_split: float | None = None,
+    max_split: float | None = None,
+    editable: bool | None = None,
+    **kwargs,
+) -> dict:
     """Create a ``SplitterWidget`` spec (split-screen view divider).
 
-    Experimental — requires deck.gl >= 9.2.  Allows the user to drag a
-    handle to compare two overlapping views.
+    Experimental. deck.gl 9.4 takes a ``viewLayout``: two views stacked
+    side by side (``"horizontal"``) or on top of each other
+    (``"vertical"``), with a draggable divider. The widget sets deck.gl's
+    ``views`` itself, and only when nothing else manages them. On a
+    ``MapWidget`` the MapLibre overlay manages deck.gl's views (they follow
+    the basemap camera), so the widget draws its divider but does not split
+    the map.
 
     Parameters
     ----------
+    views
+        The two sub-views: view specs (e.g. ``map_view(id="left")``) or
+        nested layouts (``{"orientation": ..., "views": [...]}``). Default:
+        two map views with ids ``"left"`` and ``"right"``.
+    orientation
+        ``"horizontal"`` (default) or ``"vertical"``.
+    initial_split
+        The first view's share of the width/height, 0–1 (deck.gl default 0.5).
+    min_split, max_split
+        Limits of the split (deck.gl defaults 0.05 / 0.95).
+    editable
+        Whether the divider can be dragged (deck.gl default ``True``).
     **kwargs
-        Widget properties, e.g. ``viewId1``, ``viewId2``,
-        ``orientation`` (``"horizontal"`` / ``"vertical"``),
-        ``initialSplit`` (0–1 ratio).
+        Other widget props (``id``, ...). The deck.gl 9.3 props
+        ``viewId1``/``viewId2``/``initialSplit`` are translated into the
+        layout with a ``DeprecationWarning``.
     """
-    return {"@@widgetClass": "_SplitterWidget", **kwargs}
+    legacy = {k: kwargs.pop(k) for k in _SPLITTER_LEGACY if k in kwargs}
+    if legacy:
+        warnings.warn(
+            "splitter_widget(viewId1=, viewId2=, initialSplit=) are deck.gl 9.3 "
+            "props; deck.gl 9.4 takes a view layout -- use views= and initial_split=",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if initial_split is None:
+            initial_split = legacy.get("initialSplit")
+    if orientation not in ("horizontal", "vertical"):
+        raise ValueError(
+            f"orientation must be 'horizontal' or 'vertical', got {orientation!r}"
+        )
+    if views is None:
+        views = [
+            {"@@type": "MapView", "id": legacy.get("viewId1", "left")},
+            {"@@type": "MapView", "id": legacy.get("viewId2", "right")},
+        ]
+    if len(views) != 2:
+        raise ValueError(f"splitter_widget needs exactly two views, got {len(views)}")
+    layout: dict = {"orientation": orientation, "views": list(views)}
+    for key, value in (("initialSplit", initial_split), ("minSplit", min_split),
+                       ("maxSplit", max_split), ("editable", editable)):
+        if value is not None:
+            layout[key] = value
+    return {"@@widgetClass": "_SplitterWidget", "viewLayout": layout, **kwargs}
 
 
 def stats_widget(placement: str = "top-left", **kwargs) -> dict:

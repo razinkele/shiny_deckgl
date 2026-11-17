@@ -365,3 +365,41 @@ class TestServedPathRendersRealLayers:
         for cs in systems:
             assert not cs.strip("-").isdigit(), (
                 f"layer still carries a numeric coordinateSystem: {cs!r}")
+
+
+class TestDarkModeKeepsNativeLayers:
+    """The navbar dark-mode switch swaps maplibre_map's basemap on the client.
+
+    The swap removes every native source/layer. The demo re-added them after a
+    basemap change from its dropdown but not after a dark-mode swap, so the
+    MPA polygons and port circles vanished and stayed gone in light mode too.
+
+    Last in the module and restores light mode: it changes the shared page.
+    """
+
+    OURS = ("() => { const m = window.__deckgl_instances.maplibre_map.map;"
+            " return ['mpa-fill', 'mpa-line', 'ports-circle']"
+            ".filter(id => !!m.getLayer(id)).length; }")
+
+    def _wait_for_ours(self, page: Page) -> None:
+        page.wait_for_function(self.OURS.replace("length; }", "length === 3; }"),
+                               timeout=30000)
+
+    def test_native_layers_come_back_after_each_swap(self, page: Page):
+        page.get_by_role("tab", name="MapLibre Controls").click()
+        page.wait_for_function(
+            "() => { const i = window.__deckgl_instances.maplibre_map;"
+            " return !!(i && i.map && i.map.getLayer('mpa-fill')); }", timeout=30000)
+        toggle = page.locator("bslib-input-dark-mode")
+        try:
+            toggle.click()
+            page.wait_for_function(
+                "() => document.documentElement.getAttribute('data-bs-theme') === 'dark'")
+            self._wait_for_ours(page)
+        finally:
+            toggle.click()
+        page.wait_for_function(
+            "() => document.documentElement.getAttribute('data-bs-theme') !== 'dark'")
+        self._wait_for_ours(page)
+        page.wait_for_timeout(2000)   # a late style diff would remove them again
+        assert page.evaluate(self.OURS) == 3

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from shiny import Session
 
 from ._cdn import (
+    EXPORT_CDN_CONFIG_JSON,
     MAPLIBRE_EXPORT_JS,
     MAPLIBRE_EXPORT_CSS,
     H3_JS,
@@ -2833,6 +2834,7 @@ class MapWidget:
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
+{EXPORT_CDN_CONFIG_JSON}
 <script src="{MAPLIBRE_EXPORT_JS}"></script>
 <link rel="stylesheet" href="{MAPLIBRE_EXPORT_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
@@ -2879,15 +2881,21 @@ if (typeof Shiny === 'undefined') {{
       cloneLayersData(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
-    var effects = buildEffects(effectsData);
-    if (effects) overlayProps.effects = effects;
-    if (inst.map.isStyleLoaded()) {{
+    // Capture style readiness now: style.load can fire while the effect
+    // modules load, and isStyleLoaded() is false again while tiles load, so
+    // checking only afterwards could wait for a style.load that never comes.
+    var styleReady = new Promise(function(resolve) {{
+      if (inst.map.isStyleLoaded()) resolve();
+      else inst.map.once('style.load', resolve);
+    }});
+    // PostProcessEffect shader modules load on demand; a failed load still
+    // lets the layers apply (buildEffects then skips that effect).
+    var effectsReady = window.__deckgl_preloadEffects(effectsData).catch(function() {{}});
+    Promise.all([styleReady, effectsReady]).then(function() {{
+      var effects = buildEffects(effectsData);
+      if (effects) overlayProps.effects = effects;
       inst.overlay.setProps(overlayProps);
-    }} else {{
-      inst.map.once('style.load', function() {{
-        inst.overlay.setProps(overlayProps);
-      }});
-    }}
+    }});
   }});
   }}).catch(function (err) {{
     document.body.insertAdjacentHTML('afterbegin',

@@ -5,6 +5,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+Bugs found by an exploratory browser sweep of the demo (every tab and control).
+
+### Fixed
+
+- **Drawing: lines and polygon outlines never rendered.** mapbox-gl-draw 1.5.1's
+  default theme put bare arrays in a `line-dasharray` `case` expression, which
+  MapLibre 6 rejects, so `enable_draw()` logged two style errors and the
+  `gl-draw-lines` layers were never added. CDN pin bumped to **1.5.2**, which wraps
+  them in `["literal", ...]`.
+- **`splitter_widget()` broke the whole map update on deck.gl 9.4.** 9.4 replaced the
+  SplitterWidget props with a `viewLayout`; the constructor threw on the 9.3 props, and
+  since widgets are built inside `deck_update`, the map lost its layers too. The helper
+  now builds a `viewLayout` (`views=`, `orientation=`, `initial_split=`, `min_split=`,
+  `max_split=`, `editable=`); `viewId1`/`viewId2`/`initialSplit` are translated with a
+  `DeprecationWarning`. On a `MapWidget` the overlay manages deck.gl's views, so the
+  widget draws its divider without splitting the map (documented).
+- **One bad widget no longer fails a map's update.** A widget whose constructor throws is
+  skipped with a console error; layers and the other widgets still apply.
+- **An overtaken update no longer loses its effects, views or widgets.** When a newer
+  update arrived while an older one was still waiting (icon atlases, or now a first-use
+  effect module), the older render was dropped as stale, and with it any deck-level
+  props the newer update had left out (`None` keeps them). They are now remembered on
+  arrival and applied by whichever render runs.
+- **`post_process_effect()` did nothing.** deck.gl's bundle has no `@luma.gl/effects`
+  modules, so every post-process effect was skipped ("shader module not available"),
+  including the demo's Brightness/Contrast switch. The client now `import()`s the
+  module's file from `@luma.gl/effects` 9.4.2 on first use (served pages and
+  standalone exports). Fifteen modules are supported; `tiltShift`, `triangleBlur`,
+  `zoomBlur` and `edgeWork` need `@luma.gl/shadertools`, whose CDN build cannot load
+  beside deck.gl's, and are documented as unavailable. `PostProcessShader` gains the
+  missing members, and `HEX_PIXELATE` now holds luma.gl's name `"hexagonalPixelate"`
+  (it said `"hexPixelate"`, which no module has).
+- **Demo: the MapLibre tab's native layers vanished in dark mode.** The navbar's
+  dark-mode switch swaps the basemap on the client, which removes native sources and
+  layers; the demo re-added them after its basemap dropdown but not after a dark-mode
+  swap, so the MPA polygons and port circles stayed gone in light mode too.
+
+---
 ## [1.15.1] — 2026-11-17
 
 ### Fixed

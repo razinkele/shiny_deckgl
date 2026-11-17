@@ -191,7 +191,7 @@ import shiny_deckgl as sdgl
 shiny_deckgl.head_includes() -> HTMLDependency
 ```
 
-Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.1, and local shiny\_deckgl assets into the page `<head>`.
+Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.2, and local shiny\_deckgl assets into the page `<head>`.
 
 Place as a **direct child** of any `ui.page_*()` layout:
 
@@ -1859,8 +1859,14 @@ Screen-space pixel manipulation via a luma.gl shader module.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `shader_module` | `str` | Shader name: `"brightnessContrast"`, `"hueSaturation"`, `"noise"`, `"sepia"`, `"vibrance"`, `"vignette"`, `"tiltShift"`, `"triangleBlur"`, `"zoomBlur"`, etc. |
+| `shader_module` | `str` | One of `"brightnessContrast"`, `"hueSaturation"`, `"denoise"`, `"noise"`, `"sepia"`, `"vibrance"`, `"vignette"`, `"colorHalftone"`, `"dotScreen"`, `"hexagonalPixelate"`, `"ink"`, `"magnify"`, `"bulgePinch"`, `"swirl"`, `"fxaa"` (or a `PostProcessShader` member). |
 | `**kwargs` | | Shader-specific parameters (e.g. `brightness=0.5`). |
+
+The client imports the module's file from `@luma.gl/effects` (pinned in
+`shiny_deckgl._cdn.LUMA_EFFECTS_VERSION`) the first time an effect uses it;
+deck.gl's bundle carries none. `"tiltShift"`, `"triangleBlur"`, `"zoomBlur"`
+and `"edgeWork"` are not available: they need `@luma.gl/shadertools`, whose
+CDN build brings a second luma.gl core that cannot load beside deck.gl's.
 
 ```python
 post_process_effect("brightnessContrast", brightness=0.1, contrast=0.3)
@@ -2745,8 +2751,18 @@ All helpers return a plain `dict` with a `"@@widgetClass"` key consumed by the J
 | --- | --- | --- | --- |
 | `context_menu_widget()` | `ContextMenuWidget` | — | Right-click context menu |
 | `info_widget()` | `InfoWidget` | `"top-left"` | Layer hover/pick information |
-| `splitter_widget()` | `SplitterWidget` | — | Split-screen view divider |
+| `splitter_widget(views=None, *, orientation="horizontal", initial_split=None, min_split=None, max_split=None, editable=None)` | `SplitterWidget` | — | Split-screen view divider (deck.gl 9.4 `viewLayout`) |
 | `stats_widget()` | `StatsWidget` | `"top-left"` | GPU/CPU/FPS performance statistics |
+
+`splitter_widget()` builds deck.gl 9.4's `viewLayout`: two views (view specs such as
+`map_view(id="left")`, or nested `{"orientation": ..., "views": [...]}` layouts; default
+two map views `"left"`/`"right"`). The deck.gl 9.3 props `viewId1`/`viewId2`/`initialSplit`
+are translated with a `DeprecationWarning`. The widget only sets deck.gl's `views` when
+nothing else manages them; on a `MapWidget` the MapLibre overlay does (deck.gl's view
+follows the basemap camera), so the widget draws its divider but does not split the map.
+
+A widget whose props the loaded deck.gl rejects is skipped with a console error; the rest
+of the update (layers, other widgets) still applies.
 
 **Deprecated** (warn; removed in 2.0): `fps_widget()` returns a `StatsWidget` spec
 (deck.gl 9.3 merged the two); `view_selector_widget()` returns an empty spec, because

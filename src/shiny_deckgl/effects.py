@@ -250,24 +250,29 @@ def post_process_effect(
     Parameters
     ----------
     shader_module
-        Name of the luma.gl shader module from ``@luma.gl/effects``.
-        Supported modules include:
+        Name of the luma.gl shader module from ``@luma.gl/effects``; the
+        client loads it from the CDN the first time it is used. Supported:
 
         - ``"brightnessContrast"`` — adjust brightness and contrast
         - ``"hueSaturation"`` — adjust hue and saturation
+        - ``"denoise"`` — smooth noise
         - ``"noise"`` — add noise
         - ``"sepia"`` — sepia tone
         - ``"vibrance"`` — adjust color vibrance
         - ``"vignette"`` — darken edges
-        - ``"tiltShift"`` — tilt-shift blur
         - ``"colorHalftone"`` — color halftone dots
         - ``"dotScreen"`` — dot screen pattern
-        - ``"edgeWork"`` — edge detection
         - ``"hexagonalPixelate"`` — hexagonal pixelation
         - ``"ink"`` — ink effect
         - ``"magnify"`` — magnifying glass
-        - ``"triangleBlur"`` — triangle blur
-        - ``"zoomBlur"`` — zoom blur
+        - ``"bulgePinch"`` — bulge/pinch warp
+        - ``"swirl"`` — swirl warp
+        - ``"fxaa"`` — fast approximate anti-aliasing
+
+        ``"tiltShift"``, ``"triangleBlur"``, ``"zoomBlur"`` and
+        ``"edgeWork"`` are not available: they need
+        ``@luma.gl/shadertools``, whose CDN build cannot load beside
+        deck.gl's bundle. The client skips them with a console warning.
 
     **kwargs
         Shader-module-specific parameters (e.g. ``brightness=0.5``).

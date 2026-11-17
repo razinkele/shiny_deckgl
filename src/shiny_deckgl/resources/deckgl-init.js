@@ -1335,15 +1335,19 @@
   // -----------------------------------------------------------------------
   var _maplibrePromise = null;
 
-  function maplibreModuleUrl() {
+  function cdnConfig(key) {
     var el = document.getElementById('shiny-deckgl-cdn');
     if (!el) return null;
     try {
-      return JSON.parse(el.textContent).maplibre || null;
+      return JSON.parse(el.textContent)[key] || null;
     } catch (e) {
       console.error('[shiny_deckgl] Malformed CDN config block:', e);
       return null;
     }
+  }
+
+  function maplibreModuleUrl() {
+    return cdnConfig('maplibre');
   }
 
   function loadMapLibre() {
@@ -1659,6 +1663,57 @@
   // which is NOT part of the deck.gl standalone bundle, so the lookup can
   // legitimately come up empty -- callers must handle null rather than hand
   // deck.gl a name string where it expects a module object.
+  // @luma.gl/effects shader modules that load on their own: each file is
+  // self-contained or imports only a sibling (warp.js). tiltShift,
+  // triangleBlur, zoomBlur and edgeWork import from @luma.gl/shadertools,
+  // whose CDN build brings a second @luma.gl/core that throws beside
+  // deck.gl's, so they are not offered.
+  var LUMA_EFFECT_FILES = {
+    brightnessContrast: 'image-adjust-filters/brightnesscontrast',
+    denoise: 'image-adjust-filters/denoise',
+    hueSaturation: 'image-adjust-filters/huesaturation',
+    noise: 'image-adjust-filters/noise',
+    sepia: 'image-adjust-filters/sepia',
+    vibrance: 'image-adjust-filters/vibrance',
+    vignette: 'image-adjust-filters/vignette',
+    colorHalftone: 'image-fun-filters/colorhalftone',
+    dotScreen: 'image-fun-filters/dotscreen',
+    hexagonalPixelate: 'image-fun-filters/hexagonalpixelate',
+    ink: 'image-fun-filters/ink',
+    magnify: 'image-fun-filters/magnify',
+    bulgePinch: 'image-warp-filters/bulgepinch',
+    swirl: 'image-warp-filters/swirl',
+    fxaa: 'fxaa/fxaa',
+  };
+  var _lumaEffectLoads = {};
+
+  // Import the effect modules an effects list needs and register them on
+  // globalThis.lumaEffects, where resolvePostProcessModule looks. Resolves
+  // when all have settled; a failed load leaves buildEffects to warn.
+  function preloadPostProcessModules(effectsData) {
+    if (!Array.isArray(effectsData)) return Promise.resolve();
+    var base = cdnConfig('lumaEffects');
+    var root = typeof globalThis !== 'undefined' ? globalThis : window;
+    var loads = effectsData.filter(function (spec) {
+      return spec && spec.type === 'PostProcessEffect' &&
+        LUMA_EFFECT_FILES[spec.shaderModule] && !resolvePostProcessModule(spec.shaderModule);
+    }).map(function (spec) {
+      var name = spec.shaderModule;
+      if (!base) return Promise.resolve();
+      if (!_lumaEffectLoads[name]) {
+        _lumaEffectLoads[name] = import(base + LUMA_EFFECT_FILES[name] + '.js').then(function (ns) {
+          root.lumaEffects = root.lumaEffects || {};
+          root.lumaEffects[name] = ns[name];
+        }).catch(function (err) {
+          delete _lumaEffectLoads[name];   // allow a retry
+          console.error('[shiny_deckgl] Failed to load luma.gl effect ' + name, err);
+        });
+      }
+      return _lumaEffectLoads[name];
+    });
+    return Promise.all(loads);
+  }
+
   function resolvePostProcessModule(name, scope) {
     if (!name) return null;
     var root = scope || (typeof globalThis !== 'undefined' ? globalThis : window);
@@ -1702,7 +1757,10 @@
         var ppModule = resolvePostProcessModule(spec.shaderModule);
         if (!ppModule) {
           console.warn('[shiny_deckgl] PostProcessEffect shader module not available: ' +
-                       spec.shaderModule + ' (requires @luma.gl/effects)');
+                       spec.shaderModule + (LUMA_EFFECT_FILES[spec.shaderModule]
+                         ? ' (failed to load from the CDN)'
+                         : " (not loadable beside deck.gl's bundle; supported: " +
+                           Object.keys(LUMA_EFFECT_FILES).join(', ') + ')'));
           return null;
         }
         var ppProps = Object.assign({}, spec);
@@ -1882,8 +1940,30 @@
           ' (no such class in this deck.gl build)');
         return null;
       }
-      return attachWidgetEvents(new Cls(props), className, targetId);
+      // One widget whose props this deck.gl rejects must not take the whole
+      // update down with it (a constructor throw used to fail deck_update, so
+      // the map lost its layers too): drop just that widget.
+      try {
+        // SplitterWidget (deck.gl 9.4) takes View instances in viewLayout.views.
+        if (props.viewLayout) props.viewLayout = buildViewLayout(props.viewLayout);
+        return attachWidgetEvents(new Cls(props), className, targetId);
+      } catch (err) {
+        console.error('[shiny_deckgl] Widget ' + className + ' failed to build and was skipped:', err);
+        return null;
+      }
     }).filter(Boolean);
+  }
+
+  // A SplitterWidget viewLayout: views are view specs or nested layouts.
+  function buildViewLayout(layout) {
+    if (!layout || !Array.isArray(layout.views)) return layout;
+    return Object.assign({}, layout, {
+      views: layout.views.map(function (v) {
+        if (v && Array.isArray(v.views)) return buildViewLayout(v);
+        var built = buildViews([v]);
+        return built && built.length ? built[0] : v;
+      }),
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -2803,6 +2883,18 @@
       }
     }
 
+    // Deck-level props (effects, views, widgets, ...) are remembered on
+    // arrival, not after the wait. If a newer update arrives meanwhile, this
+    // render is dropped as stale and the newer one applies whatever it did
+    // not set itself -- an update that omits effects keeps them, so it must
+    // not lose the effects of the update it overtook (whose first-use effect
+    // module may still have been loading).
+    rememberDeckSpecs(instance, payload);
+    var deckSpecs = instance.lastDeckSpecs;
+
+    // PostProcessEffect shader modules load on demand, in the same wait.
+    svgAtlasPreloads.push(preloadPostProcessModules(deckSpecs.effects));
+
     // Wait for all SVG atlases to rasterise (instant if cache hit or none).
     var updateGen = claimUpdateGeneration(instance);
     Promise.all(svgAtlasPreloads).then(function () {
@@ -2816,25 +2908,40 @@
     // visibility change, legend toggle or partial update may have patched
     // it (and rendered) while the atlases were loading.
     const overlayProps = { layers: renderLayers(instance, targetId) };
-    rememberDeckSpecs(instance, payload);
+
+    // Apply each remembered deck-level spec not applied yet: this update's,
+    // or a stale overtaken update's that this one did not override.
+    var applied = instance._appliedDeckSpecs || (instance._appliedDeckSpecs = {});
+    var pending = function (k) {
+      return deckSpecs[k] !== undefined && applied[k] !== deckSpecs[k];
+    };
 
     // Effects (lighting, post-processing)
-    const effects = buildEffects(payload.effects);
-    if (effects) overlayProps.effects = effects;
+    if (pending('effects')) {
+      const effects = buildEffects(deckSpecs.effects);
+      if (effects) overlayProps.effects = effects;
+      applied.effects = deckSpecs.effects;
+    }
 
     // Views (MapView, OrthographicView, FirstPersonView)
-    const views = buildViews(payload.views);
-    if (views !== undefined) overlayProps.views = views;
+    if (pending('views')) {
+      const views = buildViews(deckSpecs.views);
+      if (views !== undefined) overlayProps.views = views;
+      applied.views = deckSpecs.views;
+    }
 
     // Deck-level props (v0.7.0)
-    if (payload.pickingRadius !== undefined) overlayProps.pickingRadius = payload.pickingRadius;
-    if (payload.useDevicePixels !== undefined) overlayProps.useDevicePixels = payload.useDevicePixels;
-    if (payload._animate !== undefined) overlayProps._animate = payload._animate;
+    ['pickingRadius', 'useDevicePixels', '_animate'].forEach(function (k) {
+      if (pending(k)) { overlayProps[k] = deckSpecs[k]; applied[k] = deckSpecs[k]; }
+    });
 
     // Widgets (v0.8.0)
-    dropImplicitNavigation(mapInstances[targetId], payload.widgets);
-    const widgets = buildWidgets(payload.widgets, targetId);
-    if (widgets) overlayProps.widgets = widgets;
+    if (pending('widgets')) {
+      dropImplicitNavigation(mapInstances[targetId], deckSpecs.widgets);
+      const widgets = buildWidgets(deckSpecs.widgets, targetId);
+      if (widgets) overlayProps.widgets = widgets;
+      applied.widgets = deckSpecs.widgets;
+    }
 
     overlay.setProps(overlayProps);
     map.triggerRepaint();
@@ -2965,6 +3072,10 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
     rememberDeckSpecs(instance, { widgets: payload.widgets });
+    if (instance.lastDeckSpecs) {
+      (instance._appliedDeckSpecs || (instance._appliedDeckSpecs = {})).widgets =
+        instance.lastDeckSpecs.widgets;
+    }
     dropImplicitNavigation(instance, payload.widgets);
     const widgets = buildWidgets(payload.widgets, payload.id);
     if (widgets) {
@@ -4428,6 +4539,7 @@
   window.__deckgl_initMap = initMap;
   window.__deckgl_buildDeckLayers = buildDeckLayers;
   window.__deckgl_buildEffects = buildEffects;
+  window.__deckgl_preloadEffects = preloadPostProcessModules;
   window.__deckgl_resolveWidgetClass = resolveWidgetClass;
   window.__deckgl_cloneLayersData = cloneLayersData;
 })();

@@ -9,7 +9,9 @@ DECKGL_VERSION = "9.4.1"
 # from file:// in Chromium and Firefox, and tests/test_maplibre_v6.py guards it.
 MAPLIBRE_VERSION = "6.19.0"
 MAPBOX_DRAW_VERSION = "1.5.2"
-MAPLIBRE_LEGEND_VERSION = "2.0.7"
+# ESM-only since 3.0 (needs MapLibre >= 6.4.1) and about 3x the size of 2.x, so
+# deckgl-init.js imports it the first time a map asks for a legend control.
+MAPLIBRE_LEGEND_VERSION = "4.1.0"
 MAPLIBRE_OPACITY_VERSION = "1.8.0"
 H3_JS_VERSION = "4.5.0"
 # PostProcessEffect shader modules. deck.gl's bundle has none, and neither
@@ -35,8 +37,8 @@ MAPBOX_DRAW_JS = f"https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@{MAPBOX_D
 MAPBOX_DRAW_CSS = f"https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-draw@{MAPBOX_DRAW_VERSION}/dist/mapbox-gl-draw.css"
 
 # Third-party MapLibre plugin CDN URLs
-MAPLIBRE_LEGEND_JS = f"https://unpkg.com/@watergis/maplibre-gl-legend@{MAPLIBRE_LEGEND_VERSION}/dist/maplibre-gl-legend.umd.js"
-MAPLIBRE_LEGEND_CSS = f"https://unpkg.com/@watergis/maplibre-gl-legend@{MAPLIBRE_LEGEND_VERSION}/dist/maplibre-gl-legend.css"
+MAPLIBRE_LEGEND_JS = f"https://cdn.jsdelivr.net/npm/@watergis/maplibre-gl-legend@{MAPLIBRE_LEGEND_VERSION}/dist/maplibre-gl-legend.es.js"
+MAPLIBRE_LEGEND_CSS = f"https://cdn.jsdelivr.net/npm/@watergis/maplibre-gl-legend@{MAPLIBRE_LEGEND_VERSION}/dist/maplibre-gl-legend.min.css"
 MAPLIBRE_OPACITY_JS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLIBRE_OPACITY_VERSION}/build/maplibre-gl-opacity.umd.js"
 MAPLIBRE_OPACITY_CSS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLIBRE_OPACITY_VERSION}/build/maplibre-gl-opacity.css"
 
@@ -44,10 +46,12 @@ MAPLIBRE_OPACITY_CSS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLI
 # inline module script: a <script type="application/json"> body is never
 # executed, so a strict script-src Content-Security-Policy allows it without
 # 'unsafe-inline'. deckgl-init.js reads this block and import()s the URLs
-# (MapLibre at start-up, a luma.gl effect module when an effect needs one).
+# (MapLibre at start-up; a luma.gl effect module, or the legend plugin, when
+# first needed).
 CDN_CONFIG_JSON = (
     '<script type="application/json" id="shiny-deckgl-cdn">'
-    f'{{"maplibre": "{MAPLIBRE_JS}", "lumaEffects": "{LUMA_EFFECTS_BASE}"}}'
+    f'{{"maplibre": "{MAPLIBRE_JS}", "lumaEffects": "{LUMA_EFFECTS_BASE}", '
+    f'"legend": "{MAPLIBRE_LEGEND_JS}", "legendCss": "{MAPLIBRE_LEGEND_CSS}"}}'
     '</script>'
 )
 
@@ -60,8 +64,6 @@ CDN_HEAD_FRAGMENT = (
     f'<link rel="stylesheet" href="{MAPLIBRE_CSS}"/>\n'
     f'<script src="{MAPBOX_DRAW_JS}"></script>\n'
     f'<link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>\n'
-    f'<script src="{MAPLIBRE_LEGEND_JS}"></script>\n'
-    f'<link rel="stylesheet" href="{MAPLIBRE_LEGEND_CSS}"/>\n'
     f'<script src="{MAPLIBRE_OPACITY_JS}"></script>\n'
     f'<link rel="stylesheet" href="{MAPLIBRE_OPACITY_CSS}"/>'
 )

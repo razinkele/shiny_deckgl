@@ -1226,24 +1226,26 @@ legend_control(
     show_default: bool = False,
     show_checkbox: bool = True,
     only_rendered: bool = True,
-    reverse_order: bool = False,
+    reverse_order: bool = True,
     title: str | None = None,
+    **options,
 ) -> dict
 ```
 
-Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend`). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
+Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend` 4.1.0, which the client imports the first time a map asks for a legend). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
 
 > **Note:** This control only sees native MapLibre layers added via `add_maplibre_layer()`. For deck.gl overlay layers, use the deck.gl widget [`layer_legend_widget()`](#layer_legend_widget) instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `targets` | `dict \| None` | `None` | Map of layer id → display label. `None` shows all layers. |
+| `targets` | `dict \| None` | `None` | Map of layer id → display label. `None` lists the app's own native layers and follows them; `{}` lists every style layer, basemap included. |
 | `position` | `str` | `"bottom-left"` | Control position. |
 | `show_default` | `bool` | `False` | Whether the panel starts expanded. |
 | `show_checkbox` | `bool` | `True` | Show visibility toggle checkboxes. |
 | `only_rendered` | `bool` | `True` | Only show currently rendered layers. |
-| `reverse_order` | `bool` | `False` | Reverse layer order in the legend. |
+| `reverse_order` | `bool` | `True` | List layers top-most first, as stacked on the map. |
 | `title` | `str \| None` | `None` | Panel title text. |
+| `**options` | | | Other plugin options, passed through as written (camelCase): e.g. `groups={"Water": ["mpa-fill", "mpa-line"]}`, `groupBySourceLayer=True`, `collapseGroups=True`, `showStyleEditor=True`. |
 
 ```python
 legend_control(

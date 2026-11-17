@@ -27,6 +27,8 @@ var MaplibreLegendControl = { MaplibreLegendControl: function (targets, o) {
   this.kind = 'legend'; this.targets = targets; this.opts = o; this.redraws = 0; created.push(this);
   this.redraw = function () { this.redraws++; };
 } };
+// applyControls imports the legend plugin on first use; tests stub this.
+var loadLegendPlugin = function () { return Promise.resolve(true); };
 function makeInstance() {
   var log = [];
   return {
@@ -55,6 +57,7 @@ def _prelude() -> str:
         extract_function("refreshLegendWhenDrawn"),
         extract_function("resetNativeLayers"),
         extract_function("controlKey"),
+        extract_function("legendPluginLoaded"),
         extract_function("applyControls"),
         extract_function("createControl"),
     ])
@@ -180,3 +183,48 @@ class TestLegendDefaultTargets:
             return { before: before, after: c.redraws, pending: !!i._legendRefreshPending };
         """)
         assert got == {"before": 0, "after": 1, "pending": False}
+
+
+@requires_node
+class TestLegendPluginLoadsOnFirstUse:
+    """maplibre-gl-legend 4 is ESM-only and big, so it is imported when a map
+    first asks for a legend; the other controls must not wait for it."""
+
+    def test_other_controls_now_legend_once_the_module_arrives(self):
+        got = run_js(_prelude(), """await (async function(){
+            var Real = MaplibreLegendControl;
+            MaplibreLegendControl = undefined;        // not loaded yet
+            var resolveLoad;
+            var calls = 0;
+            loadLegendPlugin = function () {          // stub the CDN import
+                calls++;
+                return new Promise(function (r) { resolveLoad = r; });
+            };
+            var i = makeInstance();
+            var specs = [{ type: 'navigation', options: {} },
+                         { type: 'legend', position: 'bottom-left', options: {} }];
+            applyControls(i, specs);
+            applyControls(i, specs);                   // a second call: still one load
+            var before = Object.keys(i.controls);
+            MaplibreLegendControl = Real;
+            resolveLoad(true);
+            await new Promise(function (r) { setTimeout(r, 0); });
+            return { before: before, after: Object.keys(i.controls).sort(),
+                     calls: calls, log: i.log };
+        })()""")
+        assert got["before"] == ["navigation"]
+        assert got["after"] == ["legend", "navigation"]
+        assert got["calls"] == 1
+        assert got["log"] == ["add navigation@top-right", "add legend@bottom-left"]
+
+    def test_a_failed_load_leaves_the_other_controls(self):
+        got = run_js(_prelude(), """await (async function(){
+            MaplibreLegendControl = undefined;
+            loadLegendPlugin = function () { return Promise.resolve(false); };
+            var i = makeInstance();
+            applyControls(i, [{ type: 'navigation', options: {} }, { type: 'legend', options: {} }]);
+            await new Promise(function (r) { setTimeout(r, 0); });
+            return Object.keys(i.controls);
+        })()""")
+        assert got == ["navigation"]
+

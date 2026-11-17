@@ -7,8 +7,9 @@ failures Shiny normally swallows), then in Chromium visits every tab and
 exercises every input: switches/checkboxes/radios clicked, buttons clicked,
 sliders moved to max/min and back, every select option chosen, text inputs
 filled. After each action it records new console errors, page errors, failed
-requests, server tracebacks, Shiny disconnects, visible output errors and
-blank maps. Writes report.json + shots/.
+requests, server tracebacks, Shiny disconnects and visible output errors; maps
+are checked for blankness when their tab is activated (not after every action).
+Writes report.json + shots/.
 """
 from __future__ import annotations
 

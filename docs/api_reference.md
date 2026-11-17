@@ -2878,9 +2878,12 @@ to `set_dark_mode()`.
 @reactive.effect
 @reactive.event(input[widget.dark_mode_input_id])
 async def _after_dark_swap():
-    # The swap removed native sources/layers; re-adding one that is still there replaces it.
+    # The swap removed native sources/layers. Re-add the source, then every layer
+    # that uses it: add_source() on a source that still exists replaces it and
+    # removes all of its layers.
     await widget.add_source(session, "mpa", {"type": "geojson", "data": mpas})
     await widget.add_maplibre_layer(session, {"id": "mpa-fill", "type": "fill", "source": "mpa"})
+    await widget.add_maplibre_layer(session, {"id": "mpa-line", "type": "line", "source": "mpa"})
 ```
 
 ### Bookmarking (v1.13.0)

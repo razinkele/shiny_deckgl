@@ -62,7 +62,8 @@ Bugs found by an exploratory browser sweep of the demo (every tab and control).
 - `tools/demo_sweep.py` (with `tools/demo_serve.py`): the exploratory sweep that found
   these bugs. It drives every tab and control of the demo in Chromium and records
   console and page errors, failed requests, server tracebacks (including the websocket
-  send failures Shiny swallows), disconnects, output errors and blank maps per action.
+  send failures Shiny swallows), disconnects and output errors per action, and checks
+  each tab's maps for blankness when the tab is activated.
 
 ---
 ## [1.15.1] — 2026-11-17

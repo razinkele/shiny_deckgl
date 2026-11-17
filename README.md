@@ -605,7 +605,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
 | `src/shiny_deckgl/_sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
 | `sprites/build_atlas.py` | Sprite build pipeline — drop source PNGs into `sprites/src/`, auto-generates atlas PNG and `ICON_MAPPING` dict. |
-| `tools/demo_sweep.py` | Exploratory browser sweep of the demo: every tab and control, with errors, tracebacks, disconnects and blank maps recorded per action. |
+| `tools/demo_sweep.py` | Exploratory browser sweep of the demo: every tab and control, with errors, tracebacks and disconnects recorded per action, and each tab's maps checked for blankness when it opens. |
 | `tests/test_basic.py` | 1 078 unit tests covering all features. |
 | `tests/test_tooltip_xss.py` | 10 XSS/validation tests covering `sanitizeHtml`, tooltip validation, and hyphenated field templates. |
 
@@ -631,9 +631,12 @@ run it per class rather than all at once.
 
 For a deeper manual check of the demo, `tools/demo_sweep.py` drives every tab and
 control in Chromium (switches, buttons, sliders, selects, text, downloads, dark mode,
-phone width, reload) and writes `report.json` plus screenshots:
+phone width, reload) and writes `report.json` plus screenshots. It needs Playwright
+(included in the `dev` and `browser` extras, not in `test`) and its Chromium build:
 
 ```bash
+pip install -e ".[dev]"
+python -m playwright install chromium
 python tools/demo_sweep.py . sweep-out
 ```
 

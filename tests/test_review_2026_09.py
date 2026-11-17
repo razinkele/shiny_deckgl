@@ -1164,20 +1164,23 @@ class TestPackagingMetadataIsConsistent:
     advertised >=3.9 in pyproject.toml and in the conda recipe, so on 3.9 the
     package's own `shiny>=1.6.3` constraint was unsatisfiable. The tool targets
     (ruff, mypy) must not drift from the declared floor either.
+
+    The floor is now 3.11: py-shiny's next release drops 3.10, and CI never
+    tested 3.10.
     """
 
-    MIN_PYTHON = (3, 10)
+    MIN_PYTHON = (3, 11)
 
     @staticmethod
     def _pyproject():
-        tomllib = pytest.importorskip("tomllib")
+        import tomllib   # stdlib on every supported Python (>= 3.11)
         root = Path(__file__).resolve().parents[1]
         return tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
 
     def test_requires_python_covers_the_shiny_floor(self):
         req = self._pyproject()["project"]["requires-python"]
         assert req == ">=%d.%d" % self.MIN_PYTHON, (
-            f"requires-python is {req!r}; shiny >= 1.6.2 needs "
+            f"requires-python is {req!r}; the declared floor is "
             ">=%d.%d" % self.MIN_PYTHON
         )
 

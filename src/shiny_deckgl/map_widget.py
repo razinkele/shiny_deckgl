@@ -958,7 +958,7 @@ class MapWidget:
                 "params": params or {},
             }))
             return await asyncio.wait_for(fut, timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:   # asyncio.TimeoutError is this builtin on Python >= 3.11
             raise TimeoutError(
                 f"{method}: no reply from the browser within {timeout}s. On Shiny "
                 "< 1.9 rpc() must be awaited from a reactive.extended_task (or "

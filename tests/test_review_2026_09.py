@@ -398,6 +398,8 @@ class TestPostProcessEffectConstruction:
             "const deck = { PostProcessEffect: function (module, props) {",
             "  this.module = module; this.props = props; } };",
             fake_globals,
+            # buildEffects' warning names the modules the client can load.
+            extract_var("LUMA_EFFECT_FILES"),
             extract_function("resolvePostProcessModule"),
             extract_function("buildEffects"),
         ])

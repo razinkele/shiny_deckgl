@@ -1335,15 +1335,19 @@
   // -----------------------------------------------------------------------
   var _maplibrePromise = null;
 
-  function maplibreModuleUrl() {
+  function cdnConfig(key) {
     var el = document.getElementById('shiny-deckgl-cdn');
     if (!el) return null;
     try {
-      return JSON.parse(el.textContent).maplibre || null;
+      return JSON.parse(el.textContent)[key] || null;
     } catch (e) {
       console.error('[shiny_deckgl] Malformed CDN config block:', e);
       return null;
     }
+  }
+
+  function maplibreModuleUrl() {
+    return cdnConfig('maplibre');
   }
 
   function loadMapLibre() {
@@ -1659,6 +1663,56 @@
   // which is NOT part of the deck.gl standalone bundle, so the lookup can
   // legitimately come up empty -- callers must handle null rather than hand
   // deck.gl a name string where it expects a module object.
+  // @luma.gl/effects shader modules that load on their own: each file is
+  // self-contained or imports only a sibling (warp.js). tiltShift,
+  // triangleBlur, zoomBlur and edgeWork import from @luma.gl/shadertools,
+  // whose CDN build brings a second @luma.gl/core that throws beside
+  // deck.gl's, so they are not offered.
+  var LUMA_EFFECT_FILES = {
+    brightnessContrast: 'image-adjust-filters/brightnesscontrast',
+    denoise: 'image-adjust-filters/denoise',
+    hueSaturation: 'image-adjust-filters/huesaturation',
+    noise: 'image-adjust-filters/noise',
+    sepia: 'image-adjust-filters/sepia',
+    vibrance: 'image-adjust-filters/vibrance',
+    vignette: 'image-adjust-filters/vignette',
+    colorHalftone: 'image-fun-filters/colorhalftone',
+    dotScreen: 'image-fun-filters/dotscreen',
+    hexagonalPixelate: 'image-fun-filters/hexagonalpixelate',
+    ink: 'image-fun-filters/ink',
+    magnify: 'image-fun-filters/magnify',
+    bulgePinch: 'image-warp-filters/bulgepinch',
+    swirl: 'image-warp-filters/swirl',
+  };
+  var _lumaEffectLoads = {};
+
+  // Import the effect modules an effects list needs and register them on
+  // globalThis.lumaEffects, where resolvePostProcessModule looks. Resolves
+  // when all have settled; a failed load leaves buildEffects to warn.
+  function preloadPostProcessModules(effectsData) {
+    if (!Array.isArray(effectsData)) return Promise.resolve();
+    var base = cdnConfig('lumaEffects');
+    var root = typeof globalThis !== 'undefined' ? globalThis : window;
+    var loads = effectsData.filter(function (spec) {
+      return spec && spec.type === 'PostProcessEffect' &&
+        LUMA_EFFECT_FILES[spec.shaderModule] && !resolvePostProcessModule(spec.shaderModule);
+    }).map(function (spec) {
+      var name = spec.shaderModule;
+      if (!base) return Promise.resolve();
+      if (!_lumaEffectLoads[name]) {
+        _lumaEffectLoads[name] = import(base + LUMA_EFFECT_FILES[name] + '.js').then(function (ns) {
+          root.lumaEffects = root.lumaEffects || {};
+          root.lumaEffects[name] = ns[name];
+        }).catch(function (err) {
+          delete _lumaEffectLoads[name];   // allow a retry
+          console.error('[shiny_deckgl] Failed to load luma.gl effect ' + name, err);
+        });
+      }
+      return _lumaEffectLoads[name];
+    });
+    return Promise.all(loads);
+  }
+
   function resolvePostProcessModule(name, scope) {
     if (!name) return null;
     var root = scope || (typeof globalThis !== 'undefined' ? globalThis : window);
@@ -1702,7 +1756,10 @@
         var ppModule = resolvePostProcessModule(spec.shaderModule);
         if (!ppModule) {
           console.warn('[shiny_deckgl] PostProcessEffect shader module not available: ' +
-                       spec.shaderModule + ' (requires @luma.gl/effects)');
+                       spec.shaderModule + (LUMA_EFFECT_FILES[spec.shaderModule]
+                         ? ' (failed to load from the CDN)'
+                         : " (not loadable beside deck.gl's bundle; supported: " +
+                           Object.keys(LUMA_EFFECT_FILES).join(', ') + ')'));
           return null;
         }
         var ppProps = Object.assign({}, spec);
@@ -1882,8 +1939,30 @@
           ' (no such class in this deck.gl build)');
         return null;
       }
-      return attachWidgetEvents(new Cls(props), className, targetId);
+      // SplitterWidget (deck.gl 9.4) takes View instances in viewLayout.views.
+      if (props.viewLayout) props.viewLayout = buildViewLayout(props.viewLayout);
+      // One widget whose props this deck.gl rejects must not take the whole
+      // update down with it (a constructor throw used to fail deck_update, so
+      // the map lost its layers too): drop just that widget.
+      try {
+        return attachWidgetEvents(new Cls(props), className, targetId);
+      } catch (err) {
+        console.error('[shiny_deckgl] Widget ' + className + ' failed to build and was skipped:', err);
+        return null;
+      }
     }).filter(Boolean);
+  }
+
+  // A SplitterWidget viewLayout: views are view specs or nested layouts.
+  function buildViewLayout(layout) {
+    if (!layout || !Array.isArray(layout.views)) return layout;
+    return Object.assign({}, layout, {
+      views: layout.views.map(function (v) {
+        if (v && Array.isArray(v.views)) return buildViewLayout(v);
+        var built = buildViews([v]);
+        return built && built.length ? built[0] : v;
+      }),
+    });
   }
 
   // -----------------------------------------------------------------------
@@ -2802,6 +2881,9 @@
         svgAtlasPreloads.push(rasteriseIconAtlas(la));
       }
     }
+
+    // PostProcessEffect shader modules load on demand, in the same wait.
+    svgAtlasPreloads.push(preloadPostProcessModules(payload.effects));
 
     // Wait for all SVG atlases to rasterise (instant if cache hit or none).
     var updateGen = claimUpdateGeneration(instance);
@@ -4428,6 +4510,7 @@
   window.__deckgl_initMap = initMap;
   window.__deckgl_buildDeckLayers = buildDeckLayers;
   window.__deckgl_buildEffects = buildEffects;
+  window.__deckgl_preloadEffects = preloadPostProcessModules;
   window.__deckgl_resolveWidgetClass = resolveWidgetClass;
   window.__deckgl_cloneLayersData = cloneLayersData;
 })();

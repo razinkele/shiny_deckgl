@@ -4047,10 +4047,28 @@ class TestSplitterWidget:
         assert w["@@widgetClass"] == "_SplitterWidget"
         assert "placement" not in w
 
-    def test_extra_kwargs(self):
-        w = splitter_widget(orientation="vertical", initialSplit=0.5)
-        assert w["orientation"] == "vertical"
-        assert w["initialSplit"] == 0.5
+    def test_view_layout(self):
+        w = splitter_widget(orientation="vertical", initial_split=0.5)
+        layout = w["viewLayout"]
+        assert layout["orientation"] == "vertical"
+        assert layout["initialSplit"] == 0.5
+        assert [v["id"] for v in layout["views"]] == ["left", "right"]
+        assert "orientation" not in w   # deck.gl 9.4 reads it from viewLayout
+
+    def test_custom_views_and_limits(self):
+        from shiny_deckgl import map_view
+        w = splitter_widget([map_view(id="a"), map_view(id="b")],
+                            min_split=0.2, max_split=0.8, editable=False)
+        layout = w["viewLayout"]
+        assert [v["id"] for v in layout["views"]] == ["a", "b"]
+        assert (layout["minSplit"], layout["maxSplit"], layout["editable"]) == (0.2, 0.8, False)
+
+    def test_needs_two_views_and_a_known_orientation(self):
+        from shiny_deckgl import map_view
+        with pytest.raises(ValueError, match="two views"):
+            splitter_widget([map_view(id="a")])
+        with pytest.raises(ValueError, match="orientation"):
+            splitter_widget(orientation="diagonal")
 
 
 class TestStatsWidget:
@@ -5945,9 +5963,13 @@ class TestNoPlacementWidgetsComprehensive:
 
     @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
     def test_minimal_keys_default(self, name, fn, cls):
-        """Default no-placement widget has exactly @@widgetClass."""
+        """Default no-placement widget has exactly @@widgetClass.
+
+        SplitterWidget also always carries its (required) viewLayout.
+        """
         w = fn()
-        assert set(w.keys()) == {"@@widgetClass"}
+        expected = {"@@widgetClass", "viewLayout"} if cls == "_SplitterWidget" else {"@@widgetClass"}
+        assert set(w.keys()) == expected
 
     @pytest.mark.parametrize("name,fn,cls", _NO_PLACEMENT_WIDGETS)
     def test_list_kwarg(self, name, fn, cls):
@@ -6127,19 +6149,23 @@ class TestInfoWidgetRealistic:
 
 class TestSplitterWidgetRealistic:
     def test_orientation_horizontal(self):
-        w = splitter_widget(orientation="horizontal", initialSplit=0.5)
-        assert w["orientation"] == "horizontal"
-        assert w["initialSplit"] == 0.5
+        w = splitter_widget(orientation="horizontal", initial_split=0.5)
+        assert w["viewLayout"]["orientation"] == "horizontal"
+        assert w["viewLayout"]["initialSplit"] == 0.5
 
     def test_orientation_vertical(self):
-        w = splitter_widget(orientation="vertical", initialSplit=0.3)
-        assert w["orientation"] == "vertical"
-        assert w["initialSplit"] == 0.3
+        w = splitter_widget(orientation="vertical", initial_split=0.3)
+        assert w["viewLayout"]["orientation"] == "vertical"
+        assert w["viewLayout"]["initialSplit"] == 0.3
 
-    def test_view_ids(self):
-        w = splitter_widget(viewId1="main", viewId2="compare")
-        assert w["viewId1"] == "main"
-        assert w["viewId2"] == "compare"
+    def test_legacy_93_props_are_translated(self):
+        """viewId1/viewId2/initialSplit made the deck.gl 9.4 constructor throw."""
+        with pytest.warns(DeprecationWarning, match="view layout"):
+            w = splitter_widget(viewId1="main", viewId2="compare", initialSplit=0.3)
+        layout = w["viewLayout"]
+        assert [v["id"] for v in layout["views"]] == ["main", "compare"]
+        assert layout["initialSplit"] == 0.3
+        assert not {"viewId1", "viewId2", "initialSplit"} & set(w)
 
 
 class TestStatsWidgetRealistic:
@@ -6537,12 +6563,13 @@ class TestLayerWidgetCombined:
             scatterplot_layer("left", [{"position": [21, 55]}]),
             heatmap_layer("right", [{"position": [22, 56], "weight": 1}]),
         ]
-        widgets = [splitter_widget(viewId1="left-view", viewId2="right-view")]
+        from shiny_deckgl import map_view
+        widgets = [splitter_widget([map_view(id="left-view"), map_view(id="right-view")])]
         asyncio.run(m.update(fake, layers, widgets=widgets))
         p = fake.messages[0][1]
         assert len(p["layers"]) == 2
         sp = p["widgets"][0]
-        assert sp["viewId1"] == "left-view"
+        assert sp["viewLayout"]["views"][0]["id"] == "left-view"
 
     def test_icon_layer_with_geocoder_and_reset(self):
         """IconLayer with GeocoderWidget for search and ResetViewWidget."""

@@ -365,17 +365,37 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
             input.ml_basemap(), CARTO_POSITRON,
         )
         await maplibre_widget.set_style(session, style_url)
-        # set_style removes all sources/layers; re-add ours. The legend stays
-        # (it refreshes itself on style changes).
+        await _ml_restore_native()
+
+    async def _ml_restore_native():
+        """Re-add our native layers after a basemap swap removed them."""
+        # A style swap removes all sources/layers; re-add ours. The legend
+        # stays (it refreshes itself on style changes).
+        with reactive.isolate():
+            show_clusters = input.v1_show_clusters()
+            opacity = input.ml_opacity()
         await _ml_add_native_layers()
-        if input.v1_show_clusters():
+        if show_clusters:
             await _ml_add_clusters()
         # The re-added layers are all visible again, but the opacity control
         # would keep showing any boxes the user had unticked: re-create it
         # so it matches. set_controls() leaves the unchanged ones alone.
-        if input.ml_opacity():
+        if opacity:
             await maplibre_widget.remove_control(session, "opacity")
             await maplibre_widget.set_controls(session, _build_ml_controls())
+
+    # The navbar's dark-mode switch swaps this map's basemap on the client
+    # (dark_style=), which also removes the native layers; the map reports
+    # each swap through its dark-mode input.
+    ml_reported_style = {"style": maplibre_widget.style}
+
+    @reactive.Effect
+    @reactive.event(input[maplibre_widget.dark_mode_input_id])
+    async def _ml_after_dark_mode():
+        style = input[maplibre_widget.dark_mode_input_id]().get("style")
+        if style and style != ml_reported_style["style"]:
+            ml_reported_style["style"] = style
+            await _ml_restore_native()
 
     # Drag marker (MapLibre tab)
     @reactive.Effect

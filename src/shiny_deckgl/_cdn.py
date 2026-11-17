@@ -9,13 +9,22 @@ MAPLIBRE_VERSION = "6.18.0"
 # classic worker, which blob:null permits, so exports stay on the last v5
 # release. Served pages (Shiny) are unaffected and use MAPLIBRE_VERSION above.
 MAPLIBRE_EXPORT_VERSION = "5.24.1"
-MAPBOX_DRAW_VERSION = "1.5.1"
+MAPBOX_DRAW_VERSION = "1.5.2"
 MAPLIBRE_LEGEND_VERSION = "2.0.7"
 MAPLIBRE_OPACITY_VERSION = "1.8.0"
 H3_JS_VERSION = "4.5.0"
+# PostProcessEffect shader modules. deck.gl's bundle has none, and neither
+# whole-package build works beside it (the UMD dist.min.js ships luma.gl core
+# instead of the effects; the ESM entry pulls in a second @luma.gl/core, which
+# throws). The client import()s single self-contained module files from here.
+LUMA_EFFECTS_VERSION = "9.4.2"
 
 DECKGL_JS = f"https://cdn.jsdelivr.net/npm/deck.gl@{DECKGL_VERSION}/dist.min.js"
 H3_JS = f"https://cdn.jsdelivr.net/npm/h3-js@{H3_JS_VERSION}/dist/h3-js.umd.js"
+LUMA_EFFECTS_BASE = (
+    f"https://cdn.jsdelivr.net/npm/@luma.gl/effects@{LUMA_EFFECTS_VERSION}"
+    "/dist/passes/postprocessing/"
+)
 DECKGL_WIDGETS_JS = f"https://cdn.jsdelivr.net/npm/@deck.gl/widgets@{DECKGL_VERSION}/dist.min.js"
 DECKGL_WIDGETS_CSS = f"https://cdn.jsdelivr.net/npm/@deck.gl/widgets@{DECKGL_VERSION}/dist/stylesheet.css"
 # MapLibre GL JS 6 is ESM-only: the UMD/IIFE build (maplibre-gl.js) and the
@@ -43,10 +52,18 @@ MAPLIBRE_OPACITY_CSS = f"https://cdn.jsdelivr.net/npm/maplibre-gl-opacity@{MAPLI
 # MapLibre's module URL is published as an inert JSON data block rather than an
 # inline module script: a <script type="application/json"> body is never
 # executed, so a strict script-src Content-Security-Policy allows it without
-# 'unsafe-inline'. deckgl-init.js reads this block and import()s the URL.
+# 'unsafe-inline'. deckgl-init.js reads this block and import()s the URLs
+# (MapLibre at start-up, a luma.gl effect module when an effect needs one).
 CDN_CONFIG_JSON = (
     '<script type="application/json" id="shiny-deckgl-cdn">'
-    f'{{"maplibre": "{MAPLIBRE_JS}"}}'
+    f'{{"maplibre": "{MAPLIBRE_JS}", "lumaEffects": "{LUMA_EFFECTS_BASE}"}}'
+    '</script>'
+)
+# Standalone exports load MapLibre 5 from a classic <script> (see
+# MAPLIBRE_EXPORT_VERSION), so their block carries only the effects base.
+EXPORT_CDN_CONFIG_JSON = (
+    '<script type="application/json" id="shiny-deckgl-cdn">'
+    f'{{"lumaEffects": "{LUMA_EFFECTS_BASE}"}}'
     '</script>'
 )
 

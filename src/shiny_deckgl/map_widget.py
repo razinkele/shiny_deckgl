@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from shiny import Session
 
 from ._cdn import (
+    EXPORT_CDN_CONFIG_JSON,
     MAPLIBRE_EXPORT_JS,
     MAPLIBRE_EXPORT_CSS,
     H3_JS,
@@ -2833,6 +2834,7 @@ class MapWidget:
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
+{EXPORT_CDN_CONFIG_JSON}
 <script src="{MAPLIBRE_EXPORT_JS}"></script>
 <link rel="stylesheet" href="{MAPLIBRE_EXPORT_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
@@ -2879,15 +2881,19 @@ if (typeof Shiny === 'undefined') {{
       cloneLayersData(layersData), mapId
     );
     var overlayProps = {{ layers: deckLayers }};
-    var effects = buildEffects(effectsData);
-    if (effects) overlayProps.effects = effects;
-    if (inst.map.isStyleLoaded()) {{
-      inst.overlay.setProps(overlayProps);
-    }} else {{
-      inst.map.once('style.load', function() {{
+    var apply = function() {{
+      var effects = buildEffects(effectsData);
+      if (effects) overlayProps.effects = effects;
+      if (inst.map.isStyleLoaded()) {{
         inst.overlay.setProps(overlayProps);
-      }});
-    }}
+      }} else {{
+        inst.map.once('style.load', function() {{
+          inst.overlay.setProps(overlayProps);
+        }});
+      }}
+    }};
+    // PostProcessEffect shader modules load on demand.
+    window.__deckgl_preloadEffects(effectsData).then(apply, apply);
   }});
   }}).catch(function (err) {{
     document.body.insertAdjacentHTML('afterbegin',

@@ -77,7 +77,8 @@ jobs:
                    tests/test_e2e_viewport.py tests/test_e2e_trips.py \
                    tests/test_e2e_frame_loop.py tests/test_e2e_globe.py \
                    tests/test_sanitizer_browser.py tests/test_widgets_resolve.py \
-                   tests/test_maplibre_v6.py tests/test_path_style_browser.py; do
+                   tests/test_maplibre_v6.py tests/test_path_style_browser.py \
+                   tests/test_e2e_draw.py tests/test_e2e_splitter.py tests/test_e2e_postprocess.py; do
             echo "::group::$f"; pytest -q "$f"; echo "::endgroup::"
           done
       # The full demo (11 maps) is the heavy one: last and alone.

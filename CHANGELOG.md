@@ -5,7 +5,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
-## [Unreleased]
+## [1.15.2] — 2026-11-17
 
 Bugs found by an exploratory browser sweep of the demo (every tab and control).
 

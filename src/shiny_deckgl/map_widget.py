@@ -86,12 +86,11 @@ def _validate_choice(value: str, valid_values: set[str], name: str, sorted_value
             f"Valid {name}s: {sorted_values}"
         )
 
-# Hoist the namespace resolver import to module level so we pay the
-# try/except cost once at import time, not on every MapWidget instantiation.
-try:
-    from shiny._namespaces import resolve_id as _shiny_resolve_id
-except (ImportError, AttributeError):  # pragma: no cover — future-proofing
-    _shiny_resolve_id = None  # type: ignore[assignment]
+# The public resolver (shiny.module.resolve_id, in every supported Shiny).
+# It used to come from the private shiny._namespaces with a silent fallback
+# to the bare ID, so a moved private module would have quietly broken every
+# map inside a Shiny module; a missing public name now fails at import.
+from shiny.module import resolve_id as _shiny_resolve_id
 
 
 def _resolve_ns(raw_id: str) -> str:
@@ -100,16 +99,11 @@ def _resolve_ns(raw_id: str) -> str:
     Inside a ``@module.ui`` or ``@module.server`` context this returns
     the fully-qualified (namespaced) ID, e.g. ``"mod-my_map"``.
     Outside any module the raw ID is returned unchanged.
-
-    The function gracefully falls back to the bare ID when the private
-    ``shiny._namespaces`` API is unavailable (future-proofing).
     """
-    if _shiny_resolve_id is not None:
-        try:
-            return str(_shiny_resolve_id(raw_id))
-        except (TypeError, ValueError):  # pragma: no cover — defensive
-            pass
-    return raw_id
+    try:
+        return str(_shiny_resolve_id(raw_id))
+    except (TypeError, ValueError):  # pragma: no cover — defensive
+        return raw_id
 
 
 # ---------------------------------------------------------------------------

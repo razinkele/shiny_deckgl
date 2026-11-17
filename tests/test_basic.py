@@ -317,6 +317,16 @@ class TestMapWidget:
         assert w.id == "plain"
         assert w._bare_id == "plain"
 
+    def test_uses_the_public_resolver_not_the_private_module(self):
+        """A private import with a silent fallback could break module maps unnoticed."""
+        import inspect
+
+        import shiny.module
+        import shiny_deckgl.map_widget as mw
+        assert mw._shiny_resolve_id is shiny.module.resolve_id
+        src = inspect.getsource(mw)
+        assert "from shiny._namespaces" not in src and "import shiny._namespaces" not in src
+
     def test_id_resolved_inside_module_namespace(self):
         """Inside a Shiny module namespace context, id is fully qualified."""
         from shiny._namespaces import namespace_context

@@ -5,6 +5,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+### Changed
+
+- **Module namespacing uses Shiny's public `shiny.module.resolve_id`.** It came from
+  the private `shiny._namespaces` with a silent fallback to the bare ID, so if that
+  private module ever moved, every map inside a Shiny module would have lost its
+  namespace without an error. The public name is the same function and exists in every
+  supported Shiny; a missing one now fails at import.
+
+---
 ## [1.15.3] — 2026-11-17
 
 ### Fixed

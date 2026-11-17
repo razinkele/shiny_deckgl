@@ -3207,18 +3207,17 @@ class TestExtensionHelpers:
 
     def test_path_style_defaults(self):
         result = path_style_extension()
-        assert result == ["PathStyleExtension",
-                          {"dash": False, "highPrecisionDash": False}]
+        assert result == ["PathStyleExtension", {"dash": False, "offset": False}]
 
     def test_path_style_dash(self):
         result = path_style_extension(dash=True)
-        assert result == ["PathStyleExtension",
-                          {"dash": True, "highPrecisionDash": False}]
+        assert result == ["PathStyleExtension", {"dash": True, "offset": False}]
 
     def test_path_style_high_precision(self):
-        result = path_style_extension(dash=True, high_precision=True)
+        with pytest.warns(DeprecationWarning, match="dash_mode"):
+            result = path_style_extension(dash=True, high_precision=True)
         assert result == ["PathStyleExtension",
-                          {"dash": True, "highPrecisionDash": True}]
+                          {"dash": True, "offset": False, "dashMode": "path"}]
 
     # --- integration with layer() ---
 

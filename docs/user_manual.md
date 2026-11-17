@@ -993,9 +993,25 @@ A background task can also call `await map_widget.partial_update(session, ...)` 
 messages go straight to the websocket on every Shiny version (on Shiny < 1.9, `ui.update_*()`
 calls made from such a task waited for the next input change).
 
-Since Shiny 1.9 runs effects concurrently, two *different* effects that both call
-`map_widget.update()` reach the browser in the order they finish awaiting, not in effect
-order. Keep updates that must be ordered in one effect.
+Since Shiny 1.9 runs effects concurrently, map calls made from two *different* effects
+reach the browser in the order they finish awaiting, not in effect order. Within one effect
+each awaited call is sent before the next starts, so keep calls that depend on each other
+in one effect:
+
+```python
+@reactive.effect
+async def _native_layers():
+    # The layer needs its source: same effect, source first.
+    await map_widget.add_source(session, "mpa-source", {"type": "geojson", "data": mpas})
+    await map_widget.add_maplibre_layer(session, {
+        "id": "mpa-fill", "type": "fill", "source": "mpa-source",
+        "paint": {"fill-color": "rgba(0, 180, 120, 0.25)"},
+    })
+```
+
+Splitting these across two effects can send `add_maplibre_layer` first, and MapLibre
+rejects a layer whose source does not exist yet. The same goes for an `update()` and a
+`partial_update()` of the layers it creates.
 
 ---
 

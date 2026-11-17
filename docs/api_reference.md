@@ -3736,7 +3736,10 @@ Apply fill patterns to polygon layers.
 ### `path_style_extension()`
 
 ```python
-shiny_deckgl.path_style_extension(dash: bool = False, high_precision: bool = False) -> list
+shiny_deckgl.path_style_extension(
+    dash: bool = False, high_precision: bool = False, *,
+    offset: bool = False, dash_mode: str | None = None,
+) -> list
 ```
 
 Dashed/offset path rendering.
@@ -3744,9 +3747,17 @@ Dashed/offset path rendering.
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `dash` | `bool` | `False` | Enable dash patterns. |
-| `high_precision` | `bool` | `False` | Use pixel-perfect dash rendering (slower). |
+| `high_precision` | `bool` | `False` | **Deprecated** (deck.gl 9.4 deprecated `highPrecisionDash`); maps to `dash_mode="path"` and emits a `DeprecationWarning`. |
+| `offset` | `bool` | `False` | Enable `getOffset`. deck.gl ignores `getOffset` without it. |
+| `dash_mode` | `str \| None` | `None` | `"segment"` restarts the pattern at every vertex (deck.gl's default); `"path"` runs it continuously, like MapLibre/SVG. Use `"path"` for dense tracks, where short segments otherwise draw solid. Also enables `dash`. |
 
-**Layer props enabled:** `getDashArray`, `dashJustified`, `getOffset`.
+**Layer props enabled:** `getDashArray` (in `dashUnits`), `dashUnits` (`"widths"` = multiples of *half* the stroke width, default; `"pixels"`, `"meters"`, `"common"`), `dashJustified`, `dashGapPickable`, `getOffset` (stroke widths; needs `offset=True`).
+
+```python
+layer("PathLayer", "tracks", data,
+      extensions=[path_style_extension(dash_mode="path", offset=True)],
+      getDashArray=[8, 4], dashUnits="pixels", getOffset=1)
+```
 
 ### `fp64_extension()`
 

@@ -42,6 +42,10 @@ def test_themes_apply_follow_dark_mode_and_clear():
             # back to light, then cleared from the server
             pg.evaluate("() => document.documentElement.setAttribute('data-bs-theme', 'light')")
             _wait_var(pg, "--button-backdrop-filter", expected)
+            assert pg.evaluate("() => document.getElementById('tmap').dataset.widgetTheme") \
+                == '"light-glass"'
             pg.click("#plain")
             _wait_var(pg, "--button-backdrop-filter", "")
             assert pg.evaluate(VAR, "--button-background") == ""
+            # Recorded on the element too, so a context-loss rebuild keeps it.
+            assert pg.evaluate("() => document.getElementById('tmap').dataset.widgetTheme") is None

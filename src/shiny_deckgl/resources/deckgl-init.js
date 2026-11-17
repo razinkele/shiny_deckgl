@@ -3384,6 +3384,15 @@
     if (!instance) return;
     instance.widgetTheme = payload.theme || null;
     instance.darkWidgetTheme = payload.darkTheme || null;
+    // A WebGL context-loss rebuild re-reads the element's data-* attributes:
+    // record the runtime themes there so they survive it.
+    if (instance.el && instance.el.dataset) {
+      var ds = instance.el.dataset;
+      if (instance.widgetTheme) ds.widgetTheme = JSON.stringify(instance.widgetTheme);
+      else delete ds.widgetTheme;
+      if (instance.darkWidgetTheme) ds.darkWidgetTheme = JSON.stringify(instance.darkWidgetTheme);
+      else delete ds.darkWidgetTheme;
+    }
     applyWidgetTheme(instance);
   });
 

@@ -1211,6 +1211,15 @@ class TestPackagingMetadataIsConsistent:
         )
         assert f'shiny: "{self.MIN_SHINY}"' in ci, "no CI job pinned to the floor"
 
+    def test_uvicorn_floor_avoids_the_legacy_websockets_backend(self):
+        # uvicorn < 0.50 + Shiny 1.9: concurrent sends trip an assertion in
+        # websockets.legacy's drain() and Shiny closes the socket with 1008.
+        root = Path(__file__).resolve().parents[1]
+        deps = self._pyproject()["project"]["dependencies"]
+        assert any(d.replace(" ", "").startswith("uvicorn>=0.50") for d in deps), deps
+        recipe = (root / "conda.recipe" / "meta.yaml").read_text(encoding="utf-8")
+        assert "- uvicorn >=0.50" in recipe
+
     def test_cdn_versions_are_exact_pins(self):
         """CDN assets must stay exactly pinned for deterministic builds."""
         import re

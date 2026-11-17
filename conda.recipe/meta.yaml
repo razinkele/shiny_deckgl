@@ -24,6 +24,7 @@ requirements:
   run:
     - python >=3.10
     - shiny >=1.7.0
+    - uvicorn >=0.50
     - htmltools
 
 # Build-time verification of the *packaged* result, not the source tree.

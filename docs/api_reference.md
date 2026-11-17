@@ -191,7 +191,7 @@ import shiny_deckgl as sdgl
 shiny_deckgl.head_includes() -> HTMLDependency
 ```
 
-Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.2, and local shiny\_deckgl assets into the page `<head>`.
+Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.2, and local shiny\_deckgl assets into the page `<head>`. `@luma.gl/effects` 9.4.2 shader modules are not injected; the client imports the one a `post_process_effect()` needs on first use.
 
 Place as a **direct child** of any `ui.page_*()` layout:
 
@@ -2660,11 +2660,28 @@ Lighting types for effects:
 ```python
 from shiny_deckgl import LightType
 
-LightType.AMBIENT       # "AmbientLight"
-LightType.POINT         # "PointLight"
-LightType.DIRECTIONAL   # "DirectionalLight"
-LightType.SUN           # "SunLight"
+LightType.AMBIENT       # "ambient"
+LightType.POINT         # "point"
+LightType.DIRECTIONAL   # "directional"
+LightType.SUN           # "sun"
 ```
+
+### PostProcessShader
+
+Shader module names for [`post_process_effect()`](#post_process_effect):
+
+```python
+from shiny_deckgl import PostProcessShader, post_process_effect
+
+post_process_effect(PostProcessShader.VIGNETTE, radius=0.5, amount=0.5)
+```
+
+Loadable: `BRIGHTNESS_CONTRAST`, `BULGE_PINCH`, `COLOR_HALFTONE`, `DENOISE`, `DOT_SCREEN`,
+`FX_AA`, `HEX_PIXELATE` / `HEXAGONAL_PIXELATE` (`"hexagonalPixelate"`; `HEX_PIXELATE` said
+`"hexPixelate"` before 1.15.2, which no module has), `HUE_SATURATION`, `INK`, `MAGNIFY`,
+`NOISE`, `SEPIA`, `SWIRL`, `VIBRANCE`, `VIGNETTE`. Not available in the browser:
+`EDGE_WORK`, `TILT_SHIFT`, `TRIANGLE_BLUR`, `ZOOM_BLUR` (they need `@luma.gl/shadertools`;
+the client skips them with a console warning).
 
 ### Projection & CoordinateSystem
 
@@ -2856,6 +2873,18 @@ With `dark_style` the basemap swaps when the page's `data-bs-theme` becomes `"da
 re-add them on `dark_mode_input_id`). With or without a dark style the map div gets `deckgl-dark`,
 which darkens deck.gl's widgets and the layer legend. `follow_dark_mode=False` leaves the switching
 to `set_dark_mode()`.
+
+```python
+@reactive.effect
+@reactive.event(input[widget.dark_mode_input_id])
+async def _after_dark_swap():
+    # The swap removed native sources/layers. Re-add the source, then every layer
+    # that uses it: add_source() on a source that still exists replaces it and
+    # removes all of its layers.
+    await widget.add_source(session, "mpa", {"type": "geojson", "data": mpas})
+    await widget.add_maplibre_layer(session, {"id": "mpa-fill", "type": "fill", "source": "mpa"})
+    await widget.add_maplibre_layer(session, {"id": "mpa-line", "type": "line", "source": "mpa"})
+```
 
 ### Bookmarking (v1.13.0)
 
@@ -3445,6 +3474,11 @@ await widget.update(session, layers=my_layers, effects=effects)
 ```
 
 The JS client resolves `LightingEffect` specs into `deck.LightingEffect` instances with `deck.AmbientLight`, `deck.PointLight`, `deck.DirectionalLight`, and `deck._SunLight` sub-objects.
+
+`effects=None` (the default) keeps the map's current effects and `effects=[]` clears them; the
+same holds for `views` and `widgets`. An update that is overtaken by a newer one while it waits
+(e.g. for a first-use post-processing module) still contributes the effects, views and widgets
+the newer update left out (1.15.2).
 
 ---
 

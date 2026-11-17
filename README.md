@@ -127,6 +127,41 @@ browser, all without Java dependencies.
 | **Drawing demo** | Tab 7 — MapboxDraw tools, named markers with popups, spatial query, live interaction log. |
 | **Animation demo** | Tab 8 — Animated Baltic shipping tracks, GreatCircleLayer, GridLayer, speed/trail controls. |
 
+### v1.15.2 — Demo Sweep Fixes
+
+Found by driving every tab and control of the demo in a browser (`tools/demo_sweep.py`).
+
+| Capability | Details |
+| --- | --- |
+| **Drawing** | Lines and polygon outlines render again: mapbox-gl-draw 1.5.2 (1.5.1's theme was rejected by MapLibre 6). |
+| **`splitter_widget()`** | Builds deck.gl 9.4's `viewLayout` (`views=`, `orientation=`, `initial_split=`, ...); the 9.3 props are translated with a deprecation warning. A widget that fails to build is skipped instead of failing the whole map update. |
+| **Post-processing** | `post_process_effect()` works: the client loads the `@luma.gl/effects` module on first use (15 modules; served pages and exports). `PostProcessShader` matches what loads. |
+| **Updates** | Effects, views and widgets of an update overtaken by a newer one are no longer lost. |
+| **Demo** | The MapLibre tab keeps its native layers through the dark-mode switch. |
+
+### v1.15.1 — `path_style_extension()` for deck.gl 9.4
+
+| Capability | Details |
+| --- | --- |
+| **Offsets** | `path_style_extension(offset=True)` — `getOffset` had no effect before (deck.gl only honours it with `offset: true`). |
+| **Dash mode** | `dash_mode="segment"` / `"path"`; `high_precision=True` (deprecated `highPrecisionDash`) maps to `"path"` with a warning. |
+
+### v1.15.0 — Security & Dependency Floors
+
+| Capability | Details |
+| --- | --- |
+| **Security** | Standalone exports load MapLibre 5.24.1, fixing the `DOM.sanitize()` XSS bypass (GHSA-jrc7-96c5-q579). |
+| **Floors** | `shiny>=1.7.0` (the demo needs `render.download_button`) and `uvicorn>=0.50` (older uvicorn drops the connection under Shiny 1.9's concurrent sends); CI tests the Shiny floor. |
+| **CDN** | deck.gl 9.4.1, MapLibre 6.18.0. |
+| **Robustness** | The Shiny version is read from the imported module, so a mixed pip/conda environment cannot disable bookmarking. |
+
+### v1.14.0 — Shiny 1.9: `rpc()` inside reactive effects
+
+| Capability | Details |
+| --- | --- |
+| **RPC in effects** | `await widget.rpc(...)` (and `get_view_state()`, `get_features()`, ...) works inside a plain reactive effect on Shiny ≥ 1.9; on older Shiny it is still refused in favour of `reactive.extended_task`. |
+| **Fix** | A cancelled `rpc()` no longer leaks its pending entry. |
+
 ### v1.13.0 — Shiny 1.8 Roadmap
 
 | Capability | Details |
@@ -381,6 +416,10 @@ The v5 line now only receives security fixes: 5.24.1 patches the
 
 - **Python ≥ 3.10** and **Shiny ≥ 1.7.0** are required.
   (Shiny 1.6.2 and later require Python 3.10.)
+- **uvicorn ≥ 0.50** is required (installed automatically). With Shiny 1.9, older
+  uvicorn's default websocket backend fails on concurrent sends and Shiny closes the
+  connection right after the page loads; Shiny itself only asks for `uvicorn>=0.23`, so
+  an environment upgraded in place may still hold an old one.
 - Any standard Python environment works (venv, conda, micromamba, system).
 
 ## Installation
@@ -566,6 +605,7 @@ await widget.fly_to(session, longitude=20.0, latitude=55.5, zoom=8, pitch=45)
 | `conda.recipe/meta.yaml` | Conda build recipe (version synced with `_version.py`). |
 | `src/shiny_deckgl/_sealmove.py` | Seal movement simulation engine for the IBM demo tab. |
 | `sprites/build_atlas.py` | Sprite build pipeline — drop source PNGs into `sprites/src/`, auto-generates atlas PNG and `ICON_MAPPING` dict. |
+| `tools/demo_sweep.py` | Exploratory browser sweep of the demo: every tab and control, with errors, tracebacks and disconnects recorded per action, and each tab's maps checked for blankness when it opens. |
 | `tests/test_basic.py` | 1 078 unit tests covering all features. |
 | `tests/test_tooltip_xss.py` | 10 XSS/validation tests covering `sanitizeHtml`, tooltip validation, and hyphenated field templates. |
 
@@ -588,6 +628,17 @@ failing: the JS helper tests (`tests/_js_harness.py`) need `node` on PATH, and
 the end-to-end tests (`tests/test_e2e_playwright.py`) need Playwright with
 Chromium installed. The end-to-end file is memory-hungry — on a 16 GB machine
 run it per class rather than all at once.
+
+For a deeper manual check of the demo, `tools/demo_sweep.py` drives every tab and
+control in Chromium (switches, buttons, sliders, selects, text, downloads, dark mode,
+phone width, reload) and writes `report.json` plus screenshots. It needs Playwright
+(included in the `dev` and `browser` extras, not in `test`) and its Chromium build:
+
+```bash
+pip install -e ".[dev]"
+python -m playwright install chromium
+python tools/demo_sweep.py . sweep-out
+```
 
 ## License
 

@@ -7,6 +7,17 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 ---
 ## [Unreleased]
 
+### Fixed
+
+- **Leaving dark mode undid `set_style()`.** The client swapped back to the style the
+  map was constructed with, even on maps without a `dark_style` (their light style was
+  never updated). `set_style()` now replaces the style the map returns to: the dark one
+  while the map is dark and has a `dark_style`, else the light one. `set_dark_mode()`
+  likewise restores the session's chosen style instead of the constructed one.
+- **Demo: the MapLibre tab's basemap dropdown follows dark mode.** It showed the old
+  basemap in dark mode and after returning to light; it now tracks the style each swap
+  reports, without the sync itself re-applying the style.
+
 ### Documentation
 
 - README: feature sections for 1.14.0–1.15.2, the `uvicorn>=0.50` requirement, and

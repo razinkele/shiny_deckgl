@@ -55,3 +55,28 @@ def test_switch_back_to_light(page):
     page.wait_for_function("() => /positron/.test(window.__deckgl_instances.dmap.currentStyle)", timeout=5000)
     assert not page.evaluate("() => document.getElementById('dmap').classList.contains('deckgl-dark')")
     page.wait_for_function("() => document.getElementById('reported').innerText.startsWith('dark=False')", timeout=5000)
+
+
+_STYLES = ("() => [window.__deckgl_instances.dmap.currentStyle,"
+           " window.__deckgl_instances.pmap.currentStyle]")
+
+
+def test_set_style_survives_a_dark_round_trip(page):
+    """Leaving dark mode used to restore the constructed style, undoing set_style().
+
+    It hit maps without a dark_style too: their light style was never updated,
+    so dark -> light swapped them back to the start-up basemap.
+    """
+    page.click("#voyager")
+    page.wait_for_function("() => ['dmap', 'pmap'].every(id => /voyager/.test("
+                           "window.__deckgl_instances[id].currentStyle))", timeout=10000)
+    page.evaluate("() => document.documentElement.setAttribute('data-bs-theme', 'dark')")
+    page.wait_for_function("() => /dark-matter/.test(window.__deckgl_instances.dmap.currentStyle)",
+                           timeout=5000)
+    assert "voyager" in page.evaluate(_STYLES)[1]        # no dark_style: unchanged
+    page.evaluate("() => document.documentElement.setAttribute('data-bs-theme', 'light')")
+    page.wait_for_function("() => /voyager/.test(window.__deckgl_instances.dmap.currentStyle)",
+                           timeout=5000)
+    page.wait_for_timeout(500)
+    dmap, pmap = page.evaluate(_STYLES)
+    assert "voyager" in dmap and "voyager" in pmap

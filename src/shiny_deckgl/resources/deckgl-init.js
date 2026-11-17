@@ -3291,7 +3291,15 @@
 
   addDeferrable("deck_set_style", function (payload) {
     if (!payload || !payload.id) return;
-    applyStyle(mapInstances[payload.id], payload.style, !!payload.diff);
+    var instance = mapInstances[payload.id];
+    if (!instance) return;
+    // The new style is the one a dark-mode switch should come back to: the
+    // dark style while the map is dark (and has one), else the light style.
+    // Otherwise leaving dark mode restored the style the map started with,
+    // undoing set_style() (with or without a dark_style).
+    if (instance.dark && instance.darkStyle) instance.darkStyle = payload.style;
+    else instance.lightStyle = payload.style;
+    applyStyle(instance, payload.style, !!payload.diff);
   });
 
   // -----------------------------------------------------------------------

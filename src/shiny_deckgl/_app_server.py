@@ -357,6 +357,10 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         controls = _build_ml_controls()
         await maplibre_widget.set_controls(session, controls)
 
+    # The basemap this map shows, so the dropdown can follow a dark-mode swap
+    # without the sync itself re-applying the style.
+    ml_style = {"current": maplibre_widget.style}
+
     # Basemap switching — re-add native layers after style swap
     @reactive.Effect
     @reactive.event(input.ml_basemap, ignore_init=True)
@@ -364,6 +368,9 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
         style_url = BASEMAP_CHOICES.get(
             input.ml_basemap(), CARTO_POSITRON,
         )
+        if style_url == ml_style["current"]:
+            return   # the dropdown was synced to the map, not changed by the user
+        ml_style["current"] = style_url
         await maplibre_widget.set_style(session, style_url)
         await _ml_restore_native()
 
@@ -389,9 +396,18 @@ def server(input: Any, output: Any, session: "Session"):  # type: ignore[name-de
     # each swap through its dark-mode input. Restore on every report: the
     # server cannot know which style the client started on (a page may load
     # dark), and re-adding a source/layer that is still there replaces it.
+    # It also syncs the basemap dropdown to the style the swap put on.
     @reactive.Effect
     @reactive.event(input[maplibre_widget.dark_mode_input_id])
     async def _ml_after_dark_mode():
+        style = input[maplibre_widget.dark_mode_input_id]().get("style")
+        if style:
+            ml_style["current"] = style
+            label = next((k for k, v in BASEMAP_CHOICES.items() if v == style), None)
+            with reactive.isolate():
+                selected = input.ml_basemap()
+            if label and label != selected:
+                ui.update_select("ml_basemap", selected=label)
         await _ml_restore_native()
 
     # Drag marker (MapLibre tab)

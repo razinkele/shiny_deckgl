@@ -64,3 +64,25 @@ def test_dark_style_must_be_a_string():
     from shiny_deckgl import MapWidget
     with pytest.raises(TypeError, match="dark_style"):
         MapWidget("m", dark_style=["x"])
+
+
+def test_set_dark_mode_returns_to_the_style_the_session_chose():
+    """set_dark_mode(False) restored the constructed style, undoing set_style()."""
+    from shiny_deckgl import MapWidget
+    from shiny_deckgl.colors import CARTO_VOYAGER, OSM_LIBERTY
+    w, s, other = MapWidget("m", dark_style=DARK), _FakeSession(), _FakeSession()
+    asyncio.run(w.set_style(s, CARTO_VOYAGER))
+    asyncio.run(w.set_dark_mode(s, True))
+    assert w.current_style(s) == DARK
+    asyncio.run(w.set_dark_mode(s, False))
+    assert w.current_style(s) == CARTO_VOYAGER
+    # A style set while dark replaces the dark one, and light still comes back.
+    asyncio.run(w.set_dark_mode(s, True))
+    asyncio.run(w.set_style(s, OSM_LIBERTY))
+    asyncio.run(w.set_dark_mode(s, False))
+    assert w.current_style(s) == CARTO_VOYAGER
+    asyncio.run(w.set_dark_mode(s, True))
+    assert w.current_style(s) == OSM_LIBERTY
+    # Per session: another session is untouched.
+    asyncio.run(w.set_dark_mode(other, True))
+    assert w.current_style(other) == DARK

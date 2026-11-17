@@ -29,7 +29,18 @@ def test_documented_modules_are_the_ones_the_client_loads():
 def test_client_paths_are_under_the_postprocessing_dist():
     table = re.search(r"var LUMA_EFFECT_FILES = \{(.*?)\};", JS, re.S).group(1)
     paths = re.findall(r":\s*'([^']+)'", table)
-    assert paths and all(re.fullmatch(r"image-[a-z]+-filters/[a-z]+", p) for p in paths), paths
+    assert paths and all(re.fullmatch(r"(image-[a-z]+-filters|fxaa)/[a-z]+", p) for p in paths), paths
+
+
+UNAVAILABLE = {"edgeWork", "tiltShift", "triangleBlur", "zoomBlur"}
+
+
+def test_enum_members_are_loadable_or_documented_unavailable():
+    from shiny_deckgl.enums import PostProcessShader
+    values = {m.value for m in PostProcessShader}
+    assert values - UNAVAILABLE == _client_modules()
+    doc = PostProcessShader.__doc__
+    assert all(m.name in doc for m in PostProcessShader if m.value in UNAVAILABLE)
 
 
 def test_cdn_config_publishes_the_pinned_effects_base():

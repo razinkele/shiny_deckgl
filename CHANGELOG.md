@@ -29,9 +29,11 @@ Bugs found by an exploratory browser sweep of the demo (every tab and control).
   modules, so every post-process effect was skipped ("shader module not available"),
   including the demo's Brightness/Contrast switch. The client now `import()`s the
   module's file from `@luma.gl/effects` 9.4.2 on first use (served pages and
-  standalone exports). Fourteen modules are supported; `tiltShift`, `triangleBlur`,
+  standalone exports). Fifteen modules are supported; `tiltShift`, `triangleBlur`,
   `zoomBlur` and `edgeWork` need `@luma.gl/shadertools`, whose CDN build cannot load
-  beside deck.gl's, and are documented as unavailable.
+  beside deck.gl's, and are documented as unavailable. `PostProcessShader` gains the
+  missing members, and `HEX_PIXELATE` now holds luma.gl's name `"hexagonalPixelate"`
+  (it said `"hexPixelate"`, which no module has).
 - **Demo: the MapLibre tab's native layers vanished in dark mode.** The navbar's
   dark-mode switch swaps the basemap on the client, which removes native sources and
   layers; the demo re-added them after its basemap dropdown but not after a dark-mode

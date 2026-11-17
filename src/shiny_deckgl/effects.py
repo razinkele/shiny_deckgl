@@ -267,6 +267,7 @@ def post_process_effect(
         - ``"magnify"`` — magnifying glass
         - ``"bulgePinch"`` — bulge/pinch warp
         - ``"swirl"`` — swirl warp
+        - ``"fxaa"`` — fast approximate anti-aliasing
 
         ``"tiltShift"``, ``"triangleBlur"``, ``"zoomBlur"`` and
         ``"edgeWork"`` are not available: they need

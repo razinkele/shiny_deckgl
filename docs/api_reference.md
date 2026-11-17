@@ -1859,7 +1859,7 @@ Screen-space pixel manipulation via a luma.gl shader module.
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `shader_module` | `str` | One of `"brightnessContrast"`, `"hueSaturation"`, `"denoise"`, `"noise"`, `"sepia"`, `"vibrance"`, `"vignette"`, `"colorHalftone"`, `"dotScreen"`, `"hexagonalPixelate"`, `"ink"`, `"magnify"`, `"bulgePinch"`, `"swirl"`. |
+| `shader_module` | `str` | One of `"brightnessContrast"`, `"hueSaturation"`, `"denoise"`, `"noise"`, `"sepia"`, `"vibrance"`, `"vignette"`, `"colorHalftone"`, `"dotScreen"`, `"hexagonalPixelate"`, `"ink"`, `"magnify"`, `"bulgePinch"`, `"swirl"`, `"fxaa"` (or a `PostProcessShader` member). |
 | `**kwargs` | | Shader-specific parameters (e.g. `brightness=0.5`). |
 
 The client imports the module's file from `@luma.gl/effects` (pinned in

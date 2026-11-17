@@ -1683,6 +1683,7 @@
     magnify: 'image-fun-filters/magnify',
     bulgePinch: 'image-warp-filters/bulgepinch',
     swirl: 'image-warp-filters/swirl',
+    fxaa: 'fxaa/fxaa',
   };
   var _lumaEffectLoads = {};
 

@@ -9,6 +9,10 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Demo: the 12 tab sidebars are ARIA landmarks on Shiny ≥ 1.9** (`role="complementary"`,
+  rendered as `<aside>`, named "<tab> settings"), so screen readers can jump between a
+  tab's settings and its map. Feature-detected: on older Shiny, which has no `role`,
+  the sidebars build as before.
 - **CI: an opt-in "deck.gl next" workflow** (`.github/workflows/deckgl-next.yml`, manual
   or weekly) runs the deck.gl-facing browser tests against the next major (npm dist-tag
   `beta`, currently 10.0.0-alpha.1) by pointing the CDN pin at it in its own checkout.
@@ -16,6 +20,23 @@ and version numbers use [Semantic Versioning](https://semver.org/).
   and post-processing already pass on 10.0.0-alpha.1 locally.
 
 ### Changed
+
+- **Standalone exports use MapLibre 6, and the pin moves to 6.19.0.** Exports stayed on
+  MapLibre 5.24.1 because, before 6.17, MapLibre 6's tile worker died on a `file://`
+  page and an export opened from disk never loaded its basemap. 6.17 fixed that
+  (maplibre-gl-js#8912), so served pages and exports now share one pin and one config
+  block (`MAPLIBRE_EXPORT_VERSION` and the classic-script export head are gone). Exports
+  were checked loading their basemap from disk in Chromium and Firefox, and the
+  existing `file://` browser test now runs against MapLibre 6. 6.19.0 was released
+  today, so watch for a quick patch release.
+- **`legend_control()` uses `@watergis/maplibre-gl-legend` 4.1.0** (was 2.0.7). 3.0
+  dropped the UMD build and MapLibre 5, so 2.0.7 was frozen while exports ran on
+  MapLibre 5. 4.x is ESM-only and about 3x the size, so it is no longer a `<script>`
+  in every page: the client imports it (and its stylesheet) the first time a map asks
+  for a legend control, in served pages and exports alike; the other controls don't
+  wait for it, and a failed load leaves them in place. The control API is unchanged;
+  4.x adds options such as `groups`, `groupBySourceLayer` and `showStyleEditor`, which
+  pass through `legend_control(**kwargs)`.
 
 - **Python 3.11 or newer is required** *(breaking)*; 3.10 is dropped. py-shiny's next
   release drops 3.10, and CI never tested it (it runs 3.11–3.13). `requires-python`,

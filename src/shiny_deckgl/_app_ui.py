@@ -44,6 +44,23 @@ from ._timeline import timeline_control
 from ._demo_data import MONTH_LABELS
 
 
+def _sidebar(tab: str, *children, **kwargs):
+    """A demo tab's sidebar, as an ARIA landmark where Shiny supports it.
+
+    Shiny 1.9 renders a sidebar as a plain ``<div>`` unless ``role`` is given;
+    ``"complementary"`` makes it an ``<aside>`` landmark, which needs an
+    accessible name (1.9 raises without one). Older Shiny has no ``role``.
+    """
+    import inspect
+
+    from shiny import ui
+
+    if "role" in inspect.signature(ui.sidebar).parameters:
+        kwargs.setdefault("role", "complementary")
+        kwargs.setdefault("aria_label", f"{tab} settings")
+    return ui.sidebar(*children, **kwargs)
+
+
 def build_ui():
     """Build and return the Shiny UI for the demo application."""
     # Local imports to keep top-level light
@@ -57,7 +74,7 @@ def build_ui():
         ui.nav_panel(
         "\U0001F30A deck.gl Layers",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("deck.gl Layers",
                 ui.tags.small(
                     "33 layer helpers",
                     class_="badge text-bg-success mb-2",
@@ -456,7 +473,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F5FA MapLibre Controls",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("MapLibre Controls",
                 ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -565,7 +582,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F4E1 Events & Tooltips",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Events & Tooltips",
                 ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -623,7 +640,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F3A8 Colour Scales",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Colour Scales",
                 ui.tags.small(
                     "color utilities",
                     class_="badge text-bg-info mb-2",
@@ -713,7 +730,7 @@ def build_ui():
     ui.nav_panel(
         "\u2699 Advanced",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Advanced",
                 ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -843,7 +860,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F4E6 Export",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Export",
                 ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -880,7 +897,7 @@ def build_ui():
     ui.nav_panel(
         "\u270F\uFE0F Drawing",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Drawing",
                 ui.tags.small("MapLibre", class_="badge text-bg-success mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -950,7 +967,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F30D 3D Visualisation",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("3D Visualisation",
                 ui.tags.small("deck.gl", class_="badge text-bg-primary mb-2"),
                 ui.accordion(
                     ui.accordion_panel(
@@ -1086,7 +1103,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F9AD Seal IBM",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Seal IBM",
                 ui.tags.small(
                     "deck.gl + IBM", class_="badge text-bg-primary mb-2",
                 ),
@@ -1248,7 +1265,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F9E9 Widgets",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Widgets",
                 ui.tags.small(
                     "deck.gl widgets", class_="badge text-bg-primary mb-2",
                 ),
@@ -1414,7 +1431,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F321\uFE0F Time & Space",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("Time & Space",
                 ui.tags.small(
                     "v1.9.0", class_="badge text-bg-info mb-2",
                 ),
@@ -1463,7 +1480,7 @@ def build_ui():
     ui.nav_panel(
         "\U0001F41F HexSim Fish",
         ui.layout_sidebar(
-            ui.sidebar(
+            _sidebar("HexSim Fish",
                 ui.accordion(
                     ui.accordion_panel(
                         "\U0001F41F Fish Settings",

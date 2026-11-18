@@ -167,18 +167,19 @@ class TestStandaloneExportInABrowser:
         _, errors = rendered
         assert not errors, "browser reported errors:\n" + "\n".join(errors[:8])
 
-    def test_export_runs_the_umd_build_not_the_esm_one(self, rendered):
-        """file:// exports must stay on v5: see TestExportsCannotUseV6."""
-        from shiny_deckgl._cdn import MAPLIBRE_EXPORT_VERSION
+    def test_export_runs_the_pinned_maplibre_6(self, rendered):
+        """Exports load the same MapLibre 6 as served pages: see TestExportsUseV6."""
+        from shiny_deckgl._cdn import MAPLIBRE_VERSION
         state, _ = rendered
         assert state["ok"], state
-        assert state["maplibreVersion"] == MAPLIBRE_EXPORT_VERSION
+        assert state["maplibreVersion"] == MAPLIBRE_VERSION
 
     def test_basemap_tiles_actually_load_from_disk(self, rendered):
-        """The regression that version-split exists to prevent.
+        """The regression that kept exports on MapLibre 5 until 1.15.3.
 
-        Under MapLibre 6 the deck.gl layers still draw but the basemap never
-        arrives, so this fails silently unless asserted explicitly.
+        Before MapLibre 6.17 the tile worker died on file://: the deck.gl layers
+        still drew but the basemap never arrived, so this fails silently unless
+        asserted explicitly.
         """
         state, _ = rendered
         assert state["tilesLoaded"] is True, "basemap tiles never loaded from file://"
@@ -253,35 +254,29 @@ class TestShinyHeadFragmentInABrowser:
         assert got["onWindow"] == "function"
 
 
-class TestExportsCannotUseV6:
-    """MapLibre 6 cannot run from a file:// page, so exports stay on v5.
+class TestExportsUseV6:
+    """Exports load the same MapLibre 6 as served pages.
 
-    v6 spawns its tile worker as `new Worker(blob:..., {type: "module"})`. On an
-    opaque (null) origin that worker cannot resolve its own module imports and
-    dies without firing a map error -- deck.gl layers still draw, but the
-    basemap silently never loads. v5 used a classic worker, which blob:null
-    allows. Verified in Chromium: v5 file:// loads tiles, v6 file:// does not,
-    v6 http:// does.
+    Until 1.15.3 they stayed on MapLibre 5: before 6.17, v6 started its tile
+    worker as a module worker from a blob URL, which cannot resolve its imports
+    on a file:// page (opaque origin), so the basemap silently never loaded.
+    6.17 starts a classic worker (maplibre-gl-js#8912); TestStandaloneExportInABrowser
+    checks the basemap tiles really load from disk.
     """
 
-    def test_export_head_uses_a_classic_script_tag(self):
+    def test_export_head_loads_the_esm_build_through_the_config_block(self):
         from shiny_deckgl import MapWidget
+        from shiny_deckgl._cdn import MAPLIBRE_JS
         html = MapWidget("m").to_html([])
-        assert "maplibre-gl.js" in html, "export must load the UMD build"
-        assert "maplibre-gl.mjs" not in html, "export must not load the ESM build"
+        assert 'id="shiny-deckgl-cdn"' in html and MAPLIBRE_JS in html
+        assert "maplibre-gl.js\"" not in html, "no UMD build any more"
 
-    def test_export_pin_is_the_last_v5_release(self):
-        from shiny_deckgl._cdn import MAPLIBRE_EXPORT_VERSION
-        assert MAPLIBRE_EXPORT_VERSION.startswith("5.")
-
-    def test_served_pages_still_get_v6(self):
-        from shiny_deckgl._cdn import CDN_HEAD_FRAGMENT, MAPLIBRE_VERSION
-        assert MAPLIBRE_VERSION.startswith("6.")
-        assert f"maplibre-gl@{MAPLIBRE_VERSION}" in CDN_HEAD_FRAGMENT
-
-    def test_the_two_pins_are_independent(self):
-        from shiny_deckgl._cdn import MAPLIBRE_EXPORT_VERSION, MAPLIBRE_VERSION
-        assert MAPLIBRE_EXPORT_VERSION != MAPLIBRE_VERSION
+    def test_one_pin_for_served_pages_and_exports(self):
+        from shiny_deckgl import _cdn
+        assert _cdn.MAPLIBRE_VERSION.startswith("6.")
+        assert tuple(int(x) for x in _cdn.MAPLIBRE_VERSION.split(".")[:2]) >= (6, 17)
+        assert not hasattr(_cdn, "MAPLIBRE_EXPORT_VERSION")
+        assert f"maplibre-gl@{_cdn.MAPLIBRE_VERSION}" in _cdn.CDN_HEAD_FRAGMENT
 
 
 @requires_browser

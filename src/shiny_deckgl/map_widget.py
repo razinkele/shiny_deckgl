@@ -17,9 +17,7 @@ if TYPE_CHECKING:
     from shiny import Session
 
 from ._cdn import (
-    EXPORT_CDN_CONFIG_JSON,
-    MAPLIBRE_EXPORT_JS,
-    MAPLIBRE_EXPORT_CSS,
+    CDN_CONFIG_JSON,
     H3_JS,
     DECKGL_JS,
     DECKGL_WIDGETS_JS,
@@ -28,8 +26,6 @@ from ._cdn import (
     MAPLIBRE_CSS,
     MAPBOX_DRAW_JS,
     MAPBOX_DRAW_CSS,
-    MAPLIBRE_LEGEND_JS,
-    MAPLIBRE_LEGEND_CSS,
     MAPLIBRE_OPACITY_JS,
     MAPLIBRE_OPACITY_CSS,
 )
@@ -2849,13 +2845,10 @@ class MapWidget:
 <script src="{DECKGL_JS}"></script>
 <script src="{DECKGL_WIDGETS_JS}"></script>
 <link rel="stylesheet" href="{DECKGL_WIDGETS_CSS}"/>
-{EXPORT_CDN_CONFIG_JSON}
-<script src="{MAPLIBRE_EXPORT_JS}"></script>
-<link rel="stylesheet" href="{MAPLIBRE_EXPORT_CSS}"/>
+{CDN_CONFIG_JSON}
+<link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
 <link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>
-<script src="{MAPLIBRE_LEGEND_JS}"></script>
-<link rel="stylesheet" href="{MAPLIBRE_LEGEND_CSS}"/>
 <script src="{MAPLIBRE_OPACITY_JS}"></script>
 <link rel="stylesheet" href="{MAPLIBRE_OPACITY_CSS}"/>
 <style>{css_src}</style>

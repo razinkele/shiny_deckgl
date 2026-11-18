@@ -1183,6 +1183,15 @@ class TestLegendControl:
         ctrl = legend_control(title="My Legend")
         assert ctrl["options"]["title"] == "My Legend"
 
+    def test_legend_control_passes_other_plugin_options_through(self):
+        """maplibre-gl-legend 4.x options (groups, style editor, ...) reach the plugin."""
+        groups = {"Water": ["mpa-fill", "mpa-line"]}
+        ctrl = legend_control(groups=groups, groupBySourceLayer=True, showStyleEditor=True)
+        opts = ctrl["options"]
+        assert opts["groups"] == groups
+        assert opts["groupBySourceLayer"] is True and opts["showStyleEditor"] is True
+        assert opts["showDefault"] is False   # the named arguments still apply
+
     def test_legend_control_no_title_by_default(self):
         ctrl = legend_control()
         assert "title" not in ctrl["options"]

@@ -26,8 +26,6 @@ from ._cdn import (
     MAPLIBRE_CSS,
     MAPBOX_DRAW_JS,
     MAPBOX_DRAW_CSS,
-    MAPLIBRE_LEGEND_JS,
-    MAPLIBRE_LEGEND_CSS,
     MAPLIBRE_OPACITY_JS,
     MAPLIBRE_OPACITY_CSS,
 )
@@ -2851,8 +2849,6 @@ class MapWidget:
 <link rel="stylesheet" href="{MAPLIBRE_CSS}"/>
 <script src="{MAPBOX_DRAW_JS}"></script>
 <link rel="stylesheet" href="{MAPBOX_DRAW_CSS}"/>
-<script src="{MAPLIBRE_LEGEND_JS}"></script>
-<link rel="stylesheet" href="{MAPLIBRE_LEGEND_CSS}"/>
 <script src="{MAPLIBRE_OPACITY_JS}"></script>
 <link rel="stylesheet" href="{MAPLIBRE_OPACITY_CSS}"/>
 <style>{css_src}</style>

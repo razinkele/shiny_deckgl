@@ -815,7 +815,9 @@
           instance._legendLoadPending = true;
           loadLegendPlugin().then(function (ok) {
             instance._legendLoadPending = false;
-            if (ok && instance.map && instance._controlSpecs) {
+            // A map disposed meanwhile is gone: adding to it would attach
+            // the legend's listeners after cleanup.
+            if (ok && !instance._disposed && instance.map && instance._controlSpecs) {
               applyControls(instance, instance._controlSpecs);
             }
           });
@@ -828,6 +830,30 @@
       instance.map.addControl(control, position);
       instance.controls[spec.type] = { control: control, position: position, key: controlKey(spec) };
     });
+  }
+
+  // The controls the map should have: the last specs applied, which include
+  // a legend still loading; failing that, the installed ones.
+  function currentControlSpecs(instance) {
+    if (instance._controlSpecs) return instance._controlSpecs.slice();
+    return Object.keys(instance.controls).map(function (t) {
+      var c = instance.controls[t];
+      return { type: t, position: c.position, options: JSON.parse(c.key)[1] };
+    });
+  }
+
+  // add_control: one control of this type, the others kept (a re-added
+  // identical control stays as is; a changed one replaces).
+  function addControlSpec(instance, spec) {
+    applyControls(instance, currentControlSpecs(instance)
+      .filter(function (s) { return s && s.type !== spec.type; })
+      .concat([spec]));
+  }
+
+  // remove_control: also cancels a legend that has not loaded yet.
+  function removeControlSpec(instance, type) {
+    applyControls(instance, currentControlSpecs(instance)
+      .filter(function (s) { return s && s.type !== type; }));
   }
 
   // @watergis/maplibre-gl-legend 4 is ESM-only and about 3x the size of 2.x,
@@ -1374,6 +1400,7 @@
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
+    instance._disposed = true;  // callbacks still in flight (legend import) check this
     // Drop the animation globals this map's @@animate markers created.
     Object.keys(instance._animGlobals || {}).forEach(function (k) {
       try { delete window[k]; } catch (e2) { window[k] = undefined; }
@@ -3415,14 +3442,7 @@
     // Same deferral as deck_set_controls, so a legend added right after
     // add_maplibre_layer sees that layer. Controls of other types are kept.
     whenStyleReady(instance.map, function () {
-      const others = Object.keys(instance.controls)
-        .filter(function (t) { return t !== spec.type; })
-        .map(function (t) {
-          const c = instance.controls[t];
-          return { type: t, position: c.position, options: JSON.parse(c.key)[1] };
-        });
-      // Re-adding an identical control is kept as is; a changed one replaces.
-      applyControls(instance, others.concat([spec]));
+      addControlSpec(instance, spec);
     });
   });
 
@@ -3434,11 +3454,7 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
 
-    const type = payload.controlType;
-    if (instance.controls[type]) {
-      instance.map.removeControl(instance.controls[type].control);
-      delete instance.controls[type];
-    }
+    removeControlSpec(instance, payload.controlType);
   });
 
   // -----------------------------------------------------------------------

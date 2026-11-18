@@ -9,6 +9,12 @@ and version numbers use [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **deck.gl widget themes.** `MapWidget(widget_theme=..., dark_widget_theme=...)` and
+  `set_widget_theme(session, theme, dark_theme=None)` apply deck.gl's built-in themes
+  (`"light"`, `"dark"`, `"light-glass"`, `"dark-glass"`) or a dict of CSS variables to
+  the map's widgets, the way deck.gl's `ThemeWidget` does. The dark theme follows the
+  map's dark mode; without one, dark mode keeps the package's own dark widget colours.
+  Included in `to_json()` / `from_json()`.
 - **Demo: the 12 tab sidebars are ARIA landmarks on Shiny ≥ 1.9** (`role="complementary"`,
   rendered as `<aside>`, named "<tab> settings"), so screen readers can jump between a
   tab's settings and its map. Feature-detected: on older Shiny, which has no `role`,

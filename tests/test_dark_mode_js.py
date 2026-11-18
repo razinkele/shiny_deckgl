@@ -17,6 +17,9 @@ var sent = [];
 var Shiny = { setInputValue: function (n, v, o) { sent.push({ name: n, value: v }); } };
 var applied = [];
 function applyStyle(instance, style, diff) { applied.push([style, diff]); instance.currentStyle = style; }
+// Widget themes have their own browser test (test_e2e_widget_theme.py).
+var themed = [];
+function applyWidgetTheme(instance) { themed.push(!!instance.dark); }
 function makeEl() {
   var cls = {};
   return { dataset: {}, classList: { toggle: function (c, on) { cls[c] = !!on; }, contains: function (c) { return !!cls[c]; } } };

@@ -2893,6 +2893,25 @@ async def _after_dark_swap():
     await widget.add_maplibre_layer(session, {"id": "mpa-line", "type": "line", "source": "mpa"})
 ```
 
+### Widget themes
+
+```python
+MapWidget(..., widget_theme: str | dict | None = None, dark_widget_theme: str | dict | None = None)
+await widget.set_widget_theme(session, theme, dark_theme=None)
+```
+
+Applies one of deck.gl's built-in widget themes — `"light"`, `"dark"`, `"light-glass"`,
+`"dark-glass"` (`shiny_deckgl.map_widget.WIDGET_THEMES`) — or a dict of CSS variables (e.g.
+`{"--button-size": "32px", "--button-corner-radius": "4px"}`) to the map's deck.gl widgets, the
+way deck.gl's own `ThemeWidget` does (CSS variables on the widget container).
+`dark_widget_theme` applies while the map is in dark mode; without one, dark mode uses the
+package's own dark widget colours. `None` keeps deck.gl's stylesheet. Unknown names, or dict keys
+that aren't `--` CSS variables, raise `ValueError`.
+
+```python
+MapWidget("m", widget_theme="light-glass", dark_widget_theme="dark-glass")
+```
+
 ### Bookmarking (v1.13.0)
 
 ```python

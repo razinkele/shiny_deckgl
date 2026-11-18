@@ -622,7 +622,7 @@ class TestToHtml:
         assert "<!DOCTYPE html>" in html
         assert 'id="export_test"' in html
         assert "deck.gl@9.4.1" in html
-        assert "maplibre-gl@5.24.1" in html  # exports use the UMD build
+        assert "maplibre-gl@6.19.0" in html  # exports load MapLibre 6 like served pages
 
     def test_contains_layer_data(self):
         w = MapWidget("t")
@@ -1036,13 +1036,13 @@ class TestMapLibreVersion:
         dep = head_includes()
         assert "maplibre-gl@3.6" not in str(dep)
 
-    def test_to_html_pins_maplibre_v5_for_file_urls(self):
-        w = MapWidget("v5test")
+    def test_to_html_uses_the_served_maplibre_6(self):
+        w = MapWidget("v6test")
         html = w.to_html([])
-        # Exports stay on the UMD v5 build: MapLibre 6's module worker cannot
-        # start from a file:// page. See tests/test_maplibre_v6.py.
-        assert "maplibre-gl@5.24.1" in html
-        assert "maplibre-gl@3.6" not in html
+        # MapLibre >= 6.17 runs from a file:// page, so exports no longer need
+        # a separate v5 build. See tests/test_maplibre_v6.py.
+        assert "maplibre-gl@6.19.0/dist/maplibre-gl.mjs" in html
+        assert "maplibre-gl@5" not in html and "maplibre-gl@3.6" not in html
 
 
 # ---------------------------------------------------------------------------

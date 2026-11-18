@@ -13,6 +13,11 @@ and version numbers use [Semantic Versioning](https://semver.org/).
   rendered as `<aside>`, named "<tab> settings"), so screen readers can jump between a
   tab's settings and its map. Feature-detected: on older Shiny, which has no `role`,
   the sidebars build as before.
+- **CI: an opt-in "deck.gl next" workflow** (`.github/workflows/deckgl-next.yml`, manual
+  or weekly) runs the deck.gl-facing browser tests against the next major (npm dist-tag
+  `beta`, currently 10.0.0-alpha.1) by pointing the CDN pin at it in its own checkout.
+  Informational only: it never runs on pushes or PRs. Widget resolution, path styles
+  and post-processing already pass on 10.0.0-alpha.1 locally.
 
 ### Changed
 

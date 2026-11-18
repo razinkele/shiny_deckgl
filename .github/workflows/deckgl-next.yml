@@ -1,0 +1,67 @@
+name: deck.gl next (opt-in)
+
+# Informational: runs the browser tests that exercise deck.gl against the next
+# major (npm dist-tag `beta`, 10.0.0-alpha.1 at the time of writing) to see
+# early what it breaks. deck.gl 10 renames coordinate systems to CRS strings,
+# changes A5 cell indexes and GlobeView defaults, so failures are expected.
+# Not run on pushes or PRs; never blocks main.
+on:
+  workflow_dispatch:
+    inputs:
+      deckgl_version:
+        description: "deck.gl version to test (empty = npm dist-tag 'beta')"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays 05:00 UTC
+
+jobs:
+  browser-next:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    continue-on-error: true
+    env:
+      SHINY_DECKGL_REQUIRE_BROWSER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Resolve the deck.gl version
+        id: ver
+        shell: bash
+        env:
+          REQUESTED: ${{ github.event.inputs.deckgl_version }}
+        run: |
+          v="${REQUESTED:-$(npm view deck.gl@beta version)}"
+          echo "deck.gl under test: $v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Point the CDN pin at it (this job's checkout only)
+        shell: bash
+        run: |
+          sed -i "s/^DECKGL_VERSION = \".*\"/DECKGL_VERSION = \"${{ steps.ver.outputs.version }}\"/" src/shiny_deckgl/_cdn.py
+          grep -n '^DECKGL_VERSION' src/shiny_deckgl/_cdn.py
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m playwright install --with-deps chromium
+      - name: Browser modules, one file at a time (report all, then fail if any did)
+        shell: bash
+        run: |
+          failed=()
+          for f in tests/test_widgets_resolve.py tests/test_path_style_browser.py \
+                   tests/test_e2e_postprocess.py tests/test_e2e_splitter.py \
+                   tests/test_e2e_globe.py tests/test_e2e_trips.py \
+                   tests/test_maplibre_v6.py tests/test_e2e_playwright.py; do
+            echo "::group::$f"
+            pytest -q "$f" || failed+=("$f")
+            echo "::endgroup::"
+          done
+          {
+            echo "### deck.gl ${{ steps.ver.outputs.version }}"
+            if [ ${#failed[@]} -eq 0 ]; then echo "All modules passed."
+            else printf -- "- failed: \`%s\`\n" "${failed[@]}"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ ${#failed[@]} -eq 0 ]

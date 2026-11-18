@@ -75,6 +75,7 @@ def legend_control(
     only_rendered: bool = True,
     reverse_order: bool = True,
     title: str | None = None,
+    **options: object,
 ) -> dict:
     """Create a legend control spec (``@watergis/maplibre-gl-legend``).
 
@@ -110,6 +111,12 @@ def legend_control(
         (``True``, the plugin's own default).
     title
         Legend panel title text.  ``None`` uses the plugin default.
+    **options
+        Other plugin options, passed through as written (camelCase), e.g.
+        ``groups={"Water": ["mpa-fill", "mpa-line"]}``,
+        ``groupBySourceLayer=True``, ``collapseGroups=True``,
+        ``showStyleEditor=True`` or ``onlyRenderedLabel="Visible only"``
+        (plugin 4.x).
     """
     opts: dict = {
         "showDefault": show_default,
@@ -121,6 +128,7 @@ def legend_control(
         opts["targets"] = targets
     if title is not None:
         opts["title"] = title
+    opts.update(options)
     return {"type": "legend", "position": position, "options": opts}
 
 

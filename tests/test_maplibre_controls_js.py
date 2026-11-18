@@ -27,6 +27,8 @@ var MaplibreLegendControl = { MaplibreLegendControl: function (targets, o) {
   this.kind = 'legend'; this.targets = targets; this.opts = o; this.redraws = 0; created.push(this);
   this.redraw = function () { this.redraws++; };
 } };
+// applyControls imports the legend plugin on first use; tests stub this.
+var loadLegendPlugin = function () { return Promise.resolve(true); };
 function makeInstance() {
   var log = [];
   return {
@@ -55,7 +57,11 @@ def _prelude() -> str:
         extract_function("refreshLegendWhenDrawn"),
         extract_function("resetNativeLayers"),
         extract_function("controlKey"),
+        extract_function("legendPluginLoaded"),
         extract_function("applyControls"),
+        extract_function("currentControlSpecs"),
+        extract_function("addControlSpec"),
+        extract_function("removeControlSpec"),
         extract_function("createControl"),
     ])
 
@@ -180,3 +186,111 @@ class TestLegendDefaultTargets:
             return { before: before, after: c.redraws, pending: !!i._legendRefreshPending };
         """)
         assert got == {"before": 0, "after": 1, "pending": False}
+
+
+@requires_node
+class TestLegendPluginLoadsOnFirstUse:
+    """maplibre-gl-legend 4 is ESM-only and big, so it is imported when a map
+    first asks for a legend; the other controls must not wait for it."""
+
+    def test_other_controls_now_legend_once_the_module_arrives(self):
+        got = run_js(_prelude(), """await (async function(){
+            var Real = MaplibreLegendControl;
+            MaplibreLegendControl = undefined;        // not loaded yet
+            var resolveLoad;
+            var calls = 0;
+            loadLegendPlugin = function () {          // stub the CDN import
+                calls++;
+                return new Promise(function (r) { resolveLoad = r; });
+            };
+            var i = makeInstance();
+            var specs = [{ type: 'navigation', options: {} },
+                         { type: 'legend', position: 'bottom-left', options: {} }];
+            applyControls(i, specs);
+            applyControls(i, specs);                   // a second call: still one load
+            var before = Object.keys(i.controls);
+            MaplibreLegendControl = Real;
+            resolveLoad(true);
+            await new Promise(function (r) { setTimeout(r, 0); });
+            return { before: before, after: Object.keys(i.controls).sort(),
+                     calls: calls, log: i.log };
+        })()""")
+        assert got["before"] == ["navigation"]
+        assert got["after"] == ["legend", "navigation"]
+        assert got["calls"] == 1
+        assert got["log"] == ["add navigation@top-right", "add legend@bottom-left"]
+
+    def test_a_failed_load_leaves_the_other_controls(self):
+        got = run_js(_prelude(), """await (async function(){
+            MaplibreLegendControl = undefined;
+            loadLegendPlugin = function () { return Promise.resolve(false); };
+            var i = makeInstance();
+            applyControls(i, [{ type: 'navigation', options: {} }, { type: 'legend', options: {} }]);
+            await new Promise(function (r) { setTimeout(r, 0); });
+            return Object.keys(i.controls);
+        })()""")
+        assert got == ["navigation"]
+
+
+    # While the legend loads (CodeRabbit on #31): the specs applied, not just
+    # the controls installed, are what later changes build on.
+    _PENDING = """
+        var Real = MaplibreLegendControl;
+        MaplibreLegendControl = undefined;
+        var resolveLoad;
+        loadLegendPlugin = function () { return new Promise(function (r) { resolveLoad = r; }); };
+        var i = makeInstance();
+        applyControls(i, [{ type: 'navigation', options: {} }, { type: 'legend', options: {} }]);
+        async function arrive() {
+            MaplibreLegendControl = Real; resolveLoad(true);
+            await new Promise(function (r) { setTimeout(r, 0); });
+        }
+    """
+
+    def test_adding_a_control_meanwhile_keeps_the_pending_legend(self):
+        got = run_js(_prelude(), "await (async function(){" + self._PENDING + """
+            addControlSpec(i, { type: 'scale', position: 'bottom-right', options: {} });
+            await arrive();
+            return Object.keys(i.controls).sort();
+        })()""")
+        assert got == ["legend", "navigation", "scale"]
+
+    def test_removing_the_legend_meanwhile_cancels_it(self):
+        got = run_js(_prelude(), "await (async function(){" + self._PENDING + """
+            removeControlSpec(i, 'legend');
+            await arrive();
+            return { controls: Object.keys(i.controls), log: i.log };
+        })()""")
+        assert got == {"controls": ["navigation"], "log": ["add navigation@top-right"]}
+
+    def test_a_map_disposed_meanwhile_gets_no_controls(self):
+        got = run_js(_prelude(), "await (async function(){" + self._PENDING + """
+            i._disposed = true;
+            await arrive();
+            return i.log;
+        })()""")
+        assert got == ["add navigation@top-right"]
+
+
+@requires_node
+class TestControlSpecsWithoutPending:
+    def test_remove_takes_an_installed_control_off_the_map(self):
+        got = _js("""
+            var i = makeInstance();
+            applyControls(i, [{ type: 'navigation', options: {} }, { type: 'scale', options: {} }]);
+            removeControlSpec(i, 'scale');
+            return { controls: Object.keys(i.controls), log: i.log };
+        """)
+        assert got == {"controls": ["navigation"],
+                       "log": ["add navigation@top-right", "add scale@top-right", "remove scale"]}
+
+    def test_add_builds_on_constructor_controls(self):
+        # initMap installs controls directly, without recording specs.
+        got = _js("""
+            var i = makeInstance();
+            i.controls.navigation = { control: { kind: 'navigation' }, position: 'top-left',
+                                      key: controlKey({ position: 'top-left', options: {} }) };
+            addControlSpec(i, { type: 'scale', options: {} });
+            return { controls: Object.keys(i.controls).sort(), log: i.log };
+        """)
+        assert got == {"controls": ["navigation", "scale"], "log": ["add scale@top-right"]}

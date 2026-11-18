@@ -792,6 +792,7 @@
   // legend panel) and, for the legend plugin, leaks the map listeners its
   // onRemove never detaches.
   function applyControls(instance, specs) {
+    instance._controlSpecs = specs;
     var wanted = {};
     specs.forEach(function (spec) { if (spec && spec.type) wanted[spec.type] = spec; });
     Object.keys(instance.controls).forEach(function (type) {
@@ -807,12 +808,90 @@
     });
     specs.forEach(function (spec) {
       if (!spec || !spec.type || instance.controls[spec.type]) return;
+      if (spec.type === 'legend' && !legendPluginLoaded()) {
+        // Imported on first use; re-apply this map's then-current controls
+        // once it arrives (the others are added now).
+        if (!instance._legendLoadPending) {
+          instance._legendLoadPending = true;
+          loadLegendPlugin().then(function (ok) {
+            instance._legendLoadPending = false;
+            // A map disposed meanwhile is gone: adding to it would attach
+            // the legend's listeners after cleanup.
+            if (ok && !instance._disposed && instance.map && instance._controlSpecs) {
+              applyControls(instance, instance._controlSpecs);
+            }
+          });
+        }
+        return;
+      }
       var control = createControl(spec.type, spec.options || {}, instance._legendAutoTargets);
       if (!control) return;
       var position = spec.position || 'top-right';
       instance.map.addControl(control, position);
       instance.controls[spec.type] = { control: control, position: position, key: controlKey(spec) };
     });
+  }
+
+  // The controls the map should have: the last specs applied, which include
+  // a legend still loading; failing that, the installed ones.
+  function currentControlSpecs(instance) {
+    if (instance._controlSpecs) return instance._controlSpecs.slice();
+    return Object.keys(instance.controls).map(function (t) {
+      var c = instance.controls[t];
+      return { type: t, position: c.position, options: JSON.parse(c.key)[1] };
+    });
+  }
+
+  // add_control: one control of this type, the others kept (a re-added
+  // identical control stays as is; a changed one replaces).
+  function addControlSpec(instance, spec) {
+    applyControls(instance, currentControlSpecs(instance)
+      .filter(function (s) { return s && s.type !== spec.type; })
+      .concat([spec]));
+  }
+
+  // remove_control: also cancels a legend that has not loaded yet.
+  function removeControlSpec(instance, type) {
+    applyControls(instance, currentControlSpecs(instance)
+      .filter(function (s) { return s && s.type !== type; }));
+  }
+
+  // @watergis/maplibre-gl-legend 4 is ESM-only and about 3x the size of 2.x,
+  // so it is imported, with its stylesheet, the first time a map asks for a
+  // legend control. A failed load leaves the other controls in place.
+  var _legendPromise = null;
+
+  function legendPluginLoaded() {
+    return typeof MaplibreLegendControl !== 'undefined' && !!MaplibreLegendControl &&
+      typeof MaplibreLegendControl.MaplibreLegendControl === 'function';
+  }
+
+  function loadLegendPlugin() {
+    if (legendPluginLoaded()) return Promise.resolve(true);
+    if (_legendPromise) return _legendPromise;
+    var url = cdnConfig('legend');
+    if (!url) {
+      console.warn('[shiny_deckgl] Legend plugin URL not found in the CDN config block.');
+      return Promise.resolve(false);
+    }
+    var css = cdnConfig('legendCss');
+    if (css && !document.querySelector('link[data-shiny-deckgl-legend]')) {
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = css;
+      link.setAttribute('data-shiny-deckgl-legend', '');
+      document.head.appendChild(link);
+    }
+    _legendPromise = import(url).then(function (ns) {
+      // The module namespace has the same shape as the old UMD global.
+      window.MaplibreLegendControl = ns;
+      return true;
+    }).catch(function (err) {
+      _legendPromise = null;   // allow a retry
+      console.error('[shiny_deckgl] Failed to load the legend plugin from ' + url, err);
+      return false;
+    });
+    return _legendPromise;
   }
 
   // -----------------------------------------------------------------------
@@ -857,7 +936,7 @@
           const targets = opts.targets != null ? opts.targets : legendTargets;
           return new MaplibreLegendControl.MaplibreLegendControl(targets, legendOpts);
         }
-        console.warn('[shiny_deckgl] MaplibreLegendControl not loaded. Include the @watergis/maplibre-gl-legend CDN script.');
+        console.warn('[shiny_deckgl] MaplibreLegendControl is not loaded.');
         return null;
       case 'opacity':
         if (typeof OpacityControl !== 'undefined') {
@@ -1045,7 +1124,10 @@
 
     const initialControls = {};
     const legendAutoTargets = newLegendTargets();
+    let legendPending = false;
     controlsConfig.forEach(function (cfg) {
+      // The legend plugin is imported on first use: added below once loaded.
+      if (cfg.type === 'legend' && !legendPluginLoaded()) { legendPending = true; return; }
       const ctrl = createControl(cfg.type, cfg.options || {}, legendAutoTargets);
       if (ctrl) {
         const pos = cfg.position || 'top-right';
@@ -1165,6 +1247,9 @@
       tripsAnimation: null     // see startTripsAnimation()
     };
     watchBootstrapTheme(mapInstances[mapId], mapId);
+    // A legend among the constructor's controls: apply the full list again
+    // once the plugin is in (the controls already added are kept).
+    if (legendPending) applyControls(mapInstances[mapId], controlsConfig);
     // Both contexts can be dropped by the browser: MapLibre's now, deck.gl's
     // once the overlay has created its canvas.
     watchContextLoss(mapInstances[mapId], mapId, map.getCanvas());
@@ -1319,6 +1404,7 @@
     // Finalise the deck.gl overlay, then the MapLibre map.
     try { if (instance.overlay && instance.overlay.finalize) instance.overlay.finalize(); } catch (e) { /* ignore */ }
     try { if (instance.map && instance.map.remove) instance.map.remove(); } catch (e) { /* ignore */ }
+    instance._disposed = true;  // callbacks still in flight (legend import) check this
     // Drop the animation globals this map's @@animate markers created.
     Object.keys(instance._animGlobals || {}).forEach(function (k) {
       try { delete window[k]; } catch (e2) { window[k] = undefined; }
@@ -3426,14 +3512,7 @@
     // Same deferral as deck_set_controls, so a legend added right after
     // add_maplibre_layer sees that layer. Controls of other types are kept.
     whenStyleReady(instance.map, function () {
-      const others = Object.keys(instance.controls)
-        .filter(function (t) { return t !== spec.type; })
-        .map(function (t) {
-          const c = instance.controls[t];
-          return { type: t, position: c.position, options: JSON.parse(c.key)[1] };
-        });
-      // Re-adding an identical control is kept as is; a changed one replaces.
-      applyControls(instance, others.concat([spec]));
+      addControlSpec(instance, spec);
     });
   });
 
@@ -3445,11 +3524,7 @@
     const instance = mapInstances[payload.id];
     if (!instance) return;
 
-    const type = payload.controlType;
-    if (instance.controls[type]) {
-      instance.map.removeControl(instance.controls[type].control);
-      delete instance.controls[type];
-    }
+    removeControlSpec(instance, payload.controlType);
   });
 
   // -----------------------------------------------------------------------

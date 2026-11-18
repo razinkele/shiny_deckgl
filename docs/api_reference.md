@@ -1,6 +1,6 @@
 # shiny\_deckgl API Reference
 
-> **Current stack** — A Shiny for Python bridge to deck.gl (v9.4.1) and MapLibre GL JS (v6.18.0; standalone exports use v5.24.1).
+> **Current stack** — A Shiny for Python bridge to deck.gl (v9.4.1) and MapLibre GL JS (v6.19.0, served pages and standalone exports alike).
 
 ```python
 import shiny_deckgl as sdgl
@@ -191,7 +191,7 @@ import shiny_deckgl as sdgl
 shiny_deckgl.head_includes() -> HTMLDependency
 ```
 
-Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.18.0 (loaded as an ES module), MapboxDraw v1.5.2, and local shiny\_deckgl assets into the page `<head>`. `@luma.gl/effects` 9.4.2 shader modules are not injected; the client imports the one a `post_process_effect()` needs on first use.
+Returns an `HTMLDependency` that injects deck.gl v9.4.1, MapLibre GL JS v6.19.0 (loaded as an ES module), MapboxDraw v1.5.2, and local shiny\_deckgl assets into the page `<head>`. `@luma.gl/effects` 9.4.2 shader modules are not injected; the client imports the one a `post_process_effect()` needs on first use.
 
 Place as a **direct child** of any `ui.page_*()` layout:
 
@@ -1226,24 +1226,26 @@ legend_control(
     show_default: bool = False,
     show_checkbox: bool = True,
     only_rendered: bool = True,
-    reverse_order: bool = False,
+    reverse_order: bool = True,
     title: str | None = None,
+    **options,
 ) -> dict
 ```
 
-Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend`). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
+Create a legend control for **native MapLibre style layers** (powered by `@watergis/maplibre-gl-legend` 4.1.0, which the client imports the first time a map asks for a legend). Displays a collapsible legend panel generated from the MapLibre style. Layer visibility can be toggled with checkboxes.
 
 > **Note:** This control only sees native MapLibre layers added via `add_maplibre_layer()`. For deck.gl overlay layers, use the deck.gl widget [`layer_legend_widget()`](#layer_legend_widget) instead.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
-| `targets` | `dict \| None` | `None` | Map of layer id → display label. `None` shows all layers. |
+| `targets` | `dict \| None` | `None` | Map of layer id → display label. `None` lists the app's own native layers and follows them; `{}` lists every style layer, basemap included. |
 | `position` | `str` | `"bottom-left"` | Control position. |
 | `show_default` | `bool` | `False` | Whether the panel starts expanded. |
 | `show_checkbox` | `bool` | `True` | Show visibility toggle checkboxes. |
 | `only_rendered` | `bool` | `True` | Only show currently rendered layers. |
-| `reverse_order` | `bool` | `False` | Reverse layer order in the legend. |
+| `reverse_order` | `bool` | `True` | List layers top-most first, as stacked on the map. |
 | `title` | `str \| None` | `None` | Panel title text. |
+| `**options` | | | Other plugin options, passed through as written (camelCase): e.g. `groups={"Water": ["mpa-fill", "mpa-line"]}`, `groupBySourceLayer=True`, `collapseGroups=True`, `showStyleEditor=True`. |
 
 ```python
 legend_control(

@@ -36,3 +36,53 @@ def test_draw_line_layers_are_added_without_style_errors():
             assert any(i.startswith("gl-draw-lines") for i in draw_ids), draw_ids
             errors = [t for t in pg.console_log if "line-dasharray" in t]
             assert not errors, errors
+
+
+def test_the_draw_buttons_can_be_clicked():
+    """mapbox-gl-draw names its control for Mapbox GL (``mapboxgl-ctrl``).
+
+    MapLibre styles its own class (``maplibregl-ctrl``) and lets the pointer
+    reach only that one: the control corner is ``pointer-events: none``. With
+    Mapbox's names the draw buttons were bare and every click on them fell
+    through to the map.
+    """
+    with running_app("draw_app", PORT + 1):
+        with browser_page(f"http://127.0.0.1:{PORT + 1}/", "#dmap") as pg:
+            pg.wait_for_selector("#dmap .mapbox-gl-draw_polygon", timeout=30000)
+            pg.wait_for_timeout(500)
+            state = pg.evaluate(
+                """() => {
+                    const b = document.querySelector('#dmap .mapbox-gl-draw_polygon');
+                    const r = b.getBoundingClientRect();
+                    const top = document.elementFromPoint(
+                        r.x + r.width / 2, r.y + r.height / 2);
+                    const group = b.parentElement;
+                    return {
+                        onTop: top === b,
+                        group: group.className,
+                        background: getComputedStyle(group).backgroundColor,
+                    };
+                }""")
+            assert state["onTop"], state
+            assert "maplibregl-ctrl-group" in state["group"], state
+            assert state["background"] not in ("rgba(0, 0, 0, 0)", "transparent"), state
+
+            pg.click("#dmap .mapbox-gl-draw_polygon")
+            pg.wait_for_function(
+                "() => window.__deckgl_instances.dmap.draw.getMode() === 'draw_polygon'",
+                timeout=5000)
+
+            # ...and a polygon can then be drawn: three corners, the last
+            # one double-clicked.
+            box = pg.locator("#dmap").bounding_box()
+            corners = [(0.4, 0.4), (0.6, 0.4), (0.5, 0.7)]
+            points = [(box["x"] + fx * box["width"], box["y"] + fy * box["height"])
+                      for fx, fy in corners]
+            for x, y in points[:-1]:
+                pg.mouse.click(x, y)
+                pg.wait_for_timeout(250)
+            pg.mouse.dblclick(*points[-1])
+            pg.wait_for_function(
+                "() => { const f = window.__deckgl_instances.dmap.draw.getAll().features;"
+                " return f.length === 1 && f[0].geometry.type === 'Polygon'; }",
+                timeout=5000)

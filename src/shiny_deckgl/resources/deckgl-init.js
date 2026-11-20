@@ -4162,6 +4162,18 @@
     instance.markers = {};
   });
 
+  // MapLibre's names for the classes mapbox-gl-draw puts on its control and
+  // looks for on the map's canvas (see deck_enable_draw).
+  function useMapLibreClassNames(MapboxDraw) {
+    const classes = MapboxDraw.constants && MapboxDraw.constants.classes;
+    if (!classes) return;
+    classes.CANVAS = 'maplibregl-canvas';
+    classes.CONTROL_BASE = 'maplibregl-ctrl';
+    classes.CONTROL_PREFIX = 'maplibregl-ctrl-';
+    classes.CONTROL_GROUP = 'maplibregl-ctrl-group';
+    classes.ATTRIBUTION = 'maplibregl-ctrl-attrib';
+  }
+
   // -----------------------------------------------------------------------
   // deck_enable_draw — add MapboxDraw to the map
   // -----------------------------------------------------------------------
@@ -4198,6 +4210,13 @@
         };
       }
 
+      // mapbox-gl-draw names its control and canvas for Mapbox GL
+      // (mapboxgl-ctrl, mapboxgl-canvas). MapLibre styles, and lets the
+      // pointer reach, only its own classes: the control corner is
+      // pointer-events: none and .maplibregl-ctrl opts back in. With Mapbox's
+      // names the draw buttons were bare and could not be clicked. The class
+      // names are read when the control is created, so set them first.
+      useMapLibreClassNames(MapboxDraw);
       const draw = new MapboxDraw(drawOpts);
       instance.map.addControl(draw, 'top-left');
       instance.draw = draw;

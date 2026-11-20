@@ -82,7 +82,19 @@ def test_the_draw_buttons_can_be_clicked():
                 pg.mouse.click(x, y)
                 pg.wait_for_timeout(250)
             pg.mouse.dblclick(*points[-1])
+            # draw_polygon adds a draft Polygon as soon as the mode starts, so
+            # require the mode to have ended and a closed ring of three corners.
             pg.wait_for_function(
-                "() => { const f = window.__deckgl_instances.dmap.draw.getAll().features;"
-                " return f.length === 1 && f[0].geometry.type === 'Polygon'; }",
+                """() => {
+                    const d = window.__deckgl_instances.dmap.draw;
+                    if (d.getMode() !== 'simple_select') return false;
+                    const f = d.getAll().features;
+                    if (f.length !== 1 || f[0].geometry.type !== 'Polygon') return false;
+                    const ring = f[0].geometry.coordinates[0];
+                    if (!ring || ring.length < 4) return false;
+                    const first = ring[0], last = ring[ring.length - 1];
+                    if (first[0] !== last[0] || first[1] !== last[1]) return false;
+                    const distinct = new Set(ring.slice(0, -1).map(c => c.join(',')));
+                    return distinct.size >= 3;
+                }""",
                 timeout=5000)

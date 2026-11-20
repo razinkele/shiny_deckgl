@@ -5,6 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and version numbers use [Semantic Versioning](https://semver.org/).
 
 ---
+## [Unreleased]
+
+### Fixed
+
+- **Drawing: the draw buttons could not be clicked, and had no background.**
+  mapbox-gl-draw names its control for Mapbox GL (`mapboxgl-ctrl`,
+  `mapboxgl-ctrl-group`), while MapLibre styles, and lets the pointer reach,
+  only its own classes: the control corner is `pointer-events: none` and
+  `.maplibregl-ctrl` opts back in. So the polygon, line, point and bin buttons
+  were bare icons over the map and every click on them fell through to it.
+  `enable_draw()` now gives mapbox-gl-draw MapLibre's class names before it
+  creates the control. An app that worked around this in its own stylesheet
+  (rules for `.mapboxgl-ctrl`) can drop them; they no longer match anything.
+
+---
 ## [1.16.0] — 2026-11-18
 
 ### Added
